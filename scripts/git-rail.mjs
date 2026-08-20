@@ -310,14 +310,12 @@ function renderBody(width) {
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function renderHeader(width) {
-  const changes = new Set([...(state.staged || []), ...(state.unstaged || [])].map((file) => file.path)).size;
   const half = Math.floor(width / 2);
   return { half, lines: [
-    ` ${C.gold}${C.bold}HERDR GITRAIL${C.reset}`,
     ` ${C.bold}${truncate(state.repository || "repository", width - 1)}${C.reset}`,
     `  ${C.fog}⑂ ${truncate(state.branch || "—", width - 4)}${C.reset}`,
     rule(width),
-    `${tab(`CHANGES ${changes}`, mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
+    `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
   ] };
 }
 function renderFrame() {
@@ -337,8 +335,8 @@ function renderFrame() {
   const viewport = [...fixed, ...scrollable.slice(scrollOffset, scrollOffset + visibleHeight)];
   while (viewport.length < bodyHeight) viewport.push("");
   hitTargets = [
-    { row: 5, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
-    { row: 5, x1: half + 1, x2: width, label: "Files", action: () => { mainTab = "files"; activeSearch = ""; scrollOffset = 0; } },
+    { row: 4, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
+    { row: 4, x1: half + 1, x2: width, label: "Files", action: () => { mainTab = "files"; activeSearch = ""; scrollOffset = 0; } },
   ];
   viewport.forEach((entry, index) => {
     if (typeof entry === "string") return;

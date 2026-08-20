@@ -5,6 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { loadConfig, validateConfig } from "../src/config.mjs";
 
+test("live pane owns the single product title", async () => {
+  const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
+  assert.match(manifest, /title = "HERDER GITRAIL"/);
+});
+
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig({ version: 1, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
   assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);

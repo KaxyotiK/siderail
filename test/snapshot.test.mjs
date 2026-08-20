@@ -13,8 +13,10 @@ for (const width of [36, 52, 100]) {
   test(`demo snapshot is coherent at ${width} columns`, async () => {
     const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-    assert.match(plain, /HERDR GITRAIL/);
+    assert.doesNotMatch(plain, /HERDR GITRAIL/);
     assert.match(plain, /feature\/sidebar/);
+    assert.match(plain, /CHANGES\s+FILES/);
+    assert.doesNotMatch(plain, /CHANGES \d/);
     assert.match(plain, /Staged/);
     assert.match(plain, /Unstaged/);
     assert.doesNotMatch(plain, /Read-only demo preview|const panel = "files"/);

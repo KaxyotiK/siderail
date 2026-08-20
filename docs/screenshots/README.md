@@ -13,11 +13,10 @@ The live Herdr dogfood pass for `production-ready` used an 84-column split and
 showed the following structure:
 
 ```text
- HERDR GITRAIL
  gitrail-fixture
   ⑂ feature/sidebar
  ────────────────────────────────────────────────────
-  CHANGES 3                 FILES
+  CHANGES                   FILES
   ⌕ Search changed files…
   ≣ Folders   ↻ Refresh
  ────────────────────────────────────────────────────
