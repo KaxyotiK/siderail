@@ -14,7 +14,8 @@ Staged, Unstaged, Untracked, and clean-file previews cannot be confused.
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. The installed defaults auto-open `.md`,
 `.mdx`, and `.markdown` files in Glow, so install `glow` for that integration or
-override the Markdown rules. Diff and Raw remain available without Glow.
+override the Markdown rules. If Glow is unavailable, GitRail skips auto-open,
+shows an installation hint, and leaves Diff and Raw fully usable.
 
 ## Install and launch
 

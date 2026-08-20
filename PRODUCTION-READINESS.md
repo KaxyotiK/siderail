@@ -29,7 +29,8 @@ it is not a future implementation plan.
   actions are additive and explicitly key-bound, each pattern accepts one or
   more actions, and `*` provides global actions. Installed defaults bind
   Markdown to `3`, auto-open it in Glow, and bind OS-default Open to `o` for
-  every file.
+  every file. Viewer executables are checked before launch; a missing Glow
+  installation leaves Diff and Raw usable and produces an actionable hint.
 - Preview search, keyboard navigation, and scrolling repaint in place without
   clearing the terminal.
 

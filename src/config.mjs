@@ -215,6 +215,24 @@ export function resolveViewerActions(config, filePath) {
   });
 }
 
+export function launchExecutable(config, platform = process.platform) {
+  if (config.client === "system") return platform === "darwin" ? "open" : "xdg-open";
+  return config.client;
+}
+
+export function executableAvailable(config, env = process.env, platform = process.platform) {
+  const mode = clientMode(config);
+  if (mode === "disabled") return false;
+  if (mode === "builtin") return true;
+  const executable = launchExecutable(config, platform);
+  const candidates = /[\\/]/.test(executable)
+    ? [executable]
+    : String(env.PATH || "").split(path.delimiter).filter(Boolean).map((directory) => path.join(directory, executable));
+  return candidates.some((candidate) => {
+    try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
+  });
+}
+
 export function clientMode(config) {
   if (config.client === "none") return "disabled";
   if (config.client === "builtin") return "builtin";
