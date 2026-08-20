@@ -6,6 +6,7 @@ import { createFixtureRepository, removeFixtureRepository } from "../src/fixture
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import { displayState, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
+import { compactAge } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
 const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
@@ -170,14 +171,6 @@ function descriptorLabel(descriptor = { kind: "clean" }) {
   if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
   return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
-}
-function compactAge(value) {
-  const normalized = String(value || "").replace(/ ago$/, "").replace(/^an? /, "1 ");
-  if (normalized === "just now") return "now";
-  const match = normalized.match(/^(\d+)\s+(second|minute|hour|day|week|month|year)s?/);
-  if (!match) return normalized;
-  const units = { second: "s", minute: "m", hour: "h", day: "d", week: "w", month: "mo", year: "y" };
-  return `${match[1]}${units[match[2]]}`;
 }
 function fileRow(file, width, prefix = " ") {
   keyboardFiles.push(file);
