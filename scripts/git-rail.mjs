@@ -6,11 +6,21 @@ import { createFixtureRepository, removeFixtureRepository } from "../src/fixture
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
-import { previewTabName, sanitizeTerminalText, startupFailureState } from "../src/terminal-ui.mjs";
+import {
+  compactTerminalPath,
+  commitExpansionState,
+  fitAnsiTerminalColumns,
+  padAnsiTerminalColumns,
+  previewTabName,
+  sanitizeTerminalText,
+  terminalColumns,
+  truncateTerminalColumns,
+  validPollInterval,
+  startupFailureState,
+} from "../src/terminal-ui.mjs";
 import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
-const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
 const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
 const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
 const C = {
@@ -38,26 +48,11 @@ function stringArg(name) {
   return index < 0 ? "" : String(process.argv[index + 1] || "");
 }
 function safe(value) { return sanitizeTerminalText(value); }
-function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
-function visibleLength(value) { return [...stripAnsi(value)].length; }
-function truncate(value, width) {
-  const chars = [...String(value ?? "")];
-  if (chars.length <= width) return chars.join("");
-  return width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
-}
-function fitAnsi(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
-function padAnsi(value, width) {
-  const fitted = fitAnsi(value, width);
-  return `${fitted}${" ".repeat(Math.max(0, width - visibleLength(fitted)))}`;
-}
-function compactPath(value, width) {
-  const clean = safe(value);
-  if ([...clean].length <= width) return clean;
-  const parts = clean.split("/").filter(Boolean);
-  if (parts.length < 2) return truncate(clean, width);
-  const candidate = `${parts[0]}/…/${parts.at(-1)}`;
-  return [...candidate].length <= width ? candidate : `…/${truncate(parts.at(-1), Math.max(1, width - 2))}`;
-}
+function visibleLength(value) { return terminalColumns(value); }
+function truncate(value, width) { return truncateTerminalColumns(value, width); }
+function fitAnsi(value, width) { return fitAnsiTerminalColumns(value, width); }
+function padAnsi(value, width) { return padAnsiTerminalColumns(value, width); }
+function compactPath(value, width) { return compactTerminalPath(value, width); }
 function parseContext() {
   try { return JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || "{}"); } catch { return {}; }
 }
@@ -90,6 +85,7 @@ let refreshTimer;
 let watchTimer;
 let renderTimer;
 let watchers = [];
+let invalidationRepoRoot = "";
 const expanded = { against: false, commits: false, staged: true, unstaged: true };
 const sectionIds = ["against", "commits", "staged", "unstaged"];
 const collapsedGroups = new Set();
@@ -298,9 +294,13 @@ function renderChanges(width) {
     interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changes & commits…", query ? resultCount : "", width), () => { activeSearch = "changes"; }, "Search changes and commits"),
     toolbar(width), rule(width),
   ];
+  if (state.historyTruncated) lines.push(` ${C.dim}Commit history: newest ${state.commits.length} of ${state.totalCommits}${C.reset}`);
+  if (query && state.historyPathsAvailable === false) lines.push(` ${C.dim}Commit path search unavailable; searching summaries only${C.reset}`);
   if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(safe(diffSearchQuery), Math.max(4, width - 31))}”${C.reset}`];
   sections.forEach((section, index) => {
-    const count = section.files?.length ?? (query ? section.commits.length : state.totalCommits);
+    const count = section.files?.length ?? (query
+      ? section.commits.length
+      : state.historyTruncated ? `${state.commits.length}/${state.totalCommits}` : state.totalCommits);
     if (!count) return;
     const forced = Boolean(query);
     lines.push(sectionHeader(section.id, section.label, count, index, width, forced));
@@ -311,7 +311,9 @@ function renderChanges(width) {
     }
     const paged = page(section.commits, `commits:${query}`);
     for (const commit of paged.visible) {
-      const open = query ? commit.matchingPaths.length > 0 : expandedCommits.has(commit.hash);
+      const manuallyOpen = expandedCommits.has(commit.hash);
+      const expansion = commitExpansionState(query, commit.matchingPaths, manuallyOpen, commitFiles.has(commit.hash));
+      const open = expansion.open;
       const age = safe(compactAge(commit.age));
       const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${safe(commit.shortHash)}${C.reset} `;
       lines.push(interactive(`${prefix}${truncate(safe(commit.message), Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`));
@@ -319,9 +321,10 @@ function renderChanges(width) {
       if (query) {
         const loaded = commitFiles.get(commit.hash);
         const matchingFiles = loaded
-          ? search(loaded, query)
+          ? expansion.showAllFiles ? loaded : search(loaded, query)
           : commit.matchingPaths.map((filePath) => ({ path: filePath, status: "modified", additions: 0, deletions: 0, descriptor: { kind: "commit", commitHash: commit.hash } }));
-        lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`));
+        if (expansion.loading) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
+        else lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`));
       } else if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
@@ -486,7 +489,8 @@ async function refreshState(announce = false) {
       if (demoMode) next.repository = "gitrail-fixture";
       const previousInterval = state.config?.refresh?.pollIntervalMs;
       state = next;
-      if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
+      if (state.repoRoot && state.repoRoot !== invalidationRepoRoot) startInvalidation();
+      else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) statusMessage = "Git state refreshed";
       else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
     }
@@ -501,6 +505,9 @@ async function refreshState(announce = false) {
 }
 function startInvalidation() {
   if (demoMode || !state.repoRoot) return;
+  if (invalidationRepoRoot === state.repoRoot) return;
+  stopInvalidation();
+  invalidationRepoRoot = state.repoRoot;
   const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
   try {
     watchers.push(fs.watch(state.repoRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
@@ -513,12 +520,17 @@ function startInvalidation() {
 }
 function resetRefreshTimer() {
   clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => void refreshState(false), state.config.refresh.pollIntervalMs);
+  refreshTimer = setInterval(() => void refreshState(false), validPollInterval(state.config?.refresh?.pollIntervalMs));
   refreshTimer.unref();
 }
-async function cleanup() {
-  clearInterval(refreshTimer); clearTimeout(watchTimer); clearTimeout(renderTimer);
+function stopInvalidation() {
+  clearInterval(refreshTimer); refreshTimer = undefined;
+  clearTimeout(watchTimer); watchTimer = undefined;
   watchers.forEach((watcher) => watcher.close()); watchers = [];
+  invalidationRepoRoot = "";
+}
+async function cleanup() {
+  stopInvalidation(); clearTimeout(renderTimer);
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; await removeFixtureRepository(root); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }

@@ -123,12 +123,18 @@ export function loadConfig(repoRoot, env = process.env) {
   let config = merge(merge(DEFAULT_CONFIG, user.value), project.value);
   const errors = [...user.errors, ...project.errors];
 
-  const editorText = env.GIT_RAIL_CLIENT || (!project.value.editor && !user.value.editor ? env.EDITOR : "");
-  if (editorText) {
-    const [client, ...args] = editorText.trim().split(/\s+/);
-    config.editor = { ...config.editor, client, args };
+  const editorVariable = env.GIT_RAIL_CLIENT !== undefined
+    ? "GIT_RAIL_CLIENT"
+    : !project.value.editor && !user.value.editor && env.EDITOR !== undefined ? "EDITOR" : "";
+  if (editorVariable) {
+    const editorText = String(env[editorVariable] ?? "").trim();
+    if (!editorText) errors.push(`${editorVariable}: expected a non-empty command`);
+    else {
+      const [client, ...args] = editorText.split(/\s+/);
+      config.editor = { ...config.editor, client, args };
+    }
   }
-  if (env.GIT_RAIL_CLIENT_ARGS) {
+  if (env.GIT_RAIL_CLIENT_ARGS !== undefined) {
     try {
       const args = JSON.parse(env.GIT_RAIL_CLIENT_ARGS);
       if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) throw new Error("expected an array of strings");
@@ -137,9 +143,21 @@ export function loadConfig(repoRoot, env = process.env) {
       errors.push(`GIT_RAIL_CLIENT_ARGS: ${error.message}`);
     }
   }
-  if (env.GIT_RAIL_CLIENT_MODE) config.editor.mode = env.GIT_RAIL_CLIENT_MODE;
-  if (env.GIT_RAIL_BASE) config.baseRef = env.GIT_RAIL_BASE;
-  if (env.GIT_RAIL_POLL_INTERVAL_MS) config.refresh.pollIntervalMs = Number(env.GIT_RAIL_POLL_INTERVAL_MS);
+  if (env.GIT_RAIL_CLIENT_MODE !== undefined) {
+    if (["auto", "terminal", "external"].includes(env.GIT_RAIL_CLIENT_MODE)) config.editor.mode = env.GIT_RAIL_CLIENT_MODE;
+    else errors.push("GIT_RAIL_CLIENT_MODE: expected auto, terminal, or external");
+  }
+  if (env.GIT_RAIL_BASE !== undefined) {
+    const baseRef = String(env.GIT_RAIL_BASE).trim();
+    if (baseRef) config.baseRef = baseRef;
+    else errors.push("GIT_RAIL_BASE: expected a non-empty Git reference");
+  }
+  if (env.GIT_RAIL_POLL_INTERVAL_MS !== undefined) {
+    const text = String(env.GIT_RAIL_POLL_INTERVAL_MS).trim();
+    const interval = /^\d+$/.test(text) ? Number(text) : NaN;
+    if (Number.isSafeInteger(interval) && interval >= 1_000 && interval <= 300_000) config.refresh.pollIntervalMs = interval;
+    else errors.push("GIT_RAIL_POLL_INTERVAL_MS: expected an integer from 1000 to 300000");
+  }
   errors.push(...validateConfig(config));
   return { config, errors: [...new Set(errors)] };
 }

@@ -74,3 +74,28 @@ test("environment overrides do not mutate built-in defaults", () => {
   assert.deepEqual(second.config.editor.args, []);
   assert.equal(second.config.refresh.pollIntervalMs, 10_000);
 });
+
+test("invalid environment overrides report errors without replacing valid defaults", () => {
+  const { config, errors } = loadConfig("", {
+    GIT_RAIL_BASE: "   ",
+    GIT_RAIL_CLIENT: "   ",
+    GIT_RAIL_CLIENT_ARGS: "not-json",
+    GIT_RAIL_CLIENT_MODE: "embedded",
+    GIT_RAIL_POLL_INTERVAL_MS: "NaN",
+  });
+  assert.equal(config.baseRef, undefined);
+  assert.deepEqual(config.editor, DEFAULT_CONFIG.editor);
+  assert.equal(config.refresh.pollIntervalMs, DEFAULT_CONFIG.refresh.pollIntervalMs);
+  for (const variable of ["GIT_RAIL_BASE", "GIT_RAIL_CLIENT", "GIT_RAIL_CLIENT_ARGS", "GIT_RAIL_CLIENT_MODE", "GIT_RAIL_POLL_INTERVAL_MS"]) {
+    assert.ok(errors.some((error) => error.startsWith(`${variable}:`)), `${variable} should report its invalid value`);
+  }
+});
+
+test("out-of-range polling overrides preserve a project interval", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-poll-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({ version: 1, refresh: { pollIntervalMs: 7000 } }));
+  const { config, errors } = loadConfig(root, { GIT_RAIL_POLL_INTERVAL_MS: "999" });
+  assert.equal(config.refresh.pollIntervalMs, 7000);
+  assert.ok(errors.some((error) => error.startsWith("GIT_RAIL_POLL_INTERVAL_MS:")));
+});

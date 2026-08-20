@@ -6,11 +6,19 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import {
+  compactTerminalPath,
+  commitExpansionState,
   commitComparisonSource,
+  fitAnsiTerminalColumns,
+  padAnsiTerminalColumns,
   previewInitialMode,
   previewTabName,
   sanitizeTerminalText,
   startupFailureState,
+  stripSgrMouseEvents,
+  terminalColumns,
+  truncateTerminalColumns,
+  validPollInterval,
 } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
 
@@ -51,6 +59,48 @@ test("preview tab names use a safe capped basename", () => {
   assert.ok([...wide].length <= 32);
 });
 
+test("terminal layout helpers measure, truncate, pad, and compact by display columns", () => {
+  assert.equal(terminalColumns("A界e\u0301👩‍💻"), 6);
+  assert.equal(terminalColumns("🇺🇸1️⃣"), 4);
+  assert.equal(terminalColumns("\u001b[31m界界\u001b[0m"), 4);
+  assert.equal(truncateTerminalColumns("界界界", 5), "界界…");
+  assert.equal(terminalColumns(fitAnsiTerminalColumns("\u001b[31m界界界\u001b[0m", 5)), 5);
+  assert.match(fitAnsiTerminalColumns("\u001b[31m界界界\u001b[0m", 5), /\u001b\[0m$/);
+  assert.equal(terminalColumns(padAnsiTerminalColumns("界", 5)), 5);
+  const compact = compactTerminalPath("非常に長い/深い/報告書.md", 12);
+  assert.ok(terminalColumns(compact) <= 12);
+  assert.match(compact, /^…\//);
+  assert.equal(compactTerminalPath("long/path", 1), "…");
+});
+
+test("summary-only commit matches can expand to meaningful file content", () => {
+  assert.deepEqual(commitExpansionState("release", [], false, false), {
+    open: false,
+    showAllFiles: false,
+    loading: false,
+  });
+  assert.deepEqual(commitExpansionState("release", [], true, false), {
+    open: true,
+    showAllFiles: true,
+    loading: true,
+  });
+  assert.deepEqual(commitExpansionState("release", [], true, true), {
+    open: true,
+    showAllFiles: true,
+    loading: false,
+  });
+});
+
+test("poll timers reject corrupted intervals independently of configuration", () => {
+  assert.equal(validPollInterval(5000), 5000);
+  assert.equal(validPollInterval(NaN), 10_000);
+  assert.equal(validPollInterval(0, 7000), 7000);
+});
+
+test("SGR mouse reports can be removed without leaking bytes into search text", () => {
+  assert.equal(stripSgrMouseEvents("read\u001b[<0;12;4M\u001b[<0;12;4mme"), "readme");
+});
+
 test("startup provider failures become an actionable render state", () => {
   const state = startupFailureState("/repo\u001b]0;owned\u0007", new Error("git unavailable\u001b]52;c;c3RlYWw=\u0007"));
   assert.equal(state.repoRoot, "");
@@ -68,4 +118,11 @@ test("sidebar snapshots cannot emit OSC52 from repository and filename data", as
   const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root });
   assert.doesNotMatch(stdout, /\u001b\]|(?:repo|file)-secret/);
   assert.match(stdout, /�\.txt/);
+});
+
+test("startup recovery installs invalidation only after a repository appears", async () => {
+  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  assert.match(rail, /state\.repoRoot && state\.repoRoot !== invalidationRepoRoot\) startInvalidation\(\)/);
+  assert.match(rail, /if \(invalidationRepoRoot === state\.repoRoot\) return;/);
+  assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
 });

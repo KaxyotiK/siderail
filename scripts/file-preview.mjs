@@ -6,10 +6,17 @@ import { spawn, spawnSync } from "node:child_process";
 import { clientMode, loadConfig, resolveViewer } from "../src/config.mjs";
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
-import { commitComparisonSource, previewInitialMode, sanitizeTerminalText } from "../src/terminal-ui.mjs";
+import {
+  commitComparisonSource,
+  fitAnsiTerminalColumns,
+  previewInitialMode,
+  sanitizeTerminalText,
+  stripSgrMouseEvents,
+  stripTerminalAnsi,
+  terminalColumns,
+} from "../src/terminal-ui.mjs";
 
 const ESC = "\u001b[";
-const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
 const C = {
   reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
   gold: `${ESC}38;2;214;176;91m`, green: `${ESC}38;2;91;190;112m`,
@@ -42,13 +49,9 @@ function decode(name, fallback) {
   try { return JSON.parse(Buffer.from(process.env[name] || "", "base64url").toString("utf8")); } catch { return fallback; }
 }
 function safe(value) { return sanitizeTerminalText(value); }
-function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
-function visibleLength(value) { return [...stripAnsi(value)].length; }
-function truncate(value, width) {
-  const chars = [...String(value ?? "")];
-  return chars.length <= width ? chars.join("") : width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
-}
-function fit(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
+function stripAnsi(value) { return stripTerminalAnsi(value); }
+function visibleLength(value) { return terminalColumns(value); }
+function fit(value, width) { return fitAnsiTerminalColumns(value, width); }
 function descriptorLabel() {
   if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;
   if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)}`;
@@ -259,6 +262,10 @@ process.stdin.on("data", (key) => {
     if (button === 64 && phase === "M") scrollOffset -= 3;
     if (button === 65 && phase === "M") scrollOffset += 3;
     if (button === 0 && phase === "M") hitTargets.find((target) => target.row === row && column >= target.x1 && column <= target.x2)?.action();
+  }
+  if (mouse) {
+    key = stripSgrMouseEvents(key);
+    if (!key) { scheduleRender(); return; }
   }
   if (searchActive) {
     if (key === "\u001b" || key === "\r" || key === "\n") { searchActive = false; if (searchQuery) moveMatch(1); }
