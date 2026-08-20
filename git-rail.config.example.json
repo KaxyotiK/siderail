@@ -8,6 +8,7 @@
       "client": "glow",
       "args": ["--tui", "--style", "dark"],
       "mode": "terminal",
+      "order": 100,
       "autoOpen": false
     },
     ".pdf": {
@@ -15,8 +16,27 @@
       "client": "system",
       "args": [],
       "mode": "external",
+      "order": 100,
       "autoOpen": false
-    }
+    },
+    "*": [
+      {
+        "label": "Open File",
+        "client": "system",
+        "args": [],
+        "mode": "external",
+        "order": 200,
+        "autoOpen": false
+      },
+      {
+        "label": "Open in Code",
+        "client": "code",
+        "args": ["--reuse-window"],
+        "mode": "external",
+        "order": 210,
+        "autoOpen": false
+      }
+    ]
   },
   "refresh": {
     "pollIntervalMs": 10000

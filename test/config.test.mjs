@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { clientMode, DEFAULT_CONFIG, loadConfig, resolveViewer, validateConfig } from "../src/config.mjs";
+import { clientMode, DEFAULT_CONFIG, loadConfig, resolveViewer, resolveViewers, validateConfig } from "../src/config.mjs";
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
@@ -30,8 +30,8 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.match(preview, /editorMode !== "disabled"/);
   assert.match(preview, /Editor is not configured/);
   assert.equal(preview.includes("markdownEligible"), false);
-  assert.match(preview, /if \(viewerAvailable\) modes\.push/);
-  assert.match(preview, /key === "3" && viewerAvailable/);
+  assert.match(preview, /resolveViewers\(config, filePath\)/);
+  assert.match(preview, /viewerActions\.find/);
 });
 
 test("manual refresh confirmation is transient", async () => {
@@ -51,14 +51,20 @@ test("published schema exposes labels only on viewer rules", async () => {
   const schema = JSON.parse(await fs.readFile("schema/v1/git-rail.schema.json", "utf8"));
   assert.equal(schema.$defs.launch.properties.label, undefined);
   assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
+  assert.deepEqual(schema.$defs.viewer.properties.order, { type: "integer", minimum: -10000, maximum: 10000 });
+  assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].type, "array");
+  assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].minItems, 1);
 });
 
 test("configuration requires a version and rejects nested unknown keys", () => {
   assert.match(validateConfig({})[0], /version must be 1/);
   assert.ok(validateConfig({ version: 1, editor: { client: "vim", autoOpen: true } }).includes("unknown editor key: autoOpen"));
-  assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "View Markdown", client: "glow", autoOpen: false } } }).length === 0);
+  assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "View Markdown", client: "glow", order: 10, autoOpen: false } } }).length === 0);
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", typo: true } } }).includes('unknown viewers[".md"] key: typo'));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "", client: "glow" } } }).includes('viewers[".md"].label must be a non-empty string'));
+  assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", order: 1.5 } } }).includes('viewers[".md"].order must be an integer from -10000 to 10000'));
+  assert.deepEqual(validateConfig({ version: 1, viewers: { "*": [{ client: "system" }, { client: "code", order: 20 }] } }), []);
+  assert.ok(validateConfig({ version: 1, viewers: { "*": [] } }).includes('viewers["*"] must contain at least one viewer action'));
   assert.ok(validateConfig({ version: 1, refresh: { intervalMs: 5000 } }).includes("unknown refresh key: intervalMs"));
   assert.ok(validateConfig({ version: 1, limits: { maxFilesBytes: 4096 } }).includes("unknown limits key: maxFilesBytes"));
 });
@@ -71,13 +77,17 @@ test("viewer actions resolve conditionally by selected filename", () => {
 
   const config = {
     viewers: {
-      ".pdf": { label: "Open PDF", client: "system" },
-      "makefile": { label: "Build file", client: "less" },
+      "*": [
+        { label: "Open File", client: "system", order: 10 },
+        { label: "Open in Code", client: "code", order: 20 },
+      ],
+      ".pdf": { label: "Open PDF", client: "system", order: 100 },
+      "makefile": { label: "Build file", client: "less", order: 30 },
     },
   };
-  assert.equal(resolveViewer(config, "reports/summary.PDF").label, "Open PDF");
-  assert.equal(resolveViewer(config, "Makefile").label, "Build file");
-  assert.equal(resolveViewer(config, "package.json"), null);
+  assert.deepEqual(resolveViewers(config, "reports/summary.PDF").map(({ label }) => label), ["Open File", "Open in Code", "Open PDF"]);
+  assert.deepEqual(resolveViewers(config, "Makefile").map(({ label }) => label), ["Open File", "Open in Code", "Build file"]);
+  assert.equal(resolveViewer(config, "package.json").label, "Open File");
 });
 
 test("configuration rejects mistyped structured values", () => {

@@ -25,8 +25,10 @@ it is not a future implementation plan.
   unbounded tabs.
 - Diff is a structured file view with old/new line gutters and distinct additions
   and deletions. Raw reads the selected revision. A third viewer action appears
-  only when the selected filename matches an enabled viewer rule; Markdown uses
-  Glow by default and viewers auto-open only when explicitly configured.
+  only when the selected filename matches an enabled viewer rule. Matching
+  actions are additive and explicitly ordered, each pattern accepts one or more
+  actions, and `*` provides global actions; Markdown uses Glow by default and viewers auto-open only when
+  explicitly configured.
 - Preview search, keyboard navigation, and scrolling repaint in place without
   clearing the terminal.
 
@@ -54,8 +56,8 @@ it does not use fabricated hashes, paths, counts, or patches.
 Both user and repository configuration files must declare `version: 1`. The
 runtime and published schema reject unknown top-level and nested keys, invalid
 object shapes, unsupported launch modes, and out-of-range limits. Editor rules
-accept `client`, `args`, and `mode`; viewer rules additionally accept `label`
-and `autoOpen` and resolve by exact filename, suffix, or wildcard.
+accept `client`, `args`, and `mode`; viewer rules additionally accept `label`,
+`order`, and `autoOpen` and resolve by exact filename, suffix, or wildcard.
 Invalid files are reported and excluded from the merge. No editor executable is
 required; editor integration activates only through configuration or `$EDITOR`.
 

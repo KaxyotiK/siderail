@@ -11,7 +11,16 @@
     "editor": { "$ref": "#/$defs/launch" },
     "viewers": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/viewer" }
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/viewer" },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/viewer" }
+          }
+        ]
+      }
     },
     "refresh": {
       "type": "object",
@@ -49,6 +58,7 @@
         "client": { "type": "string", "pattern": "\\S" },
         "args": { "type": "array", "items": { "type": "string" } },
         "mode": { "enum": ["auto", "terminal", "external"] },
+        "order": { "type": "integer", "minimum": -10000, "maximum": 10000 },
         "autoOpen": { "type": "boolean" }
       },
       "required": ["client"]
