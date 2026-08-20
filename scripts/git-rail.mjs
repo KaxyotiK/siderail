@@ -179,7 +179,9 @@ function buildTree(files, collapsed) {
 function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot, file);
   revealSelected = true;
-  statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
+  statusMessage = file.statsUnavailable
+    ? `${descriptorLabel(file.descriptor)} · ${file.path} · ? stats unavailable (inspection budget)`
+    : `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
   if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;

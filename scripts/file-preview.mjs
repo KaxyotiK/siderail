@@ -162,7 +162,9 @@ async function materializedRawSource() {
   fs.chmodSync(temporaryDirectory, 0o700);
   const copy = path.join(temporaryDirectory, path.basename(filePath) || "preview.txt");
   const raw = await loadRaw({ repoRoot, filePath, descriptor, metadata, maxFileBytes: config.limits.maxFileBytes });
+  if (fs.existsSync(copy)) fs.chmodSync(copy, 0o600);
   fs.writeFileSync(copy, raw.text, { mode: 0o600 });
+  fs.chmodSync(copy, 0o400);
   return copy;
 }
 async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
@@ -187,8 +189,12 @@ async function launchEditor() {
   try {
     const materializedRevision = ["commit", "against", "staged"].includes(descriptor.kind) || metadata.status === "deleted";
     const source = await sourceForLaunch(true, true);
+    if (materializedRevision) {
+      statusMessage = "Opening read-only temporary revision copy";
+      render();
+    }
     launch(config.editor, source, "Editor");
-    if (materializedRevision) statusMessage += " · temporary revision copy";
+    if (materializedRevision) statusMessage += " · read-only temporary revision copy";
     else if (temporarySource) statusMessage += " · temporary demo copy";
   } catch (error) { statusMessage = `File unavailable: ${safe(error.message)}`; }
   render();

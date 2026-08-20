@@ -47,6 +47,8 @@ signal.
 - `r` refreshes without resetting selection, expansion, layout, search, or
   scroll position.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
+- Commit headers, folder expanders, and **Show more** rows are currently mouse
+  controls; file selection and opening remain fully keyboard-accessible.
 - `q` or Escape closes the rail.
 
 Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
