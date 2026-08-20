@@ -45,6 +45,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "label": { "type": "string", "pattern": "\\S" },
         "client": { "type": "string", "pattern": "\\S" },
         "args": { "type": "array", "items": { "type": "string" } },
         "mode": { "enum": ["auto", "terminal", "external"] },

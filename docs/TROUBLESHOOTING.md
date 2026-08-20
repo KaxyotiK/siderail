@@ -22,8 +22,9 @@ Editor integration is optional; without an editor configuration or `$EDITOR`,
 the preview omits the `e` action. Otherwise, confirm the executable is on
 `PATH`. Terminal clients temporarily own the
 preview pane; external clients open outside Herdr. Set `mode` explicitly when
-automatic detection is unsuitable. Markdown never auto-opens unless a viewer
-rule sets `autoOpen: true`.
+automatic detection is unsuitable. Viewer action `3` appears only when the
+selected filename matches an enabled rule. No viewer auto-opens unless its rule
+sets `autoOpen: true`.
 
 ## Binary or oversized preview
 

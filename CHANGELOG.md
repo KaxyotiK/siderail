@@ -18,3 +18,5 @@ intentional configuration changes documented here.
 - Preserve stable, flicker-free scrolling and refresh state.
 - Add versioned configuration, safety limits, tests, CI, and release guidance.
 - Reject unknown or mistyped nested configuration and pin CI actions by commit.
+- Make editor integration optional and expose viewer action `3` only when the
+  selected filename matches a configured rule; Markdown defaults to Glow.
