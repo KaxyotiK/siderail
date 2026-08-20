@@ -87,6 +87,9 @@ let refreshQueued = false;
 let refreshTimer;
 let watchTimer;
 let renderTimer;
+let statusTimer;
+let transientRestoreStatus = "";
+let transientStatusMessage = "";
 let watchers = [];
 let invalidationRepoRoot = "";
 const expanded = { against: false, commits: false, staged: true, unstaged: true };
@@ -100,6 +103,22 @@ const pageSizes = new Map();
 function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
 function regions(text, targets) { return { text, targets }; }
 function textOf(line) { return typeof line === "string" ? line : line.text; }
+function showTransientStatus(message, durationMs = 1_500) {
+  if (!statusTimer || statusMessage !== transientStatusMessage) transientRestoreStatus = statusMessage;
+  clearTimeout(statusTimer);
+  statusMessage = message;
+  transientStatusMessage = message;
+  statusTimer = setTimeout(() => {
+    statusTimer = undefined;
+    if (statusMessage === message) {
+      statusMessage = transientRestoreStatus;
+      draw();
+    }
+    transientRestoreStatus = "";
+    transientStatusMessage = "";
+  }, durationMs);
+  statusTimer.unref();
+}
 function resolvedViewMode(width) { return viewModePreference === "auto" ? (width <= NARROW_RAIL_MAX ? "grouped" : "tree") : viewModePreference; }
 function toggleViewMode(width) {
   viewModePreference = resolvedViewMode(width) === "tree" ? "grouped" : "tree";
@@ -511,7 +530,7 @@ async function refreshState(announce = false) {
       state = next;
       if (state.repoRoot && state.repoRoot !== invalidationRepoRoot) startInvalidation();
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
-      if (announce) statusMessage = "Git state refreshed";
+      if (announce) showTransientStatus("Git state refreshed");
       else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
     }
   } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
@@ -550,7 +569,7 @@ function stopInvalidation() {
   invalidationRepoRoot = "";
 }
 async function cleanup() {
-  stopInvalidation(); clearTimeout(renderTimer);
+  stopInvalidation(); clearTimeout(renderTimer); clearTimeout(statusTimer);
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; await removeFixtureRepository(root); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
