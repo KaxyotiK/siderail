@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactAge } from "../src/tui-format.mjs";
+import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
 test("compact commit ages preserve value and unit", () => {
   assert.equal(compactAge("just now"), "now");
@@ -10,4 +10,9 @@ test("compact commit ages preserve value and unit", () => {
   assert.equal(compactAge("2 weeks ago"), "2w");
   assert.equal(compactAge("8 months ago"), "8mo");
   assert.equal(compactAge("1 year ago"), "1y");
+});
+
+test("root files sort after every folder group", () => {
+  const groups = [["", []], ["src", []], ["docs", []], [".github/workflows", []]];
+  assert.deepEqual(groups.sort(compareFolderGroups).map(([folder]) => folder), [".github/workflows", "docs", "src", ""]);
 });

@@ -28,6 +28,15 @@ for (const width of [25, 36, 52, 100]) {
   });
 }
 
+for (const width of [25, 100]) {
+  test(`Files view puts repository-root files after folders at ${width} columns`, async () => {
+    const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
+    const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+    assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
+    assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
+  });
+}
+
 test("large repositories expose an explicit reachable continuation", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

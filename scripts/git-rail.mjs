@@ -6,7 +6,7 @@ import { createFixtureRepository, removeFixtureRepository } from "../src/fixture
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import { displayState, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
-import { compactAge } from "../src/tui-format.mjs";
+import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
 const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
@@ -60,7 +60,7 @@ let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 const providerCwd = fixtureRoot || focusedCwd;
 let state = await getRepositoryState(providerCwd);
 if (demoMode) state.repository = "gitrail-fixture";
-let mainTab = "changes";
+let mainTab = cliArgs.has("--files") ? "files" : "changes";
 let viewModePreference = "auto";
 let selectedSection = 0;
 let scrollOffset = 0;
@@ -211,7 +211,7 @@ function renderGrouped(files, width, scope) {
     groups.get(folder).push(file);
   }
   const lines = [];
-  for (const [folder, entries] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [folder, entries] of [...groups.entries()].sort(compareFolderGroups)) {
     if (!folder) {
       lines.push(...entries.sort((a, b) => a.path.localeCompare(b.path)).map((file) => fileRow(file, width)));
       continue;
@@ -280,7 +280,7 @@ function renderChanges(width) {
     const paged = page(section.commits, "commits");
     for (const commit of paged.visible) {
       const open = expandedCommits.has(commit.hash);
-      const age = width < 36 ? compactAge(commit.age) : commit.age?.replace(" ago", "") || "";
+      const age = compactAge(commit.age);
       const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
       lines.push(interactive(`${prefix}${truncate(commit.message, Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
       if (!open) continue;
