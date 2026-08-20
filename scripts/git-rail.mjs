@@ -23,6 +23,7 @@ const snapshotMode = cliArgs.has("--snapshot");
 const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
 const forcedWidth = numberArg("--width");
 const forcedHeight = numberArg("--height");
+const initialSearch = stringArg("--search");
 const PAGE_SIZE = 100;
 const NARROW_RAIL_MAX = 88;
 
@@ -30,6 +31,10 @@ function numberArg(name) {
   const index = process.argv.indexOf(name);
   const value = index < 0 ? NaN : Number.parseInt(process.argv[index + 1] || "", 10);
   return Number.isFinite(value) ? value : null;
+}
+function stringArg(name) {
+  const index = process.argv.indexOf(name);
+  return index < 0 ? "" : String(process.argv[index + 1] || "");
 }
 function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
 function visibleLength(value) { return [...stripAnsi(value)].length; }
@@ -68,7 +73,7 @@ let selectedIdentity = "";
 let keyboardFiles = [];
 let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
-let diffSearchQuery = "";
+let diffSearchQuery = initialSearch;
 let activeSearch = "";
 let hitTargets = [];
 let lastClick = { label: "", at: 0 };
@@ -235,6 +240,18 @@ function search(files, rawQuery) {
   if (!query) return files;
   return files.filter((file) => file.path.toLocaleLowerCase().includes(query)).sort((a, b) => a.path.localeCompare(b.path));
 }
+function searchCommits(commits, rawQuery) {
+  const query = rawQuery.trim().toLocaleLowerCase();
+  if (!query) return commits;
+  return commits.filter((commit) => {
+    const summary = [commit.hash, commit.shortHash, commit.message, commit.author, commit.age, compactAge(commit.age)]
+      .filter(Boolean)
+      .join("\n")
+      .toLocaleLowerCase();
+    if (summary.includes(query)) return true;
+    return (commitFiles.get(commit.hash) || []).some((file) => file.path.toLocaleLowerCase().includes(query));
+  });
+}
 function toolbar(width) {
   const layout = resolvedViewMode(width) === "tree" ? "≡ Tree" : "≣ Folders";
   const refresh = refreshVisible ? "↻ Refreshing…" : "↻ Refresh";
@@ -256,28 +273,28 @@ function renderChanges(width) {
   const query = diffSearchQuery.trim();
   const sections = [
     { id: "against", label: `Against ${width < 36 ? String(state.baseLabel).split("/").at(-1) : state.baseLabel}`, files: search(state.againstBase || [], query) },
-    { id: "commits", label: "Commits", commits: state.commits || [] },
+    { id: "commits", label: "Commits", commits: searchCommits(state.commits || [], query) },
     { id: "staged", label: "Staged", files: search(state.staged || [], query) },
     { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
   ];
-  const matchCount = sections.filter((item) => item.files).reduce((sum, item) => sum + item.files.length, 0);
+  const matchCount = sections.reduce((sum, item) => sum + (item.files?.length ?? item.commits?.length ?? 0), 0);
+  const resultCount = `${matchCount} result${matchCount === 1 ? "" : "s"}`;
   const lines = [
-    interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changed files…", query ? `${matchCount} matches` : "", width), () => { activeSearch = "changes"; }, "Search changes"),
+    interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changes & commits…", query ? resultCount : "", width), () => { activeSearch = "changes"; }, "Search changes and commits"),
     toolbar(width), rule(width),
   ];
-  if (query && !matchCount) return [...lines, ` ${C.dim}No changed files match “${truncate(diffSearchQuery, width - 28)}”${C.reset}`];
+  if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(diffSearchQuery, Math.max(4, width - 31))}”${C.reset}`];
   sections.forEach((section, index) => {
-    if (query && section.id === "commits") return;
-    const count = section.files?.length ?? state.totalCommits;
+    const count = section.files?.length ?? (query ? section.commits.length : state.totalCommits);
     if (!count) return;
-    const forced = Boolean(query) && section.id !== "commits";
+    const forced = Boolean(query);
     lines.push(sectionHeader(section.id, section.label, count, index, width, forced));
     if (!forced && !expanded[section.id]) return;
     if (section.files) {
       lines.push(...renderFilesList(section.files, width, `${section.id}:${query}`));
       return;
     }
-    const paged = page(section.commits, "commits");
+    const paged = page(section.commits, `commits:${query}`);
     for (const commit of paged.visible) {
       const open = expandedCommits.has(commit.hash);
       const age = compactAge(commit.age);
@@ -287,7 +304,7 @@ function renderChanges(width) {
       if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
-    lines.push(...showMoreRow("commits", paged.remaining));
+    lines.push(...showMoreRow(`commits:${query}`, paged.remaining));
   });
   return lines;
 }

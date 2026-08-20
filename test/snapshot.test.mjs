@@ -37,6 +37,15 @@ for (const width of [25, 100]) {
   });
 }
 
+test("Changes search includes commit history summaries", async () => {
+  const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "descriptor-aware", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+  const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(plain, /1 result/);
+  assert.match(plain, /Commits  1/);
+  assert.match(plain, /add descriptor-aware rail/);
+  assert.doesNotMatch(plain, /No changes or commits match/);
+});
+
 test("large repositories expose an explicit reachable continuation", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
