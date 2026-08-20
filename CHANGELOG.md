@@ -24,3 +24,8 @@ intentional configuration changes documented here.
   configurable key bindings.
 - Ship `o Open` globally and auto-open Markdown through the `3` Glow action.
 - Skip unavailable viewer auto-launches and retain Diff/Raw with an install hint.
+- Harden exact revision handling for diverged bases, unusual index paths,
+  staged copies, dangling symlinks, invalid base refs, and binary viewers.
+- Add explicit clean state, keyboard-reachable commit history, ordered terminal
+  input decoding, horizontal preview navigation, wrapped narrow actions, and
+  transient preview-open feedback.

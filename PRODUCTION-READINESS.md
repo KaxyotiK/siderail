@@ -10,6 +10,9 @@ it is not a future implementation plan.
 - Changes separates Against-base, commit, staged, unstaged, and untracked state.
   Each row carries an exact descriptor so the preview cannot silently switch Git
   scope.
+- A clean Changes view explicitly states that the worktree is clean. Commit
+  summary rows participate in the same keyboard focus and Enter activation as
+  file rows.
 - Changes search covers file paths plus the hashes, messages, authors, ages, and
   changed paths of the latest 200 first-parent commits. The full range count is
   retained, truncation is disclosed, and path-index failure degrades search
@@ -32,7 +35,8 @@ it is not a future implementation plan.
   every file. Viewer executables are checked before launch; a missing Glow
   installation leaves Diff and Raw usable and produces an actionable hint.
 - Preview search, keyboard navigation, and scrolling repaint in place without
-  clearing the terminal.
+  clearing the terminal. Long Diff and Raw rows support horizontal arrow-key
+  navigation while retaining their line-number gutter.
 
 ## Git correctness
 
@@ -60,11 +64,17 @@ runtime and published schema reject unknown top-level and nested keys, invalid
 object shapes, unsupported launch modes, and out-of-range limits. Editor rules
 accept `client`, `args`, and `mode`; viewer rules additionally accept `label`,
 `key`, and `autoOpen` and resolve by exact filename, suffix, or wildcard.
+Dot-prefixed patterns are suffix rules; all other non-wildcard patterns are
+exact basenames.
 Invalid files are reported and excluded from the merge. No editor executable is
 required; editor integration activates only through configuration or `$EDITOR`.
 
 Git processes run without a shell, with bounded output and timeouts. File reads
 are size-limited, binary-aware, and constrained to the real repository path.
+Dangling symlinks are rejected before editor or viewer launch. Exact-revision
+external actions use bounded byte-preserving materialization while Raw remains
+text-only. Terminal rendering rejects content above 100,000 lines before
+splitting or diff parsing to bound rendered-memory amplification.
 Untracked summary statistics additionally have aggregate file, byte, and
 elapsed-time budgets; rows beyond the budget are marked unavailable without
 blocking exact on-demand previews.

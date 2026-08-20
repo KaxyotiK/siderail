@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
-import { diffArguments, loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
+import { diffArguments, loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand, runGit } from "../src/process.mjs";
 
 test("fixture state is derived by the production provider", async (t) => {
@@ -32,6 +32,88 @@ test("read-only refresh does not rewrite the Git index", async (t) => {
   await getRepositoryState(root);
   const after = await fs.stat(indexPath, { bigint: true });
   assert.equal(after.mtimeNs, before.mtimeNs);
+});
+
+test("configured bases must resolve to commits and never silently fall back", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-base-validation-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "README.md"), "base\n");
+  await runGit(root, ["add", "README.md"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+
+  for (const requested of ["HEAD:README.md", "refs/heads/definitely-missing"]) {
+    const state = await getRepositoryState(root, { env: { ...process.env, GIT_RAIL_BASE: requested } });
+    assert.equal(state.baseRef, "");
+    assert.equal(state.againstBase.length, 0);
+    assert.match(state.configErrors.join("\n"), new RegExp(`does not resolve to a commit: ${requested.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  }
+});
+
+test("Against Raw uses the same merge base as its diff after branches diverge", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-against-merge-base-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "gone.txt"), "merge-base v1\n");
+  await runGit(root, ["add", "gone.txt"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  const mergeBase = (await runGit(root, ["rev-parse", "HEAD"])).stdout.trim();
+  await runGit(root, ["switch", "-c", "feature/delete"]);
+  await fs.rm(path.join(root, "gone.txt"));
+  await runGit(root, ["commit", "-am", "delete on feature"], { env: identity });
+  await runGit(root, ["switch", "main"]);
+  await fs.writeFile(path.join(root, "gone.txt"), "main-tip v2 NEVER ON FEATURE\n");
+  await runGit(root, ["commit", "-am", "advance main"], { env: identity });
+  await runGit(root, ["switch", "feature/delete"]);
+
+  const state = await getRepositoryState(root);
+  const deleted = state.againstBase.find((file) => file.path === "gone.txt");
+  assert.equal(deleted.descriptor.mergeBase, mergeBase);
+  const diff = await loadDiff({ repoRoot: root, filePath: deleted.path, descriptor: deleted.descriptor, metadata: deleted, maxOutputBytes: 1024 * 1024 });
+  assert.match(diff.text, /merge-base v1/);
+  assert.doesNotMatch(diff.text, /NEVER ON FEATURE/);
+  const raw = await loadRaw({ repoRoot: root, filePath: deleted.path, descriptor: deleted.descriptor, metadata: deleted, maxFileBytes: 1024 * 1024 });
+  assert.equal(raw.text, "merge-base v1\n");
+  assert.equal(raw.revision, `${mergeBase}:gone.txt`);
+});
+
+test("staged copy identity and colon-prefixed index paths remain exact", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-staged-identity-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "source.txt"), "copy me\n");
+  await fs.writeFile(path.join(root, "foo"), "WRONG ordinary foo\n");
+  await runGit(root, ["add", "source.txt", "foo"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await fs.copyFile(path.join(root, "source.txt"), path.join(root, "copy.txt"));
+  await fs.writeFile(path.join(root, "0:foo"), "RIGHT colon file\n");
+  await runGit(root, ["add", "copy.txt", "0:foo"]);
+
+  const state = await getRepositoryState(root);
+  const copy = state.staged.find((file) => file.path === "copy.txt");
+  assert.equal(copy.status, "copied");
+  assert.equal(copy.oldPath, "source.txt");
+  assert.equal(copy.score, "100");
+  const colon = state.staged.find((file) => file.path === "0:foo");
+  const raw = await loadRaw({ repoRoot: root, filePath: colon.path, descriptor: colon.descriptor, metadata: colon, maxFileBytes: 1024 });
+  assert.equal(raw.text, "RIGHT colon file\n");
+});
+
+test("exact-revision materialization preserves bounded binary bytes for viewers", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-binary-materialization-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await runGit(root, ["init", "--initial-branch=main"]);
+  const expected = Buffer.from([0, 1, 2, 3, 255]);
+  await fs.writeFile(path.join(root, "image.bin"), expected);
+  await runGit(root, ["add", "image.bin"]);
+  const options = { repoRoot: root, filePath: "image.bin", descriptor: { kind: "staged" }, metadata: { status: "added", binary: true }, maxFileBytes: 1024 };
+  await assert.rejects(() => loadRaw(options), /Binary file/);
+  const materialized = await loadRawBytes(options);
+  assert.deepEqual(materialized.bytes, expected);
+  assert.equal(materialized.revision, "index:image.bin");
 });
 
 test("staged, unstaged, against, commit, untracked, and clean descriptors are independent", async (t) => {
@@ -69,6 +151,8 @@ test("raw preview identifies revisions and rejects escaping symlinks", async (t)
   t.after(() => fs.rm(outside, { force: true }));
   await fs.symlink(outside, path.join(root, "escape.txt"));
   await assert.rejects(() => safeWorktreePath(root, "escape.txt"), /symlink outside/);
+  await fs.symlink(path.join(path.dirname(root), "missing-outside.txt"), path.join(root, "dangling.txt"));
+  await assert.rejects(() => safeWorktreePath(root, "dangling.txt"), /dangling symlink/);
 });
 
 test("missing worktree content never falls back unless the selected state is deleted", async (t) => {
@@ -402,7 +486,7 @@ test("historical and index blobs receive bounded binary and UTF-8 validation wit
   );
   const deleted = await loadRaw({ repoRoot: root, filePath: "deleted.txt", descriptor: files.get("deleted.txt").descriptor, metadata: files.get("deleted.txt"), maxFileBytes: 1024 });
   assert.equal(deleted.text, "base text\n");
-  assert.match(deleted.revision, /^main:deleted\.txt$/);
+  assert.match(deleted.revision, /^[0-9a-f]{40}:deleted\.txt$/);
 
   await fs.writeFile(path.join(root, "invalid-index.txt"), "valid worktree\n");
   await runGit(root, ["add", "invalid-index.txt"]);

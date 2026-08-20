@@ -45,13 +45,14 @@ signal.
   commits and still shows the complete range count. `Ctrl-U` clears; Enter
   finishes.
 - `g` toggles Tree and Folders layouts.
-- `j`/`k` or arrows select files; Enter opens the selection. `J`/`K` and the
-  mouse wheel scroll, while `h`/`l` chooses a section and Space toggles it.
+- `j`/`k` or arrows focus commit and file rows. Enter expands a focused commit
+  or opens a focused file. `J`/`K` and the mouse wheel scroll, while `h`/`l`
+  chooses a section and Space toggles it.
 - `r` refreshes without resetting selection, expansion, layout, search, or
   scroll position.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
-- Commit headers, folder expanders, and **Show more** rows are currently mouse
-  controls; file selection and opening remain fully keyboard-accessible.
+- Folder expanders and **Show more** rows are currently mouse controls; commit
+  expansion and file opening remain fully keyboard-accessible.
 - `q` or Escape closes the rail.
 
 Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
@@ -137,7 +138,8 @@ Without `editor`, `GIT_RAIL_CLIENT`, or `$EDITOR`, editing is disabled and the
 preview omits the `e` action.
 
 Viewer actions are conditional per selected filename. Rules match an exact
-basename, a filename suffix such as `.pdf`, or `*`. Every matching rule is shown,
+basename, a dot-prefixed filename suffix such as `.pdf`, or `*`. Exact names do
+not act as implicit suffixes: `Makefile` will not match `NotMakefile`. Every matching rule is shown,
 so `*` can provide a global action alongside a file-specific action. Each
 pattern accepts one rule or an array of rules, so multiple global or
 file-specific actions can coexist. Each rule can configure its action `label`, executable `client`, `args`, launch
@@ -186,6 +188,11 @@ diffs, environment values, and command arguments are never logged.
 Explicit `terminal` and `external` modes override executable heuristics. `system`
 uses macOS `open` or Linux `xdg-open`; `none` disables editing. External apps,
 including VS Code and Cursor, open outside Herdr.
+
+Viewer and editor actions materialize the exact selected commit, Against-base,
+or staged revision with a bounded byte-preserving copy. This allows OS-default
+Open and external applications to handle images, PDFs, and other binary files;
+the terminal Raw view remains deliberately text-only and UTF-8 validated.
 
 ## Development
 

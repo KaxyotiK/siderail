@@ -94,6 +94,47 @@ export function fitAnsiTerminalColumns(value, maxColumns) {
   return `${result}…${reset}`;
 }
 
+export function sliceAnsiTerminalColumns(value, startColumn, maxColumns) {
+  const text = String(value ?? "");
+  const start = Math.max(0, startColumn || 0);
+  if (maxColumns <= 0) return "";
+  let prefix = "";
+  let result = "";
+  let column = 0;
+  let resultWidth = 0;
+  let offset = 0;
+  let started = false;
+  let stopped = false;
+  CSI.lastIndex = 0;
+  const appendPlain = (plain) => {
+    for (const { segment } of GRAPHEMES.segment(plain)) {
+      const width = graphemeWidth(segment);
+      const nextColumn = column + width;
+      if (nextColumn <= start) {
+        column = nextColumn;
+        continue;
+      }
+      if (column < start && nextColumn > start) {
+        column = nextColumn;
+        continue;
+      }
+      if (resultWidth + width > maxColumns) return false;
+      if (!started) { result += prefix; started = true; }
+      result += segment;
+      resultWidth += width;
+      column = nextColumn;
+    }
+    return true;
+  };
+  for (const match of text.matchAll(CSI)) {
+    if (!appendPlain(text.slice(offset, match.index))) { stopped = true; break; }
+    if (started) result += match[0]; else prefix += match[0];
+    offset = match.index + match[0].length;
+  }
+  if (!stopped && resultWidth < maxColumns) appendPlain(text.slice(offset));
+  return `${result}${text.includes("\u001b[") ? "\u001b[0m" : ""}`;
+}
+
 export function padAnsiTerminalColumns(value, columns) {
   const fitted = fitAnsiTerminalColumns(value, columns);
   return `${fitted}${" ".repeat(Math.max(0, columns - terminalColumns(fitted)))}`;
@@ -117,6 +158,41 @@ export function validPollInterval(value, fallback = 10_000) {
 
 export function stripSgrMouseEvents(value) {
   return String(value ?? "").replace(/\u001b\[<\d+;\d+;\d+[Mm]/g, "");
+}
+
+export function createTerminalInputDecoder(onEvent, escapeDelayMs = 12) {
+  let pending = "";
+  let timer;
+  const scheduleFlush = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => drain(true), escapeDelayMs);
+    timer.unref?.();
+  };
+  const drain = (force = false) => {
+    clearTimeout(timer);
+    timer = undefined;
+    while (pending) {
+      if (pending.startsWith("\u001b[")) {
+        const complete = pending.match(/^\u001b\[[0-?]*[ -/]*[@-~]/);
+        if (complete) {
+          pending = pending.slice(complete[0].length);
+          onEvent(complete[0]);
+          continue;
+        }
+        if (!force && /^\u001b\[[0-?]*[ -/]*$/.test(pending)) { scheduleFlush(); return; }
+      } else if (pending === "\u001b" && !force) {
+        scheduleFlush();
+        return;
+      }
+      const event = Array.from(pending)[0];
+      pending = pending.slice(event.length);
+      onEvent(event);
+    }
+  };
+  return {
+    push(value) { pending += String(value ?? ""); drain(false); },
+    flush() { drain(true); },
+  };
 }
 
 export function commitExpansionState(query, matchingPaths, manuallyOpen, detailsLoaded) {
