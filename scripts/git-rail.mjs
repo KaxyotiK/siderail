@@ -403,8 +403,9 @@ async function openPreview(file) {
   }
   const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: file.status, oldPath: file.oldPath, binary: file.binary })).toString("base64url");
-  const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "overlay",
+  const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
+  if (workspaceId) openArgs.push("--workspace", workspaceId);
   try {
     const result = await runCommand(herdr, openArgs, { cwd: focusedCwd });
     const payload = JSON.parse(result.stdout);

@@ -43,17 +43,18 @@ signal.
   mouse wheel scroll, while `h`/`l` chooses a section and Space toggles it.
 - `r` refreshes without resetting selection, expansion, layout, search, or
   scroll position.
-- A click selects. A double-click opens GitRail Preview.
+- A click selects. A double-click opens GitRail Preview in a dedicated Herdr tab.
 - `q` or Escape closes the rail.
 
 Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
 Large sections expose explicit **Show more** rows, so displayed totals never
 refer to unreachable content.
 
-GitRail Preview starts in the selected descriptor's exact diff, or Raw for a
-clean file. Use `1`, `2`, and `3` for Diff, Raw, and Markdown; `/` searches the
-current content and `n`/`N` moves through matches. `e` opens the configured
-editor. Binary and oversized content produce bounded, actionable errors.
+GitRail Preview replaces the previous preview tab, then starts in the selected
+descriptor's exact diff, or Raw for a clean file. Use `1`, `2`, and `3` for
+Diff, Raw, and Markdown; `/` searches the current content and `n`/`N` moves
+through matches. `e` opens the configured editor. Binary and oversized content
+produce bounded, actionable errors.
 
 ## Git semantics
 

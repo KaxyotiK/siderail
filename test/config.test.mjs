@@ -10,6 +10,13 @@ test("live pane owns the single product title", async () => {
   assert.match(manifest, /title = "HERDER GITRAIL"/);
 });
 
+test("file previews open in a dedicated Herdr tab", async () => {
+  const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
+  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  assert.match(manifest, /id = "file-preview"[\s\S]*?placement = "tab"/);
+  assert.match(rail, /"--entrypoint", "file-preview", "--placement", "tab"/);
+});
+
 test("preview scrolling repaints in place without clearing the screen", async () => {
   const preview = await fs.readFile("scripts/file-preview.mjs", "utf8");
   assert.equal(preview.includes("${ESC}2J"), false);
