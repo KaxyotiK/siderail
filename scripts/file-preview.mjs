@@ -186,6 +186,11 @@ async function launchViewer() {
   render();
 }
 async function launchEditor() {
+  if (clientMode(config.editor) === "disabled") {
+    statusMessage = "Editor is not configured";
+    render();
+    return;
+  }
   try {
     const materializedRevision = ["commit", "against", "staged"].includes(descriptor.kind) || metadata.status === "deleted";
     const source = await sourceForLaunch(true, true);
@@ -211,8 +216,9 @@ function renderTabs(width) {
     hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(text) - 1, action: () => void loadMode(mode) });
     column += visibleLength(text);
   }
-  const editorLabel = ` e Open ${clientMode(config.editor) === "terminal" ? "in" : "with"} ${safe(path.basename(config.editor.client))} `;
-  if (column + visibleLength(editorLabel) <= width) {
+  const editorMode = clientMode(config.editor);
+  const editorLabel = ` e Open ${editorMode === "terminal" ? "in" : "with"} ${safe(path.basename(config.editor.client))} `;
+  if (editorMode !== "disabled" && column + visibleLength(editorLabel) <= width) {
     line += `${C.dim}${editorLabel}${C.reset}`;
     hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(editorLabel) - 1, action: () => void launchEditor() });
   }
@@ -232,7 +238,7 @@ function render() {
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
-    `${C.dim}${fit("1/2/3 view · / search · n/N match · e open · j/k · q close", width)}${C.reset}`,
+    `${C.dim}${fit(`1/2/3 view · / search · n/N match${clientMode(config.editor) === "disabled" ? "" : " · e open"} · j/k · q close`, width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, content.length - bodyHeight)));

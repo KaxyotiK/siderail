@@ -11,8 +11,9 @@ Staged, Unstaged, Untracked, and clean-file previews cannot be confused.
 - Herdr 0.8.0 or newer
 - macOS or Linux
 
-Glow is optional and is used only when a Markdown viewer is explicitly opened.
-Vim is the default editor fallback; both are configurable.
+No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
+editor configuration when provided. Glow is optional and is used only when a
+Markdown viewer is explicitly opened.
 
 ## Install and launch
 
@@ -102,6 +103,27 @@ Use [git-rail.config.example.json](git-rail.config.example.json) as a starting
 point. Configuration version 1 is validated; malformed JSON and invalid values
 are shown in the rail instead of being ignored. Repository configuration is
 trusted local configuration because it may choose executables.
+
+Editor integration is optional. Configure a terminal editor such as Neovim:
+
+```json
+{
+  "version": 1,
+  "editor": { "client": "nvim", "args": [], "mode": "terminal" }
+}
+```
+
+Or configure an external application such as VS Code:
+
+```json
+{
+  "version": 1,
+  "editor": { "client": "code", "args": ["--reuse-window"], "mode": "external" }
+}
+```
+
+Without `editor`, `GIT_RAIL_CLIENT`, or `$EDITOR`, editing is disabled and the
+preview omits the `e` action.
 
 Supported overrides include `GIT_RAIL_BASE`, `GIT_RAIL_CLIENT`,
 `GIT_RAIL_CLIENT_ARGS` (a JSON string array), `GIT_RAIL_CLIENT_MODE`, and
