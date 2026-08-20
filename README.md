@@ -38,7 +38,9 @@ signal.
 
 - `Tab` switches Changes and Files.
 - `/` searches the active view; Changes search includes commit metadata and the
-  paths changed by each commit. `Ctrl-U` clears; Enter finishes.
+  paths changed by each loaded commit. GitRail loads the latest 200 first-parent
+  commits and still shows the complete range count. `Ctrl-U` clears; Enter
+  finishes.
 - `g` toggles Tree and Folders layouts.
 - `j`/`k` or arrows select files; Enter opens the selection. `J`/`K` and the
   mouse wheel scroll, while `h`/`l` chooses a section and Space toggles it.
@@ -75,9 +77,10 @@ oversized content produce bounded, actionable errors.
 | Untracked | complete addition from `/dev/null` |
 | Clean | Raw by default; Diff reports no change |
 
-GitRail uses NUL-delimited porcelain-v2, name-status, numstat, and ls-files
-formats. Renames and copies retain old/new path pairs, and the Files model keeps
-all applicable states rather than selecting one ambiguous status.
+GitRail uses NUL-delimited porcelain-v2, name-status, numstat, raw-diff, and
+ls-files formats. Renames and copies retain old/new path pairs, while symlinks,
+submodules, and type changes retain revision-specific mode metadata. The Files
+model keeps all applicable states rather than selecting one ambiguous status.
 
 ## Configuration
 

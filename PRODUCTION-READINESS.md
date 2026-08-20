@@ -10,9 +10,10 @@ it is not a future implementation plan.
 - Changes separates Against-base, commit, staged, unstaged, and untracked state.
   Each row carries an exact descriptor so the preview cannot silently switch Git
   scope.
-- Changes search covers file paths, commit hashes, commit messages, authors,
-  ages, and paths changed by commits. Matching commits expose only matching
-  children.
+- Changes search covers file paths plus the hashes, messages, authors, ages, and
+  changed paths of the latest 200 first-parent commits. The full range count is
+  retained, truncation is disclosed, and path-index failure degrades search
+  without taking down repository state.
 - Files contains tracked and untracked worktree paths. It compares the current
   worktree with `merge-base(base, HEAD)`, reuses that branch-diff metadata for
   changed rows, and renders unchanged paths with a neutral icon and no stats.
@@ -31,8 +32,8 @@ it is not a future implementation plan.
 ## Git correctness
 
 GitRail uses machine-readable, NUL-delimited Git output for paths and status. It
-retains rename/copy source paths, modes, object IDs, binary state, and independent
-descriptors for overlapping staged and unstaged changes.
+retains rename/copy source paths, revision-specific modes, object IDs, binary
+state, and independent descriptors for overlapping staged and unstaged changes.
 
 | Scope | Diff meaning |
 | --- | --- |
