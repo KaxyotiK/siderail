@@ -10,6 +10,12 @@ test("live pane owns the single product title", async () => {
   assert.match(manifest, /title = "HERDER GITRAIL"/);
 });
 
+test("preview scrolling repaints in place without clearing the screen", async () => {
+  const preview = await fs.readFile("scripts/file-preview.mjs", "utf8");
+  assert.equal(preview.includes("${ESC}2J"), false);
+  assert.equal(preview.includes("${ESC}?2026h"), true);
+});
+
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig({ version: 1, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
   assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);

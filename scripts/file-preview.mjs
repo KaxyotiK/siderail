@@ -35,6 +35,7 @@ let searchActive = false;
 let searchQuery = "";
 let currentMatch = -1;
 let temporaryDirectory = "";
+let renderTimer;
 
 function decode(name, fallback) {
   try { return JSON.parse(Buffer.from(process.env[name] || "", "base64url").toString("utf8")); } catch { return fallback; }
@@ -46,7 +47,6 @@ function truncate(value, width) {
   return chars.length <= width ? chars.join("") : width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
 }
 function fit(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
-function pad(value, width) { const line = fit(value, width); return `${line}${" ".repeat(Math.max(0, width - visibleLength(line)))}`; }
 function descriptorLabel() {
   if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
@@ -212,7 +212,17 @@ function render() {
   scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, content.length - bodyHeight)));
   const body = content.slice(scrollOffset, scrollOffset + bodyHeight);
   while (body.length < bodyHeight) body.push("");
-  process.stdout.write(`${ESC}H${ESC}2J${[...header, ...body, ...footer].map((line) => pad(line, width)).join("\n")}`);
+  const frame = [...header, ...body, ...footer]
+    .map((line) => `${ESC}2K${fit(line, width)}`)
+    .join("\r\n");
+  process.stdout.write(`${ESC}?2026h${ESC}H${frame}${ESC}?2026l`);
+}
+function scheduleRender() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = undefined;
+    render();
+  }, 16);
 }
 function cleanup() {
   if (temporaryDirectory) { try { fs.rmSync(temporaryDirectory, { recursive: true, force: true }); } catch {} temporaryDirectory = ""; }
@@ -250,12 +260,12 @@ process.stdin.on("data", (key) => {
     if (key === "/") searchActive = true;
     if (key === "n") moveMatch(1);
     if (key === "N") moveMatch(-1);
-    if (key === "j" || key === "\u001b[B") scrollOffset += 1;
-    if (key === "k" || key === "\u001b[A") scrollOffset -= 1;
+    scrollOffset += (key.match(/j|\u001b\[B/g)?.length || 0);
+    scrollOffset -= (key.match(/k|\u001b\[A/g)?.length || 0);
     if (key === "g") scrollOffset = 0;
     if (key === "G") scrollOffset = content.length;
   }
-  render();
+  scheduleRender();
 });
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
