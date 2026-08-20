@@ -18,7 +18,9 @@ GitRail displays the file and validation error. Validate JSON syntax, require
 
 ## Editor or viewer does not open
 
-Confirm the executable is on `PATH`. Terminal clients temporarily own the
+Editor integration is optional; without an editor configuration or `$EDITOR`,
+the preview omits the `e` action. Otherwise, confirm the executable is on
+`PATH`. Terminal clients temporarily own the
 preview pane; external clients open outside Herdr. Set `mode` explicitly when
 automatic detection is unsuitable. Markdown never auto-opens unless a viewer
 rule sets `autoOpen: true`.

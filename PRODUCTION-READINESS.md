@@ -54,7 +54,8 @@ Both user and repository configuration files must declare `version: 1`. The
 runtime and published schema reject unknown top-level and nested keys, invalid
 object shapes, unsupported launch modes, and out-of-range limits. Editor rules
 accept `client`, `args`, and `mode`; viewer rules additionally accept `autoOpen`.
-Invalid files are reported and excluded from the merge.
+Invalid files are reported and excluded from the merge. No editor executable is
+required; editor integration activates only through configuration or `$EDITOR`.
 
 Git processes run without a shell, with bounded output and timeouts. File reads
 are size-limited, binary-aware, and constrained to the real repository path.

@@ -5,7 +5,7 @@ import path from "node:path";
 export const CONFIG_VERSION = 1;
 export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
-  editor: { client: "vim", args: [], mode: "auto" },
+  editor: { client: "none", args: [], mode: "auto" },
   viewers: {
     ".md": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
     ".mdx": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },

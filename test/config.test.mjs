@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { DEFAULT_CONFIG, loadConfig, validateConfig } from "../src/config.mjs";
+import { clientMode, DEFAULT_CONFIG, loadConfig, validateConfig } from "../src/config.mjs";
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
@@ -27,6 +27,8 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.equal(preview.includes("${ESC}?2026h"), true);
   assert.match(preview, /fs\.chmodSync\(copy, 0o400\)/);
   assert.match(preview, /Opening read-only temporary revision copy/);
+  assert.match(preview, /editorMode !== "disabled"/);
+  assert.match(preview, /Editor is not configured/);
 });
 
 test("manual refresh confirmation is transient", async () => {
@@ -63,7 +65,7 @@ test("project configuration without a version is rejected instead of merged", as
   await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({ editor: { client: "hx" } }));
   const { config, errors } = loadConfig(root, {});
   assert.ok(errors.some((error) => error.includes("version must be 1")));
-  assert.equal(config.editor.client, "vim");
+  assert.equal(config.editor.client, "none");
 });
 
 test("repository config merges by key and environment wins", async (t) => {
@@ -86,6 +88,17 @@ test("environment overrides do not mutate built-in defaults", () => {
   assert.equal(JSON.stringify(DEFAULT_CONFIG), before);
   assert.deepEqual(second.config.editor.args, []);
   assert.equal(second.config.refresh.pollIntervalMs, 10_000);
+});
+
+test("editor integration is optional and EDITOR remains a fallback", () => {
+  const disabled = loadConfig("", {});
+  assert.deepEqual(disabled.errors, []);
+  assert.equal(clientMode(disabled.config.editor), "disabled");
+  const fallback = loadConfig("", { EDITOR: "hx --tutor" });
+  assert.deepEqual(fallback.errors, []);
+  assert.equal(fallback.config.editor.client, "hx");
+  assert.deepEqual(fallback.config.editor.args, ["--tutor"]);
+  assert.equal(clientMode(fallback.config.editor), "terminal");
 });
 
 test("invalid environment overrides report errors without replacing valid defaults", () => {
