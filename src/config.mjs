@@ -7,9 +7,9 @@ export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
-    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
-    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
+    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", order: 100, autoOpen: false },
+    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", order: 100, autoOpen: false },
+    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", order: 100, autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
   limits: { maxFileBytes: 4 * 1024 * 1024, maxDiffBytes: 8 * 1024 * 1024 },
@@ -55,7 +55,7 @@ function validateKeys(value, label, allowed, errors) {
 
 function validateLaunch(value, label, errors, { viewer = false } = {}) {
   if (!isObject(value)) return errors.push(`${label} must be an object`);
-  validateKeys(value, label, new Set(["client", "args", "mode", ...(viewer ? ["label", "autoOpen"] : [])]), errors);
+  validateKeys(value, label, new Set(["client", "args", "mode", ...(viewer ? ["label", "order", "autoOpen"] : [])]), errors);
   if (typeof value.client !== "string" || !value.client.trim()) errors.push(`${label}.client must be a non-empty string`);
   if (value.args !== undefined && (!Array.isArray(value.args) || value.args.some((arg) => typeof arg !== "string"))) {
     errors.push(`${label}.args must be an array of strings`);
@@ -65,6 +65,9 @@ function validateLaunch(value, label, errors, { viewer = false } = {}) {
   }
   if (viewer && value.label !== undefined && (typeof value.label !== "string" || !value.label.trim())) {
     errors.push(`${label}.label must be a non-empty string`);
+  }
+  if (viewer && value.order !== undefined && (!Number.isInteger(value.order) || value.order < -10_000 || value.order > 10_000)) {
+    errors.push(`${label}.order must be an integer from -10000 to 10000`);
   }
   if (viewer && value.autoOpen !== undefined && typeof value.autoOpen !== "boolean") errors.push(`${label}.autoOpen must be boolean`);
 }
@@ -165,12 +168,19 @@ export function loadConfig(repoRoot, env = process.env) {
   return { config, errors: [...new Set(errors)] };
 }
 
-export function resolveViewer(config, filePath) {
+export function resolveViewers(config, filePath) {
   const name = path.basename(filePath).toLocaleLowerCase();
-  const pattern = Object.keys(config.viewers || {})
-    .sort((a, b) => b.length - a.length)
-    .find((candidate) => candidate === "*" || name === candidate.toLocaleLowerCase() || name.endsWith(candidate.toLocaleLowerCase()));
-  return pattern ? { pattern, ...config.viewers[pattern] } : null;
+  return Object.entries(config.viewers || {})
+    .filter(([pattern]) => pattern === "*" || name === pattern.toLocaleLowerCase() || name.endsWith(pattern.toLocaleLowerCase()))
+    .map(([pattern, rule], declarationOrder) => ({ pattern, declarationOrder, ...rule }))
+    .sort((left, right) => (left.order ?? 100) - (right.order ?? 100)
+      || right.pattern.length - left.pattern.length
+      || left.declarationOrder - right.declarationOrder)
+    .map(({ declarationOrder, ...viewer }) => viewer);
+}
+
+export function resolveViewer(config, filePath) {
+  return resolveViewers(config, filePath)[0] || null;
 }
 
 export function clientMode(config) {

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { clientMode, loadConfig, resolveViewer } from "../src/config.mjs";
+import { clientMode, loadConfig, resolveViewers } from "../src/config.mjs";
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
 import {
@@ -29,8 +29,10 @@ const descriptor = decode("GIT_RAIL_PREVIEW_DESCRIPTOR", { kind: "clean" });
 const metadata = decode("GIT_RAIL_PREVIEW_METADATA", {});
 const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
 const { config, errors: configErrors } = loadConfig(repoRoot);
-const viewer = resolveViewer(config, filePath);
-const viewerAvailable = Boolean(viewer && clientMode(viewer) !== "disabled");
+const viewerActions = resolveViewers(config, filePath)
+  .filter((viewer) => clientMode(viewer) !== "disabled")
+  .slice(0, 7)
+  .map((viewer, index) => ({ key: String(index + 3), viewer }));
 let activeMode = previewInitialMode(descriptor, metadata);
 let scrollOffset = 0;
 let statusMessage = configErrors[0] || "Read-only preview";
@@ -102,7 +104,6 @@ function moveMatch(direction) {
   statusMessage = `Match ${found.indexOf(currentMatch) + 1} of ${found.length}`;
 }
 async function loadMode(mode) {
-  if (mode === "viewer") { await launchViewer(); return; }
   const generation = ++loadGeneration;
   activeMode = mode;
   loading = true;
@@ -179,8 +180,8 @@ async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
   fs.chmodSync(copy, 0o600);
   return copy;
 }
-async function launchViewer() {
-  if (!viewerAvailable) { statusMessage = "No viewer is configured for this file"; render(); return; }
+async function launchViewer(viewer) {
+  if (!viewer) { statusMessage = "No viewer is configured for this file"; render(); return; }
   const label = viewer.label || `View with ${path.basename(viewer.client)}`;
   try { launch(viewer, await sourceForLaunch(false, true), label); }
   catch (error) { statusMessage = `Viewer source unavailable: ${safe(error.message)}`; }
@@ -206,15 +207,22 @@ async function launchEditor() {
   render();
 }
 function renderTabs(width) {
-  const modes = [["diff", "1 Diff"], ["raw", "2 Raw"]];
-  if (viewerAvailable) modes.push(["viewer", `3 ${safe(viewer.label || `View with ${path.basename(viewer.client)}`)}`]);
+  const modes = [
+    ["diff", "1 Diff", () => void loadMode("diff")],
+    ["raw", "2 Raw", () => void loadMode("raw")],
+    ...viewerActions.map(({ key, viewer }) => [
+      `viewer-${key}`,
+      `${key} ${safe(viewer.label || `View with ${path.basename(viewer.client)}`)}`,
+      () => void launchViewer(viewer),
+    ]),
+  ];
   hitTargets = [];
   let line = "";
   let column = 1;
-  for (const [mode, label] of modes) {
+  for (const [mode, label, action] of modes) {
     const text = ` ${label} `;
     line += mode === activeMode ? `${C.selected}${C.gold}${C.bold}${text}${C.reset}` : `${C.dim}${text}${C.reset}`;
-    hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(text) - 1, action: () => void loadMode(mode) });
+    hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(text) - 1, action });
     column += visibleLength(text);
   }
   const editorMode = clientMode(config.editor);
@@ -239,7 +247,7 @@ function render() {
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
-    `${C.dim}${fit(`1/2 view${viewerAvailable ? " · 3 viewer" : ""} · / search · n/N match${clientMode(config.editor) === "disabled" ? "" : " · e open"} · j/k · q close`, width)}${C.reset}`,
+    `${C.dim}${fit(`1/2 view${viewerActions.length ? ` · ${viewerActions.map(({ key }) => key).join("/")} actions` : ""} · / search · n/N match${clientMode(config.editor) === "disabled" ? "" : " · e open"} · j/k · q close`, width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, content.length - bodyHeight)));
@@ -291,7 +299,8 @@ process.stdin.on("data", (key) => {
   } else if (!mouse) {
     if (key === "1") void loadMode("diff");
     if (key === "2") void loadMode("raw");
-    if (key === "3" && viewerAvailable) void loadMode("viewer");
+    const viewerAction = viewerActions.find((action) => action.key === key);
+    if (viewerAction) void launchViewer(viewerAction.viewer);
     if (key === "\t") void loadMode(activeMode === "diff" ? "raw" : "diff");
     if (key === "e") void launchEditor();
     if (key === "/") searchActive = true;
@@ -310,5 +319,5 @@ process.on("exit", cleanup);
 process.stdout.on("resize", scheduleRender);
 render();
 void loadMode(activeMode).then(() => {
-  if (viewerAvailable && viewer.autoOpen) void launchViewer();
+  for (const { viewer } of viewerActions) if (viewer.autoOpen) void launchViewer(viewer);
 });

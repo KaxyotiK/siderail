@@ -49,6 +49,7 @@
         "client": { "type": "string", "pattern": "\\S" },
         "args": { "type": "array", "items": { "type": "string" } },
         "mode": { "enum": ["auto", "terminal", "external"] },
+        "order": { "type": "integer", "minimum": -10000, "maximum": 10000 },
         "autoOpen": { "type": "boolean" }
       },
       "required": ["client"]
