@@ -72,6 +72,12 @@ function validateLaunch(value, label, errors, { viewer = false } = {}) {
   if (viewer && value.autoOpen !== undefined && typeof value.autoOpen !== "boolean") errors.push(`${label}.autoOpen must be boolean`);
 }
 
+function validateViewer(value, label, errors) {
+  if (!Array.isArray(value)) return validateLaunch(value, label, errors, { viewer: true });
+  if (!value.length) errors.push(`${label} must contain at least one viewer action`);
+  for (const [index, action] of value.entries()) validateLaunch(action, `${label}[${index}]`, errors, { viewer: true });
+}
+
 export function validateConfig(config) {
   const errors = [];
   if (!isObject(config)) return ["configuration must be a JSON object"];
@@ -83,7 +89,7 @@ export function validateConfig(config) {
   if (config.editor !== undefined) validateLaunch(config.editor, "editor", errors);
   if (config.viewers !== undefined) {
     if (!isObject(config.viewers)) errors.push("viewers must be an object");
-    else for (const [pattern, value] of Object.entries(config.viewers)) validateLaunch(value, `viewers[${JSON.stringify(pattern)}]`, errors, { viewer: true });
+    else for (const [pattern, value] of Object.entries(config.viewers)) validateViewer(value, `viewers[${JSON.stringify(pattern)}]`, errors);
   }
   if (config.refresh !== undefined) {
     if (!isObject(config.refresh)) errors.push("refresh must be an object");
@@ -172,11 +178,13 @@ export function resolveViewers(config, filePath) {
   const name = path.basename(filePath).toLocaleLowerCase();
   return Object.entries(config.viewers || {})
     .filter(([pattern]) => pattern === "*" || name === pattern.toLocaleLowerCase() || name.endsWith(pattern.toLocaleLowerCase()))
-    .map(([pattern, rule], declarationOrder) => ({ pattern, declarationOrder, ...rule }))
+    .flatMap(([pattern, value], patternOrder) => (Array.isArray(value) ? value : [value])
+      .map((rule, ruleOrder) => ({ pattern, patternOrder, ruleOrder, ...rule })))
     .sort((left, right) => (left.order ?? 100) - (right.order ?? 100)
       || right.pattern.length - left.pattern.length
-      || left.declarationOrder - right.declarationOrder)
-    .map(({ declarationOrder, ...viewer }) => viewer);
+      || left.patternOrder - right.patternOrder
+      || left.ruleOrder - right.ruleOrder)
+    .map(({ patternOrder, ruleOrder, ...viewer }) => viewer);
 }
 
 export function resolveViewer(config, filePath) {

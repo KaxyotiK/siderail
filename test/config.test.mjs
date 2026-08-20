@@ -52,6 +52,8 @@ test("published schema exposes labels only on viewer rules", async () => {
   assert.equal(schema.$defs.launch.properties.label, undefined);
   assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
   assert.deepEqual(schema.$defs.viewer.properties.order, { type: "integer", minimum: -10000, maximum: 10000 });
+  assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].type, "array");
+  assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].minItems, 1);
 });
 
 test("configuration requires a version and rejects nested unknown keys", () => {
@@ -61,6 +63,8 @@ test("configuration requires a version and rejects nested unknown keys", () => {
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", typo: true } } }).includes('unknown viewers[".md"] key: typo'));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "", client: "glow" } } }).includes('viewers[".md"].label must be a non-empty string'));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", order: 1.5 } } }).includes('viewers[".md"].order must be an integer from -10000 to 10000'));
+  assert.deepEqual(validateConfig({ version: 1, viewers: { "*": [{ client: "system" }, { client: "code", order: 20 }] } }), []);
+  assert.ok(validateConfig({ version: 1, viewers: { "*": [] } }).includes('viewers["*"] must contain at least one viewer action'));
   assert.ok(validateConfig({ version: 1, refresh: { intervalMs: 5000 } }).includes("unknown refresh key: intervalMs"));
   assert.ok(validateConfig({ version: 1, limits: { maxFilesBytes: 4096 } }).includes("unknown limits key: maxFilesBytes"));
 });
@@ -73,13 +77,16 @@ test("viewer actions resolve conditionally by selected filename", () => {
 
   const config = {
     viewers: {
-      "*": { label: "Open File", client: "system", order: 200 },
+      "*": [
+        { label: "Open File", client: "system", order: 10 },
+        { label: "Open in Code", client: "code", order: 20 },
+      ],
       ".pdf": { label: "Open PDF", client: "system", order: 100 },
-      "makefile": { label: "Build file", client: "less" },
+      "makefile": { label: "Build file", client: "less", order: 30 },
     },
   };
-  assert.deepEqual(resolveViewers(config, "reports/summary.PDF").map(({ label }) => label), ["Open PDF", "Open File"]);
-  assert.deepEqual(resolveViewers(config, "Makefile").map(({ label }) => label), ["Build file", "Open File"]);
+  assert.deepEqual(resolveViewers(config, "reports/summary.PDF").map(({ label }) => label), ["Open File", "Open in Code", "Open PDF"]);
+  assert.deepEqual(resolveViewers(config, "Makefile").map(({ label }) => label), ["Open File", "Open in Code", "Build file"]);
   assert.equal(resolveViewer(config, "package.json").label, "Open File");
 });
 

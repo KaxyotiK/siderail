@@ -26,8 +26,8 @@ it is not a future implementation plan.
 - Diff is a structured file view with old/new line gutters and distinct additions
   and deletions. Raw reads the selected revision. A third viewer action appears
   only when the selected filename matches an enabled viewer rule. Matching
-  actions are additive and explicitly ordered, with `*` available as a global
-  fallback; Markdown uses Glow by default and viewers auto-open only when
+  actions are additive and explicitly ordered, each pattern accepts one or more
+  actions, and `*` provides global actions; Markdown uses Glow by default and viewers auto-open only when
   explicitly configured.
 - Preview search, keyboard navigation, and scrolling repaint in place without
   clearing the terminal.

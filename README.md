@@ -135,7 +135,8 @@ preview omits the `e` action.
 Viewer actions are conditional per selected filename. Rules match an exact
 basename, a filename suffix such as `.pdf`, or `*`. Every matching rule is shown,
 so `*` can provide a global action alongside a file-specific action. Each
-rule can configure its action `label`, executable `client`, `args`, launch
+pattern accepts one rule or an array of rules, so multiple global or
+file-specific actions can coexist. Each rule can configure its action `label`, executable `client`, `args`, launch
 `mode`, numeric `order`, and optional `autoOpen`. Lower order values appear
 first; ties prefer the more specific pattern. The first seven enabled matches
 receive keys `3` through `9`. If no enabled rule matches, the preview omits
@@ -153,6 +154,20 @@ viewer actions. The built-in Markdown defaults use Glow:
       "order": 100,
       "autoOpen": false
     }
+  }
+}
+```
+
+For example, two global actions can share the wildcard pattern:
+
+```json
+{
+  "version": 1,
+  "viewers": {
+    "*": [
+      { "label": "Open", "client": "system", "mode": "external", "order": 10 },
+      { "label": "Open in Code", "client": "code", "mode": "external", "order": 20 }
+    ]
   }
 }
 ```
