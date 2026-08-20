@@ -59,6 +59,7 @@ editor. Binary and oversized content produce bounded, actionable errors.
 
 | Selected row | Preview command |
 | --- | --- |
+| Files tab | `git diff HEAD -- <path>` |
 | Against base | `git diff <base>...HEAD -- <path>` |
 | Commit | `git show --format= <commit> -- <path>` |
 | Staged | `git diff --cached -- <path>` |

@@ -54,3 +54,18 @@ export function displayState(file) {
     oldPath: file.oldPath,
   };
 }
+
+export function filesAgainstHead(files, headChanges, headAvailable = true) {
+  const byPath = new Map(headChanges.map((file) => [file.path, file]));
+  return files.map((file) => {
+    const untracked = file.states.find((state) => state.descriptor?.kind === "untracked");
+    if (untracked) return { ...file, ...untracked };
+    const headChange = byPath.get(file.path);
+    if (headChange) return { ...file, ...headChange };
+    if (!headAvailable && file.states.length) {
+      const state = file.states.find((item) => item.descriptor?.kind === "staged") || file.states[0];
+      return { ...file, ...state };
+    }
+    return { ...file, status: "clean", additions: 0, deletions: 0, descriptor: { kind: "head" } };
+  });
+}

@@ -34,6 +34,8 @@ for (const width of [25, 100]) {
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
+    assert.match(plain, /□ preview\.md/);
+    assert.match(plain, /□ README\.md/);
   });
 }
 

@@ -206,10 +206,14 @@ export async function getRepositoryState(cwd, options = {}) {
   const againstPromise = baseRef && baseRef !== "HEAD"
     ? changedFiles(repoRoot, [`${baseRef}...HEAD`], { kind: "against", baseRef })
     : Promise.resolve([]);
-  const [working, trackedData, againstBase, commitData, tracking] = await Promise.all([
+  const headPromise = baseRef
+    ? changedFiles(repoRoot, ["HEAD"], { kind: "head" })
+    : Promise.resolve([]);
+  const [working, trackedData, againstBase, headChanges, commitData, tracking] = await Promise.all([
     workingPromise,
     trackedPromise,
     againstPromise,
+    headPromise,
     commitState(repoRoot, baseRef),
     trackingState(repoRoot),
   ]);
@@ -221,6 +225,7 @@ export async function getRepositoryState(cwd, options = {}) {
     baseRef,
     baseLabel: baseRef || "no base",
     againstBase,
+    headChanges,
     staged: working.staged,
     unstaged: working.unstaged,
     tracked: trackedData.paths,
@@ -236,7 +241,7 @@ export async function getRepositoryState(cwd, options = {}) {
     symlink: entry.mode === "120000",
     executable: entry.mode === "100755",
   }]));
-  for (const list of [state.againstBase, state.staged, state.unstaged]) {
+  for (const list of [state.againstBase, state.headChanges, state.staged, state.unstaged]) {
     for (const file of list) Object.assign(file, trackedMetadata.get(file.path) || {});
   }
   state.files = buildPathIndex(state);

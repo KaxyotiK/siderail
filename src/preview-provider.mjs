@@ -24,6 +24,7 @@ async function gitOutput(repoRoot, args, maxOutputBytes, allowExitCodes = [0]) {
 
 export function diffArguments(descriptor, filePath) {
   const common = ["--no-ext-diff", "--color=always", "--find-renames", "--find-copies-harder"];
+  if (descriptor.kind === "head") return ["diff", ...common, "HEAD", "--", filePath];
   if (descriptor.kind === "against") return ["diff", ...common, `${descriptor.baseRef}...HEAD`, "--", filePath];
   if (descriptor.kind === "commit") return ["show", "--format=", ...common, descriptor.commitHash, "--", filePath];
   if (descriptor.kind === "staged") return ["diff", ...common, "--cached", "--", filePath];
@@ -45,6 +46,7 @@ export async function loadDiff({ repoRoot, filePath, descriptor, maxOutputBytes 
 }
 
 function descriptorLabel(descriptor) {
+  if (descriptor.kind === "head") return "worktree vs HEAD";
   if (descriptor.kind === "against") return `${descriptor.baseRef}...HEAD`;
   if (descriptor.kind === "commit") return descriptor.commitHash;
   if (descriptor.kind === "staged") return "index vs HEAD";

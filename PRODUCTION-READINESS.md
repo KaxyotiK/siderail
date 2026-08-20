@@ -53,6 +53,7 @@ the Herdr pane boundary:
 
 ```ts
 type DiffDescriptor =
+  | { kind: "head" }
   | { kind: "against"; baseRef: string }
   | { kind: "commit"; commitHash: string }
   | { kind: "staged" }
@@ -65,6 +66,7 @@ The preview must execute the command appropriate to that descriptor:
 
 | Descriptor | Required behavior |
 | --- | --- |
+| HEAD | `git diff HEAD -- <path>` for the aggregate Files view |
 | Against | `git diff <base>...HEAD -- <path>` |
 | Commit | `git show --format= <commit> -- <path>` |
 | Staged | `git diff --cached -- <path>` |

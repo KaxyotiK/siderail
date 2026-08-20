@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
-import { displayState, selectionKey } from "../src/model.mjs";
+import { displayState, filesAgainstHead, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
 import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
@@ -102,8 +102,8 @@ function toggleViewMode(width) {
 }
 function statusGlyph(file) {
   const status = file.status || displayState(file).status;
+  if (status === "clean") return `${C.fog}□${C.reset}`;
   if (file.binary) return `${C.purple}◆${C.reset}`;
-  if (status === "clean") return `${C.dim}·${C.reset}`;
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
   if (status === "deleted") return `${C.red}⊟${C.reset}`;
   if (status === "renamed") return `${C.blue}↪${C.reset}`;
@@ -113,6 +113,7 @@ function statusGlyph(file) {
   return `${C.amber}⊡${C.reset}`;
 }
 function statsLabel(file) {
+  if ((file.status || displayState(file).status) === "clean") return "";
   if (file.binary) return `${C.purple}binary${C.reset}`;
   const additions = file.additions > 0 ? `${C.leaf}+${file.additions}${C.reset}` : "";
   const deletions = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
@@ -173,6 +174,7 @@ function selectFile(file) {
   statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
+  if (descriptor.kind === "head") return "Against HEAD";
   if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
   return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
@@ -320,7 +322,7 @@ function renderChanges(width) {
   return lines;
 }
 function canonicalFiles() {
-  return (state.files || []).map((file) => ({ ...file, ...displayState(file), descriptor: { kind: "clean" } }));
+  return filesAgainstHead(state.files || [], state.headChanges || [], Boolean(state.baseRef));
 }
 function renderFiles(width) {
   const query = fileSearchQuery.trim();
