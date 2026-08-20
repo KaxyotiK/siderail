@@ -236,6 +236,17 @@ test("untracked text line counts match Git numstat semantics", async (t) => {
   assert.match(diff.text.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, ""), /\+\.\.\/outside-target/);
 });
 
+test("untracked statistics stop at an aggregate inspection budget", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-untracked-budget-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await Promise.all(Array.from({ length: 260 }, (_, index) => fs.writeFile(path.join(root, `file-${String(index).padStart(3, "0")}.txt`), "")));
+  const state = await getRepositoryState(root);
+  assert.equal(state.unstaged.length, 260);
+  assert.equal(state.untrackedStatsLimited, true);
+  assert.ok(state.unstaged.filter((file) => file.statsUnavailable).length >= 4);
+});
+
 test("clean tracked files retain symlink and executable metadata", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-clean-modes-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

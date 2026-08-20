@@ -102,7 +102,7 @@ function moveMatch(direction) {
   statusMessage = `Match ${found.indexOf(currentMatch) + 1} of ${found.length}`;
 }
 async function loadMode(mode) {
-  if (mode === "markdown") { launchViewer(); return; }
+  if (mode === "markdown") { await launchViewer(); return; }
   const generation = ++loadGeneration;
   activeMode = mode;
   loading = true;
@@ -185,14 +185,16 @@ async function launchViewer() {
 }
 async function launchEditor() {
   try {
-    const source = await sourceForLaunch(true);
+    const materializedRevision = ["commit", "against", "staged"].includes(descriptor.kind) || metadata.status === "deleted";
+    const source = await sourceForLaunch(true, true);
     launch(config.editor, source, "Editor");
-    if (temporarySource) statusMessage += " · temporary demo copy";
+    if (materializedRevision) statusMessage += " · temporary revision copy";
+    else if (temporarySource) statusMessage += " · temporary demo copy";
   } catch (error) { statusMessage = `File unavailable: ${safe(error.message)}`; }
   render();
 }
 function renderTabs(width) {
-  const modes = [["diff", "1 Diff"], ["raw", "2 Raw"], ["markdown", "3 Markdown"]];
+  const modes = [["diff", "1 Diff"], ["raw", "2 Raw"], ["markdown", "3 View Markdown"]];
   hitTargets = [];
   let line = "";
   let column = 1;

@@ -58,6 +58,9 @@ Invalid files are reported and excluded from the merge.
 
 Git processes run without a shell, with bounded output and timeouts. File reads
 are size-limited, binary-aware, and constrained to the real repository path.
+Untracked summary statistics additionally have aggregate file, byte, and
+elapsed-time budgets; rows beyond the budget are marked unavailable without
+blocking exact on-demand previews.
 Debug logs omit source text, diffs, environment values, and command arguments.
 Repository configuration remains trusted local configuration because it can
 choose editor and viewer executables.

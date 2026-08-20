@@ -16,6 +16,10 @@ import {
 import { buildPathIndex } from "./model.mjs";
 import { ProcessError, runGit } from "./process.mjs";
 
+const UNTRACKED_STATS_FILE_LIMIT = 256;
+const UNTRACKED_STATS_BYTE_LIMIT = 16 * 1024 * 1024;
+const UNTRACKED_STATS_TIME_MS = 250;
+
 const HISTORY_LIMIT = 200;
 
 async function gitText(cwd, args, options = {}) {
@@ -90,43 +94,53 @@ async function workspaceState(repoRoot, baseRef) {
   };
 }
 
-async function countUntracked(repoRoot, filePath, maxBytes) {
+async function countUntracked(repoRoot, filePath, maxBytes, budgetBytes, deadline) {
   try {
     const root = await fs.realpath(repoRoot);
     const lexical = path.resolve(root, filePath);
     if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
     const lexicalStat = await fs.lstat(lexical);
     const symlink = lexicalStat.isSymbolicLink();
-    let buffer;
     if (symlink) {
-      buffer = await fs.readlink(lexical, { encoding: "buffer" });
+      const buffer = await fs.readlink(lexical, { encoding: "buffer" });
       if (buffer.length > maxBytes) return { additions: 0, binary: false, oversized: true, symlink };
-    } else {
-      const absolute = await fs.realpath(lexical);
-      if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
-      const handle = await fs.open(absolute, "r");
-      try {
-        const stat = await handle.stat();
-        if (stat.size > maxBytes) return { additions: 0, binary: false, oversized: true };
-        buffer = Buffer.alloc(stat.size);
-        let offset = 0;
-        while (offset < buffer.length) {
-          const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
-          if (!bytesRead) break;
-          offset += bytesRead;
-        }
-        buffer = buffer.subarray(0, offset);
-      } finally {
-        await handle.close();
-      }
+      if (buffer.length > budgetBytes || Date.now() >= deadline) return { additions: 0, binary: false, symlink, statsUnavailable: true, inspectedBytes: 0 };
+      const binary = buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0);
+      const additions = buffer.length === 0 ? 0 : buffer.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0) + (buffer.at(-1) === 0x0a ? 0 : 1);
+      return { additions: binary ? 0 : additions, binary, symlink, inspectedBytes: buffer.length };
     }
-    const binary = buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0);
-    const additions = buffer.length === 0
-      ? 0
-      : buffer.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0) + (buffer.at(-1) === 0x0a ? 0 : 1);
-    return { additions: binary ? 0 : additions, binary, symlink };
+    const absolute = await fs.realpath(lexical);
+    if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+    const handle = await fs.open(absolute, "r");
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile()) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+      if (stat.size > maxBytes) return { additions: 0, binary: false, oversized: true, inspectedBytes: 0 };
+      if (stat.size > budgetBytes || Date.now() >= deadline) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+      const chunk = Buffer.alloc(Math.min(64 * 1024, Math.max(1, stat.size)));
+      let additions = 0;
+      let binary = false;
+      let offset = 0;
+      let lastByte = -1;
+      while (offset < stat.size) {
+        if (Date.now() >= deadline) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: offset };
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - offset), offset);
+        if (!bytesRead) break;
+        const content = chunk.subarray(0, bytesRead);
+        const binarySampleLength = Math.max(0, Math.min(bytesRead, 8_192 - offset));
+        if (binarySampleLength && content.subarray(0, binarySampleLength).includes(0)) binary = true;
+        if (!binary) additions += content.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0);
+        offset += bytesRead;
+        lastByte = content.at(-1);
+        if (binary) break;
+      }
+      if (!binary && offset > 0 && lastByte !== 0x0a) additions += 1;
+      return { additions: binary ? 0 : additions, binary, inspectedBytes: offset };
+    } finally {
+      await handle.close();
+    }
   } catch {
-    return { additions: 0, binary: false };
+    return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
   }
 }
 
@@ -156,9 +170,21 @@ async function workingFiles(repoRoot, maxFileBytes) {
   const unstagedStats = parseNumstatZ(unstagedStatsOutput);
   const staged = [];
   const unstaged = [];
+  let untrackedFilesInspected = 0;
+  let untrackedBytesRemaining = UNTRACKED_STATS_BYTE_LIMIT;
+  let untrackedStatsLimited = false;
+  const untrackedDeadline = Date.now() + UNTRACKED_STATS_TIME_MS;
   for (const record of records) {
     if (record.untracked) {
-      const counted = await countUntracked(repoRoot, record.path, maxFileBytes);
+      const budgetAvailable = untrackedFilesInspected < UNTRACKED_STATS_FILE_LIMIT
+        && untrackedBytesRemaining > 0
+        && Date.now() < untrackedDeadline;
+      const counted = budgetAvailable
+        ? await countUntracked(repoRoot, record.path, maxFileBytes, untrackedBytesRemaining, untrackedDeadline)
+        : { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+      untrackedFilesInspected += budgetAvailable ? 1 : 0;
+      untrackedBytesRemaining = Math.max(0, untrackedBytesRemaining - (counted.inspectedBytes || 0));
+      untrackedStatsLimited ||= Boolean(counted.statsUnavailable);
       unstaged.push({
         ...record,
         status: "added",
@@ -166,6 +192,7 @@ async function workingFiles(repoRoot, maxFileBytes) {
         deletions: 0,
         binary: counted.binary,
         oversized: counted.oversized,
+        statsUnavailable: counted.statsUnavailable,
         symlink: counted.symlink,
         descriptor: { kind: "untracked" },
       });
@@ -190,7 +217,7 @@ async function workingFiles(repoRoot, maxFileBytes) {
       });
     }
   }
-  return { staged, unstaged };
+  return { staged, unstaged, untrackedStatsLimited };
 }
 
 async function trackingState(repoRoot) {
@@ -298,6 +325,7 @@ export async function getRepositoryState(cwd, options = {}) {
     ...workspace,
     staged: working.staged,
     unstaged: working.unstaged,
+    untrackedStatsLimited: working.untrackedStatsLimited,
     tracked: trackedData.paths,
     tracking,
     ...commitData,

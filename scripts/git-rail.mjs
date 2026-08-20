@@ -9,9 +9,11 @@ import { runCommand } from "../src/process.mjs";
 import {
   compactTerminalPath,
   commitExpansionState,
+  createLatestSerialQueue,
   fitAnsiTerminalColumns,
   padAnsiTerminalColumns,
   previewTabName,
+  revealScrollOffset,
   sanitizeTerminalText,
   terminalColumns,
   truncateTerminalColumns,
@@ -70,6 +72,7 @@ let viewModePreference = "auto";
 let selectedSection = 0;
 let scrollOffset = 0;
 let selectedIdentity = "";
+let revealSelected = false;
 let keyboardFiles = [];
 let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
@@ -116,6 +119,7 @@ function statusGlyph(file) {
 }
 function statsLabel(file) {
   if ((file.status || displayState(file).status) === "clean") return "";
+  if (file.statsUnavailable) return `${C.dim}?${C.reset}`;
   if (file.binary) return `${C.purple}binary${C.reset}`;
   const additions = file.additions > 0 ? `${C.leaf}+${file.additions}${C.reset}` : "";
   const deletions = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
@@ -174,6 +178,7 @@ function buildTree(files, collapsed) {
 }
 function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot, file);
+  revealSelected = true;
   statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
@@ -191,12 +196,14 @@ function fileRow(file, width, prefix = " ") {
   const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
   const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
   const identity = selectionKey(state.repoRoot, file);
-  return interactive(
+  const row = interactive(
     identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
     () => selectFile(file),
     `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
-    () => openPreview(file),
+    () => void requestPreview(file),
   );
+  row.fileIdentity = identity;
+  return row;
 }
 function renderTree(files, width, scope) {
   if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
@@ -372,6 +379,11 @@ function renderFrame() {
   const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
   const scrollable = body.slice(fixed.length);
   const visibleHeight = Math.max(0, bodyHeight - fixed.length);
+  if (revealSelected) {
+    const selectedRow = scrollable.findIndex((entry) => typeof entry !== "string" && entry.fileIdentity === selectedIdentity);
+    scrollOffset = revealScrollOffset(selectedRow, scrollOffset, visibleHeight, scrollable.length);
+    revealSelected = false;
+  }
   scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, scrollable.length - visibleHeight)));
   const viewport = [...fixed, ...scrollable.slice(scrollOffset, scrollOffset + visibleHeight)];
   while (viewport.length < bodyHeight) viewport.push("");
@@ -430,11 +442,11 @@ async function openPreview(file) {
   const herdr = process.env.HERDR_BIN_PATH || "herdr";
   const workspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
   const selfPaneId = await currentPaneId();
+  let stalePaneId = "";
   if (workspaceId) {
     const stateFile = paneStateFile(workspaceId);
     try {
-      const stalePaneId = fs.readFileSync(stateFile, "utf8").trim();
-      if (stalePaneId && stalePaneId !== selfPaneId) await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd });
+      stalePaneId = fs.readFileSync(stateFile, "utf8").trim();
     } catch {}
   }
   const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
@@ -444,6 +456,8 @@ async function openPreview(file) {
     binary: file.binary,
     submodule: file.submodule,
     symlink: file.symlink,
+    oldSubmodule: file.oldSubmodule,
+    oldSymlink: file.oldSymlink,
   })).toString("base64url");
   const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
@@ -454,6 +468,9 @@ async function openPreview(file) {
     const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
     const tabId = payload?.result?.plugin_pane?.pane?.tab_id || payload?.result?.pane?.tab_id || payload?.result?.tab_id || "";
     if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
+    if (stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
+      try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd }); } catch {}
+    }
     statusMessage = `Preview opened · ${descriptorLabel(file.descriptor)}`;
     if (tabId) {
       try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: focusedCwd }); }
@@ -462,6 +479,7 @@ async function openPreview(file) {
   } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
 }
+const requestPreview = createLatestSerialQueue(openPreview);
 async function toggleCommit(commit) {
   if (expandedCommits.has(commit.hash)) { expandedCommits.delete(commit.hash); draw(); return; }
   expandedCommits.add(commit.hash);
@@ -582,18 +600,16 @@ process.stdin.on("data", (key) => {
     const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
     const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + steps))];
     if (next) selectFile(next);
-    scrollOffset += steps;
   }
   else if (/^(?:k|\u001b\[A)+$/.test(key)) {
     const steps = key.match(/k|\u001b\[A/g)?.length || 1;
     const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
     const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - steps)];
     if (next) selectFile(next);
-    scrollOffset = Math.max(0, scrollOffset - steps);
   }
   else if (key === "\r" || key === "\n" || key === "o") {
     const selected = keyboardFiles.find((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    if (selected) void openPreview(selected);
+    if (selected) void requestPreview(selected);
   }
   else if (key === "l" || key === "\u001b[C") selectedSection = Math.min(sectionIds.length - 1, selectedSection + 1);
   else if (key === "h" || key === "\u001b[D") selectedSection = Math.max(0, selectedSection - 1);

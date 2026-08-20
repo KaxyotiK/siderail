@@ -61,8 +61,11 @@ The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then
 starts in the selected descriptor's exact diff, or Raw for a clean file. Use
 `1`, `2`, and `3` for Diff, Raw, and Markdown; `/` searches the current content
-and `n`/`N` moves through matches. `e` opens the configured editor. Binary and
-oversized content produce bounded, actionable errors.
+and `n`/`N` moves through matches. `e` opens the configured editor; historical,
+Against-base, staged, and deleted selections use an owner-only temporary copy of
+the exact Raw revision. Binary and oversized content produce bounded,
+actionable errors. A `?` statistic means the aggregate untracked-inspection
+budget was reached; opening that file still computes its bounded preview.
 
 ## Git semantics
 

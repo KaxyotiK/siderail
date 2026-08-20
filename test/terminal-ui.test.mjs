@@ -9,10 +9,12 @@ import {
   compactTerminalPath,
   commitExpansionState,
   commitComparisonSource,
+  createLatestSerialQueue,
   fitAnsiTerminalColumns,
   padAnsiTerminalColumns,
   previewInitialMode,
   previewTabName,
+  revealScrollOffset,
   sanitizeTerminalText,
   startupFailureState,
   stripSgrMouseEvents,
@@ -125,4 +127,34 @@ test("startup recovery installs invalidation only after a repository appears", a
   assert.match(rail, /state\.repoRoot && state\.repoRoot !== invalidationRepoRoot\) startInvalidation\(\)/);
   assert.match(rail, /if \(invalidationRepoRoot === state\.repoRoot\) return;/);
   assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
+});
+
+test("preview requests serialize and skip superseded queued selections", async () => {
+  let releaseFirst;
+  const barrier = new Promise((resolve) => { releaseFirst = resolve; });
+  const started = [];
+  let active = 0;
+  let maximumActive = 0;
+  const enqueue = createLatestSerialQueue(async (value) => {
+    started.push(value);
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    if (value === "first") await barrier;
+    active -= 1;
+  });
+  const first = enqueue("first");
+  await new Promise((resolve) => setImmediate(resolve));
+  const skipped = enqueue("skipped");
+  const latest = enqueue("latest");
+  releaseFirst();
+  await Promise.all([first, skipped, latest]);
+  assert.deepEqual(started, ["first", "latest"]);
+  assert.equal(maximumActive, 1);
+});
+
+test("keyboard selection reveal uses rendered row position", () => {
+  assert.equal(revealScrollOffset(20, 0, 8, 30), 13);
+  assert.equal(revealScrollOffset(4, 13, 8, 30), 4);
+  assert.equal(revealScrollOffset(15, 13, 8, 30), 13);
+  assert.equal(revealScrollOffset(-1, 40, 8, 30), 22);
 });

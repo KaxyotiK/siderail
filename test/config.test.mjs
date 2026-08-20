@@ -15,6 +15,9 @@ test("file previews open in a dedicated Herdr tab", async () => {
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
   assert.match(manifest, /id = "file-preview"[\s\S]*?placement = "tab"/);
   assert.match(rail, /"--entrypoint", "file-preview", "--placement", "tab"/);
+  assert.match(rail, /oldSubmodule: file\.oldSubmodule/);
+  assert.match(rail, /oldSymlink: file\.oldSymlink/);
+  assert.match(rail, /createLatestSerialQueue\(openPreview\)/);
 });
 
 test("preview scrolling repaints in place without clearing the screen", async () => {

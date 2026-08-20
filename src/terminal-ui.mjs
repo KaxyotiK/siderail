@@ -130,6 +130,25 @@ export function commitExpansionState(query, matchingPaths, manuallyOpen, details
   };
 }
 
+export function createLatestSerialQueue(handler) {
+  let generation = 0;
+  let tail = Promise.resolve();
+  return (value) => {
+    const requestGeneration = ++generation;
+    const task = tail.catch(() => {}).then(() => requestGeneration === generation ? handler(value) : undefined);
+    tail = task;
+    return task;
+  };
+}
+
+export function revealScrollOffset(rowIndex, currentOffset, visibleRows, totalRows) {
+  const maximum = Math.max(0, totalRows - visibleRows);
+  if (rowIndex < 0 || visibleRows <= 0) return Math.max(0, Math.min(currentOffset, maximum));
+  if (rowIndex < currentOffset) return Math.max(0, Math.min(rowIndex, maximum));
+  if (rowIndex >= currentOffset + visibleRows) return Math.max(0, Math.min(rowIndex - visibleRows + 1, maximum));
+  return Math.max(0, Math.min(currentOffset, maximum));
+}
+
 export function previewTabName(filePath, maxColumns = 32) {
   const normalized = String(filePath ?? "").replaceAll("\\", "/");
   const basename = normalized.split("/").at(-1) || "Preview";
