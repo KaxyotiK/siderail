@@ -192,18 +192,19 @@ export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, m
     try { return await raw("worktree", filePath, "worktree"); }
     catch (error) {
       if (!isMissingContent(error)) throw error;
-      if (descriptor.kind === "workspace") {
-        if (metadata.submodule) {
-          try { return await raw("index", filePath, `index:${filePath}`); }
-          catch (indexError) {
-            if (!isMissingContent(indexError)) throw indexError;
-          }
+      if (metadata.submodule && (descriptor.kind === "workspace" || descriptor.kind === "clean")) {
+        try { return await raw("index", filePath, `index:${filePath}`); }
+        catch (indexError) {
+          if (!isMissingContent(indexError)) throw indexError;
         }
+      }
+      if (metadata.status !== "deleted") throw error;
+      if (descriptor.kind === "workspace") {
         const revision = descriptor.mergeBase || descriptor.baseRef;
         return raw(revision, oldPath, `${revision}:${oldPath}`, previousMetadata(metadata));
       }
       if (descriptor.kind === "unstaged") return raw("index", oldPath, `index:${oldPath}`, previousMetadata(metadata));
-      return raw("HEAD", oldPath, `HEAD:${oldPath}`, previousMetadata(metadata));
+      throw error;
     }
   }
   throw new Error(`Unsupported raw descriptor: ${descriptor.kind}`);

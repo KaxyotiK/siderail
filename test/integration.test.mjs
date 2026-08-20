@@ -71,6 +71,39 @@ test("raw preview identifies revisions and rejects escaping symlinks", async (t)
   await assert.rejects(() => safeWorktreePath(root, "escape.txt"), /symlink outside/);
 });
 
+test("missing worktree content never falls back unless the selected state is deleted", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-missing-raw-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "file.txt"), "HEAD content\n");
+  await runGit(root, ["add", "file.txt"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await fs.rm(path.join(root, "file.txt"));
+
+  for (const [descriptor, metadata] of [
+    [{ kind: "clean" }, { status: "clean" }],
+    [{ kind: "untracked" }, { status: "added" }],
+    [{ kind: "unstaged" }, { status: "modified" }],
+    [{ kind: "workspace", baseRef: "main", mergeBase: "main" }, { status: "modified" }],
+  ]) {
+    await assert.rejects(
+      () => loadRaw({ repoRoot: root, filePath: "file.txt", descriptor, metadata, maxFileBytes: 1024 }),
+      /ENOENT|no such file/i,
+    );
+  }
+
+  const deleted = await loadRaw({
+    repoRoot: root,
+    filePath: "file.txt",
+    descriptor: { kind: "workspace", baseRef: "main", mergeBase: "main" },
+    metadata: { status: "deleted" },
+    maxFileBytes: 1024,
+  });
+  assert.equal(deleted.text, "HEAD content\n");
+  assert.equal(deleted.revision, "main:file.txt");
+});
+
 test("provider handles unborn and detached repositories plus unusual renamed paths", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-matrix-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -390,6 +423,7 @@ test("commit history is bounded while retaining an exact total", async (t) => {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
+  await runGit(root, ["config", "gc.auto", "0"]);
   await fs.writeFile(path.join(root, "seed"), "seed\n");
   await runGit(root, ["add", "seed"]);
   await runGit(root, ["commit", "-m", "seed"], { env: identity });
