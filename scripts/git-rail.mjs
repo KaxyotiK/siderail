@@ -61,7 +61,7 @@ function parseContext() {
 }
 
 const context = parseContext();
-const focusedCwd = context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
+const focusedCwd = process.env.GIT_RAIL_REPO_ROOT || context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 const providerCwd = fixtureRoot || focusedCwd;
 let state;

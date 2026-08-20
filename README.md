@@ -116,6 +116,20 @@ fields as commands. Backward-compatible additions remain on version 1. Viewer
 `order` is still accepted for legacy automatic bindings, while new configuration
 should use explicit `key` values.
 
+GitRail opens automatically, without taking focus, in every Git-backed Herdr
+workspace when Herdr starts or a workspace is created. Disable that globally in
+`~/.config/git-rail/config.json`, or for one repository in `.git-rail.json`:
+
+```json
+{
+  "version": 1,
+  "herdr": { "autoOpen": false }
+}
+```
+
+Non-Git workspaces are ignored. Manual **Open GitRail** actions remain available
+when automatic opening is disabled.
+
 Editor integration is optional. Configure a terminal editor such as Neovim:
 
 ```json

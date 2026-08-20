@@ -5,6 +5,13 @@ min_herdr_version = "0.8.0"
 description = "A trustworthy, read-only Git sidebar for one repository and branch"
 platforms = ["macos", "linux"]
 
+[[startup]]
+command = ["node", "scripts/auto-open-herdr-workspaces.mjs"]
+
+[[events]]
+on = "workspace.created"
+command = ["node", "scripts/auto-open-herdr-workspaces.mjs"]
+
 [[actions]]
 id = "open-git-rail"
 title = "Open GitRail"

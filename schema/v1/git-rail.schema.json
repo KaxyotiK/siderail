@@ -8,6 +8,13 @@
     "$schema": { "type": "string" },
     "version": { "const": 1 },
     "baseRef": { "type": "string", "pattern": "\\S" },
+    "herdr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "autoOpen": { "type": "boolean", "default": true }
+      }
+    },
     "editor": { "$ref": "#/$defs/launch" },
     "viewers": {
       "type": "object",

@@ -5,6 +5,14 @@
 Focus a Herdr pane whose current directory is inside the intended worktree, then
 press `r`. GitRail is deliberately scoped to one focused worktree.
 
+## GitRail did not open automatically
+
+Automatic opening runs for Git-backed workspaces when Herdr starts or emits
+`workspace.created`. Confirm the plugin is enabled and that
+`herdr.autoOpen` is not `false` in the user or repository configuration. A
+newly linked plugin does not receive Herdr's one-shot startup hook until the next
+server start; use **Open GitRail** for the current workspace in the meantime.
+
 ## Base ref is wrong or missing
 
 Set `baseRef` in configuration or `GIT_RAIL_BASE`. Without an override, GitRail

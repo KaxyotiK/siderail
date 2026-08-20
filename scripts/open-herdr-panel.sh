@@ -3,6 +3,7 @@ set -euo pipefail
 
 herdr="${HERDR_BIN_PATH:-herdr}"
 entrypoint="${1:-}"
+open_mode="${2:-replace}"
 plugin_id="${HERDR_PLUGIN_ID:-local.git-rail}"
 
 if [[ -z "$entrypoint" ]]; then
@@ -22,12 +23,19 @@ json_value() {
 
 workspace_id="${HERDR_WORKSPACE_ID:-}"
 target_pane_id="${HERDR_PANE_ID:-${HERDR_TARGET_PANE_ID:-}}"
+workspace_cwd="${GIT_RAIL_WORKSPACE_CWD:-}"
 context_json="${HERDR_PLUGIN_CONTEXT_JSON:-}"
 if [[ -z "$workspace_id" && -n "$context_json" ]]; then
   workspace_id="$(json_value "$context_json" 'workspace_id' | head -n1 | tr -d '\r\n')"
 fi
 if [[ -z "$target_pane_id" && -n "$context_json" ]]; then
   target_pane_id="$(json_value "$context_json" 'focused_pane_id' | head -n1 | tr -d '\r\n')"
+fi
+if [[ -z "$workspace_cwd" && -n "$context_json" ]]; then
+  workspace_cwd="$(json_value "$context_json" 'focused_pane_cwd' | head -n1 | tr -d '\r\n')"
+fi
+if [[ -z "$workspace_cwd" && -n "$context_json" ]]; then
+  workspace_cwd="$(json_value "$context_json" 'workspace_cwd' | head -n1 | tr -d '\r\n')"
 fi
 if [[ -z "$workspace_id" ]]; then
   workspace_json="$($herdr workspace list)"
@@ -49,8 +57,21 @@ state_key="$(printf '%s-%s' "$workspace_id" "$entrypoint" | tr -cs 'A-Za-z0-9._-
 state_file="$state_dir/$state_key"
 if [[ -f "$state_file" ]]; then
   previous_pane_id="$(head -n1 "$state_file" | tr -d '\r\n')"
-  if [[ -n "$previous_pane_id" && "$previous_pane_id" != "$target_pane_id" ]]; then
-    "$herdr" pane close "$previous_pane_id" >/dev/null 2>&1 || true
+  previous_pane_json=""
+  if [[ -n "$previous_pane_id" ]]; then
+    previous_pane_json="$("$herdr" pane get "$previous_pane_id" 2>/dev/null || true)"
+  fi
+  previous_workspace_id="$(json_value "$previous_pane_json" 'result.pane.workspace_id' | head -n1 | tr -d '\r\n')"
+  previous_label="$(json_value "$previous_pane_json" 'result.pane.label' | head -n1 | tr -d '\r\n')"
+  previous_configured_cwd="$(sed -n '2p' "$state_file" | tr -d '\r\n')"
+  if [[ "$previous_workspace_id" == "$workspace_id" && "$previous_label" == "HERDER GITRAIL" ]]; then
+    if [[ "$open_mode" == "ensure" && ( -z "$workspace_cwd" || "$previous_configured_cwd" == "$workspace_cwd" ) ]]; then
+      printf '%s\n' "$previous_pane_json"
+      exit 0
+    fi
+    if [[ "$previous_pane_id" != "$target_pane_id" ]]; then
+      "$herdr" pane close "$previous_pane_id" >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
@@ -60,6 +81,9 @@ open_args=(
   --entrypoint "$entrypoint"
   --no-focus
 )
+if [[ -n "$workspace_cwd" ]]; then
+  open_args+=(--env "GIT_RAIL_REPO_ROOT=$workspace_cwd")
+fi
 if [[ -n "$target_pane_id" ]]; then
   open_args+=(--target-pane "$target_pane_id" --placement split --direction right)
 else
@@ -74,6 +98,6 @@ else
   opened_pane_id="$(printf '%s' "$result" | python3 -c 'import json,sys; result=json.load(sys.stdin).get("result", {}); plugin=result.get("plugin_pane", {}); pane=plugin.get("pane", {}) if isinstance(plugin, dict) else result.get("pane", {}); print(pane.get("pane_id", "") if isinstance(pane, dict) else result.get("pane_id", ""))' 2>/dev/null || true)"
 fi
 if [[ -n "$opened_pane_id" ]]; then
-  printf '%s\n' "$opened_pane_id" > "$state_file"
+  printf '%s\n%s\n' "$opened_pane_id" "$workspace_cwd" > "$state_file"
   chmod 600 "$state_file"
 fi

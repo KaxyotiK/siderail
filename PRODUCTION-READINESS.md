@@ -84,6 +84,11 @@ choose editor and viewer executables.
 
 ## Refresh and lifecycle
 
+Herdr startup and `workspace.created` hooks ensure one unfocused GitRail pane
+for each Git-backed workspace. Automatic opening is enabled by default and can
+be disabled globally or per repository with `herdr.autoOpen`; non-Git
+workspaces are ignored.
+
 Filesystem events and a recovery poll feed a debounced refresh. Refresh retains
 the last usable state and preserves selection, expansion, layout, search, and
 scroll where possible. Git inspection disables optional lock writes so the

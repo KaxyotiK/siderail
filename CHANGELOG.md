@@ -29,3 +29,6 @@ intentional configuration changes documented here.
 - Add explicit clean state, keyboard-reachable commit history, ordered terminal
   input decoding, horizontal preview navigation, wrapped narrow actions, and
   transient preview-open feedback.
+- Auto-open one unfocused GitRail pane in Git-backed Herdr workspaces at startup
+  and workspace creation, with a global or per-repository `herdr.autoOpen`
+  opt-out.
