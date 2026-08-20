@@ -12,8 +12,8 @@ Staged, Unstaged, Untracked, and clean-file previews cannot be confused.
 - macOS or Linux
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
-editor configuration when provided. Glow is optional and is used only when a
-Markdown viewer is explicitly opened.
+editor configuration when provided. Glow is the default viewer for `.md`,
+`.mdx`, and `.markdown` files, but remains an optional executable.
 
 ## Install and launch
 
@@ -63,8 +63,10 @@ files use a neutral grey icon and have no diff statistics.
 The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then
 starts in the selected descriptor's exact diff, or Raw for a clean file. Use
-`1`, `2`, and `3` for Diff, Raw, and Markdown; `/` searches the current content
-and `n`/`N` moves through matches. `e` opens the configured editor; historical,
+`1` and `2` select Diff and Raw. A configured filename or extension match adds a
+third action; the default is `3 View Markdown` through Glow for `.md`, `.mdx`,
+and `.markdown` files. `/` searches the current content and `n`/`N` moves through
+matches. `e` opens the configured editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
 the exact Raw revision. Binary and oversized content produce bounded,
 actionable errors. A `?` statistic means the aggregate untracked-inspection
@@ -124,6 +126,27 @@ Or configure an external application such as VS Code:
 
 Without `editor`, `GIT_RAIL_CLIENT`, or `$EDITOR`, editing is disabled and the
 preview omits the `e` action.
+
+Viewer actions are conditional per selected filename. Rules match an exact
+basename, a filename suffix such as `.pdf`, or `*`; the longest match wins. Each
+rule can configure its action `label`, executable `client`, `args`, launch
+`mode`, and optional `autoOpen`. If no enabled rule matches, the preview omits
+action `3`. The built-in Markdown defaults use Glow:
+
+```json
+{
+  "version": 1,
+  "viewers": {
+    ".md": {
+      "label": "View Markdown",
+      "client": "glow",
+      "args": ["--tui", "--style", "dark"],
+      "mode": "terminal",
+      "autoOpen": false
+    }
+  }
+}
+```
 
 Supported overrides include `GIT_RAIL_BASE`, `GIT_RAIL_CLIENT`,
 `GIT_RAIL_CLIENT_ARGS` (a JSON string array), `GIT_RAIL_CLIENT_MODE`, and

@@ -30,7 +30,7 @@ const metadata = decode("GIT_RAIL_PREVIEW_METADATA", {});
 const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
 const { config, errors: configErrors } = loadConfig(repoRoot);
 const viewer = resolveViewer(config, filePath);
-const markdownEligible = /\.(md|mdx|markdown)$/i.test(filePath);
+const viewerAvailable = Boolean(viewer && clientMode(viewer) !== "disabled");
 let activeMode = previewInitialMode(descriptor, metadata);
 let scrollOffset = 0;
 let statusMessage = configErrors[0] || "Read-only preview";
@@ -102,7 +102,7 @@ function moveMatch(direction) {
   statusMessage = `Match ${found.indexOf(currentMatch) + 1} of ${found.length}`;
 }
 async function loadMode(mode) {
-  if (mode === "markdown") { await launchViewer(); return; }
+  if (mode === "viewer") { await launchViewer(); return; }
   const generation = ++loadGeneration;
   activeMode = mode;
   loading = true;
@@ -180,9 +180,10 @@ async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
   return copy;
 }
 async function launchViewer() {
-  if (!markdownEligible) { statusMessage = "Markdown is only available for Markdown files"; render(); return; }
-  try { launch(viewer || config.viewers[".md"], await sourceForLaunch(false, true), "Markdown viewer"); }
-  catch (error) { statusMessage = `Markdown source unavailable: ${safe(error.message)}`; }
+  if (!viewerAvailable) { statusMessage = "No viewer is configured for this file"; render(); return; }
+  const label = viewer.label || `View with ${path.basename(viewer.client)}`;
+  try { launch(viewer, await sourceForLaunch(false, true), label); }
+  catch (error) { statusMessage = `Viewer source unavailable: ${safe(error.message)}`; }
   render();
 }
 async function launchEditor() {
@@ -205,14 +206,14 @@ async function launchEditor() {
   render();
 }
 function renderTabs(width) {
-  const modes = [["diff", "1 Diff"], ["raw", "2 Raw"], ["markdown", "3 View Markdown"]];
+  const modes = [["diff", "1 Diff"], ["raw", "2 Raw"]];
+  if (viewerAvailable) modes.push(["viewer", `3 ${safe(viewer.label || `View with ${path.basename(viewer.client)}`)}`]);
   hitTargets = [];
   let line = "";
   let column = 1;
   for (const [mode, label] of modes) {
-    const enabled = mode !== "markdown" || markdownEligible;
     const text = ` ${label} `;
-    line += mode === activeMode ? `${C.selected}${C.gold}${C.bold}${text}${C.reset}` : enabled ? `${C.dim}${text}${C.reset}` : `${C.faint}${text}${C.reset}`;
+    line += mode === activeMode ? `${C.selected}${C.gold}${C.bold}${text}${C.reset}` : `${C.dim}${text}${C.reset}`;
     hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(text) - 1, action: () => void loadMode(mode) });
     column += visibleLength(text);
   }
@@ -238,7 +239,7 @@ function render() {
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
-    `${C.dim}${fit(`1/2/3 view · / search · n/N match${clientMode(config.editor) === "disabled" ? "" : " · e open"} · j/k · q close`, width)}${C.reset}`,
+    `${C.dim}${fit(`1/2 view${viewerAvailable ? " · 3 viewer" : ""} · / search · n/N match${clientMode(config.editor) === "disabled" ? "" : " · e open"} · j/k · q close`, width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, content.length - bodyHeight)));
@@ -290,8 +291,8 @@ process.stdin.on("data", (key) => {
   } else if (!mouse) {
     if (key === "1") void loadMode("diff");
     if (key === "2") void loadMode("raw");
-    if (key === "3") void loadMode("markdown");
-    if (key === "\t") void loadMode(activeMode === "diff" ? "raw" : activeMode === "raw" && markdownEligible ? "markdown" : "diff");
+    if (key === "3" && viewerAvailable) void loadMode("viewer");
+    if (key === "\t") void loadMode(activeMode === "diff" ? "raw" : "diff");
     if (key === "e") void launchEditor();
     if (key === "/") searchActive = true;
     if (key === "n") moveMatch(1);
@@ -309,5 +310,5 @@ process.on("exit", cleanup);
 process.stdout.on("resize", scheduleRender);
 render();
 void loadMode(activeMode).then(() => {
-  if (viewer?.autoOpen) void launchViewer();
+  if (viewerAvailable && viewer.autoOpen) void launchViewer();
 });

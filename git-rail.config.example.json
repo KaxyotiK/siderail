@@ -4,12 +4,14 @@
   "baseRef": "origin/main",
   "viewers": {
     ".md": {
+      "label": "View Markdown",
       "client": "glow",
       "args": ["--tui", "--style", "dark"],
       "mode": "terminal",
       "autoOpen": false
     },
     ".pdf": {
+      "label": "Open PDF",
       "client": "system",
       "args": [],
       "mode": "external",

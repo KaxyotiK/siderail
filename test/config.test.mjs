@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { clientMode, DEFAULT_CONFIG, loadConfig, validateConfig } from "../src/config.mjs";
+import { clientMode, DEFAULT_CONFIG, loadConfig, resolveViewer, validateConfig } from "../src/config.mjs";
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
@@ -29,6 +29,9 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.match(preview, /Opening read-only temporary revision copy/);
   assert.match(preview, /editorMode !== "disabled"/);
   assert.match(preview, /Editor is not configured/);
+  assert.equal(preview.includes("markdownEligible"), false);
+  assert.match(preview, /if \(viewerAvailable\) modes\.push/);
+  assert.match(preview, /key === "3" && viewerAvailable/);
 });
 
 test("manual refresh confirmation is transient", async () => {
@@ -44,13 +47,37 @@ test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);
 });
 
+test("published schema exposes labels only on viewer rules", async () => {
+  const schema = JSON.parse(await fs.readFile("schema/v1/git-rail.schema.json", "utf8"));
+  assert.equal(schema.$defs.launch.properties.label, undefined);
+  assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
+});
+
 test("configuration requires a version and rejects nested unknown keys", () => {
   assert.match(validateConfig({})[0], /version must be 1/);
   assert.ok(validateConfig({ version: 1, editor: { client: "vim", autoOpen: true } }).includes("unknown editor key: autoOpen"));
-  assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", autoOpen: false } } }).length === 0);
+  assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "View Markdown", client: "glow", autoOpen: false } } }).length === 0);
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", typo: true } } }).includes('unknown viewers[".md"] key: typo'));
+  assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "", client: "glow" } } }).includes('viewers[".md"].label must be a non-empty string'));
   assert.ok(validateConfig({ version: 1, refresh: { intervalMs: 5000 } }).includes("unknown refresh key: intervalMs"));
   assert.ok(validateConfig({ version: 1, limits: { maxFilesBytes: 4096 } }).includes("unknown limits key: maxFilesBytes"));
+});
+
+test("viewer actions resolve conditionally by selected filename", () => {
+  const markdown = resolveViewer(DEFAULT_CONFIG, "docs/README.md");
+  assert.equal(markdown.client, "glow");
+  assert.equal(markdown.label, "View Markdown");
+  assert.equal(resolveViewer(DEFAULT_CONFIG, "docs/README.txt"), null);
+
+  const config = {
+    viewers: {
+      ".pdf": { label: "Open PDF", client: "system" },
+      "makefile": { label: "Build file", client: "less" },
+    },
+  };
+  assert.equal(resolveViewer(config, "reports/summary.PDF").label, "Open PDF");
+  assert.equal(resolveViewer(config, "Makefile").label, "Build file");
+  assert.equal(resolveViewer(config, "package.json"), null);
 });
 
 test("configuration rejects mistyped structured values", () => {

@@ -7,9 +7,9 @@ export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
-    ".mdx": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
-    ".markdown": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
+    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
+    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
+    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
   limits: { maxFileBytes: 4 * 1024 * 1024, maxDiffBytes: 8 * 1024 * 1024 },
@@ -55,13 +55,16 @@ function validateKeys(value, label, allowed, errors) {
 
 function validateLaunch(value, label, errors, { viewer = false } = {}) {
   if (!isObject(value)) return errors.push(`${label} must be an object`);
-  validateKeys(value, label, new Set(["client", "args", "mode", ...(viewer ? ["autoOpen"] : [])]), errors);
+  validateKeys(value, label, new Set(["client", "args", "mode", ...(viewer ? ["label", "autoOpen"] : [])]), errors);
   if (typeof value.client !== "string" || !value.client.trim()) errors.push(`${label}.client must be a non-empty string`);
   if (value.args !== undefined && (!Array.isArray(value.args) || value.args.some((arg) => typeof arg !== "string"))) {
     errors.push(`${label}.args must be an array of strings`);
   }
   if (value.mode !== undefined && !["auto", "terminal", "external"].includes(value.mode)) {
     errors.push(`${label}.mode must be auto, terminal, or external`);
+  }
+  if (viewer && value.label !== undefined && (typeof value.label !== "string" || !value.label.trim())) {
+    errors.push(`${label}.label must be a non-empty string`);
   }
   if (viewer && value.autoOpen !== undefined && typeof value.autoOpen !== "boolean") errors.push(`${label}.autoOpen must be boolean`);
 }
