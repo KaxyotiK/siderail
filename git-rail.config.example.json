@@ -1,0 +1,16 @@
+{
+  "client": "vim",
+  "args": [],
+  "mode": "auto",
+  "viewers": {
+    ".md": {
+      "client": "glow",
+      "args": ["--tui", "--style", "dark"],
+      "mode": "terminal"
+    },
+    ".pdf": {
+      "client": "system",
+      "mode": "external"
+    }
+  }
+}
