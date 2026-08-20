@@ -18,6 +18,7 @@ test("file previews open in a dedicated Herdr tab", async () => {
   assert.match(rail, /oldSubmodule: file\.oldSubmodule/);
   assert.match(rail, /oldSymlink: file\.oldSymlink/);
   assert.match(rail, /createLatestSerialQueue\(openPreview\)/);
+  assert.match(rail, /if \(paneId && stalePaneId/);
 });
 
 test("preview scrolling repaints in place without clearing the screen", async () => {

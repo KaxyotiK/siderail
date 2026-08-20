@@ -468,7 +468,7 @@ async function openPreview(file) {
     const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
     const tabId = payload?.result?.plugin_pane?.pane?.tab_id || payload?.result?.pane?.tab_id || payload?.result?.tab_id || "";
     if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
-    if (stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
+    if (paneId && stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
       try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd }); } catch {}
     }
     statusMessage = `Preview opened · ${descriptorLabel(file.descriptor)}`;
