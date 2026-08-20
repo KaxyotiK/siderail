@@ -100,4 +100,8 @@ fi
 if [[ -n "$opened_pane_id" ]]; then
   printf '%s\n%s\n' "$opened_pane_id" "$workspace_cwd" > "$state_file"
   chmod 600 "$state_file"
+  plugin_root="${HERDR_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+  if ! node "$plugin_root/scripts/resize-herdr-sidebar.mjs" "$opened_pane_id" "$workspace_cwd"; then
+    echo "GitRail opened, but its configured sidebar width could not be applied" >&2
+  fi
 fi

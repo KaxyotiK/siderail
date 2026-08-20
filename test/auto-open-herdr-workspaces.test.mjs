@@ -62,6 +62,10 @@ test("Herdr launch keeps plugin code rooted while passing the selected repositor
   const argsFile = path.join(root, "args");
   await fs.writeFile(mock, `#!/bin/sh
 if [ "$1" = "pane" ] && [ "$2" = "get" ]; then exit 1; fi
+if [ "$1" = "pane" ] && [ "$2" = "layout" ]; then
+  printf '%s\\n' '{"result":{"layout":{"panes":[{"pane_id":"w1:p2","rect":{"x":34,"y":0,"width":34,"height":20}}],"splits":[{"direction":"right","rect":{"x":0,"y":0,"width":68,"height":20}}]}}}'
+  exit 0
+fi
 printf '%s\\n' "$@" > "$MOCK_ARGS_FILE"
 printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"pane_id":"w1:p2"}}}}'
 `);

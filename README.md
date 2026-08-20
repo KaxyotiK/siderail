@@ -130,6 +130,18 @@ workspace when Herdr starts or a workspace is created. Disable that globally in
 Non-Git workspaces are ignored. Manual **Open GitRail** actions remain available
 when automatic opening is disabled.
 
+New rails open at the configured terminal-column width. The installed default
+matches the 34-column development rail; narrower layouts cap the rail at half
+the available split, and Herdr's minimum split ratio still applies on unusually
+wide layouts. Manual resizing after launch remains under Herdr's control:
+
+```json
+{
+  "version": 1,
+  "herdr": { "autoOpen": true, "sidebarWidth": 34 }
+}
+```
+
 Editor integration is optional. Configure a terminal editor such as Neovim:
 
 ```json

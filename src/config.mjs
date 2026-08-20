@@ -7,7 +7,7 @@ const RESERVED_VIEWER_KEYS = new Set(["1", "2", "e", "q", "j", "k", "g", "G", "n
 const LEGACY_VIEWER_KEYS = ["3", "4", "5", "6", "7", "8", "9", "0"];
 export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
-  herdr: { autoOpen: true },
+  herdr: { autoOpen: true, sidebarWidth: 34 },
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
     ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
@@ -96,9 +96,12 @@ export function validateConfig(config) {
   if (config.herdr !== undefined) {
     if (!isObject(config.herdr)) errors.push("herdr must be an object");
     else {
-      validateKeys(config.herdr, "herdr", new Set(["autoOpen"]), errors);
+      validateKeys(config.herdr, "herdr", new Set(["autoOpen", "sidebarWidth"]), errors);
       if (config.herdr.autoOpen !== undefined && typeof config.herdr.autoOpen !== "boolean") {
         errors.push("herdr.autoOpen must be boolean");
+      }
+      if (config.herdr.sidebarWidth !== undefined && (!Number.isInteger(config.herdr.sidebarWidth) || config.herdr.sidebarWidth < 20 || config.herdr.sidebarWidth > 200)) {
+        errors.push("herdr.sidebarWidth must be an integer from 20 to 200");
       }
     }
   }

@@ -13,6 +13,13 @@ Automatic opening runs for Git-backed workspaces when Herdr starts or emits
 newly linked plugin does not receive Herdr's one-shot startup hook until the next
 server start; use **Open GitRail** for the current workspace in the meantime.
 
+## GitRail opened at the wrong width
+
+Set `herdr.sidebarWidth` to an integer from 20 to 200. GitRail applies this only
+when creating the pane, so later manual resizing is preserved. On narrow layouts
+the initial rail is capped at half of the available split; on unusually wide
+layouts Herdr's minimum split ratio may keep it wider than the requested value.
+
 ## Base ref is wrong or missing
 
 Set `baseRef` in configuration or `GIT_RAIL_BASE`. Without an override, GitRail

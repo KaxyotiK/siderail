@@ -3,7 +3,8 @@
   "version": 1,
   "baseRef": "origin/main",
   "herdr": {
-    "autoOpen": true
+    "autoOpen": true,
+    "sidebarWidth": 34
   },
   "viewers": {
     ".md": {

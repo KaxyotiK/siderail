@@ -14,7 +14,8 @@ The action opens GitRail immediately in the current workspace. After linking,
 GitRail also opens without taking focus in Git-backed workspaces created later
 and reconciles existing Git workspaces the next time the Herdr server starts.
 Set `herdr.autoOpen` to `false` in GitRail configuration to opt out; the manual
-action remains available.
+action remains available. `herdr.sidebarWidth` controls the initial rail width
+in terminal columns and defaults to 34.
 
 Install [Glow](https://github.com/charmbracelet/glow) to use the installed
 Markdown default. GitRail automatically launches Glow for `.md`, `.mdx`, and

@@ -88,6 +88,8 @@ Herdr startup and `workspace.created` hooks ensure one unfocused GitRail pane
 for each Git-backed workspace. Automatic opening is enabled by default and can
 be disabled globally or per repository with `herdr.autoOpen`; non-Git
 workspaces are ignored.
+New rails apply `herdr.sidebarWidth` once at creation without taking focus;
+subsequent manual resizing remains owned by Herdr.
 
 Filesystem events and a recovery poll feed a debounced refresh. Refresh retains
 the last usable state and preserves selection, expansion, layout, search, and

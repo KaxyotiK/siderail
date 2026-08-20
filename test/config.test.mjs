@@ -57,12 +57,13 @@ test("manual refresh confirmation is transient", async () => {
 
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig(DEFAULT_CONFIG), []);
-  assert.deepEqual(validateConfig({ version: 1, herdr: { autoOpen: false }, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
+  assert.deepEqual(validateConfig({ version: 1, herdr: { autoOpen: false, sidebarWidth: 34 }, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
   assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);
 });
 
 test("published schema exposes labels only on viewer rules", async () => {
   const schema = JSON.parse(await fs.readFile("schema/v1/git-rail.schema.json", "utf8"));
+  assert.equal(schema.properties.herdr.properties.sidebarWidth.default, 34);
   assert.equal(schema.$defs.launch.properties.label, undefined);
   assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
   assert.equal(schema.$defs.viewer.properties.order.deprecated, true);
@@ -76,6 +77,7 @@ test("configuration requires a version and rejects nested unknown keys", () => {
   assert.match(validateConfig({})[0], /version must be 1/);
   assert.ok(validateConfig({ version: 1, herdr: { autoOpen: "yes", typo: true } }).includes("herdr.autoOpen must be boolean"));
   assert.ok(validateConfig({ version: 1, herdr: { autoOpen: "yes", typo: true } }).includes("unknown herdr key: typo"));
+  assert.ok(validateConfig({ version: 1, herdr: { sidebarWidth: 19 } }).includes("herdr.sidebarWidth must be an integer from 20 to 200"));
   assert.ok(validateConfig({ version: 1, editor: { client: "vim", autoOpen: true } }).includes("unknown editor key: autoOpen"));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "View Markdown", client: "glow", key: "3", autoOpen: false } } }).length === 0);
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", typo: true } } }).includes('unknown viewers[".md"] key: typo'));

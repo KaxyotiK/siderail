@@ -32,3 +32,5 @@ intentional configuration changes documented here.
 - Auto-open one unfocused GitRail pane in Git-backed Herdr workspaces at startup
   and workspace creation, with a global or per-repository `herdr.autoOpen`
   opt-out.
+- Configure the initial rail width with `herdr.sidebarWidth`, defaulting to the
+  34-column development layout while preserving later manual resizing.
