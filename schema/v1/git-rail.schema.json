@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/KaxyotiK/git-rail/main/schema/v1/git-rail.schema.json",
+  "title": "Herdr GitRail configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "baseRef": { "type": "string", "minLength": 1 },
+    "editor": { "$ref": "#/$defs/launch" },
+    "viewers": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/viewer" }
+    },
+    "refresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pollIntervalMs": { "type": "integer", "minimum": 1000, "maximum": 300000 }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxFileBytes": { "type": "integer", "minimum": 1024, "maximum": 67108864 },
+        "maxDiffBytes": { "type": "integer", "minimum": 1024, "maximum": 67108864 }
+      }
+    }
+  },
+  "required": ["version"],
+  "$defs": {
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "client": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "mode": { "enum": ["auto", "terminal", "external"] }
+      },
+      "required": ["client"]
+    },
+    "viewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "client": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "mode": { "enum": ["auto", "terminal", "external"] },
+        "autoOpen": { "type": "boolean" }
+      },
+      "required": ["client"]
+    }
+  }
+}

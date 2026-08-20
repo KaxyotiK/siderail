@@ -1,0 +1,159 @@
+function splitNul(output) {
+  const parts = String(output || "").split("\0");
+  if (parts.at(-1) === "") parts.pop();
+  return parts;
+}
+
+export function statusName(code) {
+  if (code === "A" || code === "?") return "added";
+  if (code === "D") return "deleted";
+  if (code === "R") return "renamed";
+  if (code === "C") return "copied";
+  if (code === "U") return "conflicted";
+  if (code === "T") return "type-changed";
+  return "modified";
+}
+
+export function parsePorcelainV2Z(output) {
+  const tokens = splitNul(output);
+  const entries = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const record = tokens[index];
+    if (!record || record[0] === "#" || record[0] === "!") continue;
+    if (record.startsWith("? ")) {
+      entries.push({ path: record.slice(2), indexCode: "?", worktreeCode: "?", untracked: true });
+      continue;
+    }
+    const fields = record.split(" ");
+    const kind = fields[0];
+    if (kind === "1" && fields.length >= 9) {
+      const xy = fields[1];
+      entries.push({
+        path: fields.slice(8).join(" "),
+        indexCode: xy[0],
+        worktreeCode: xy[1],
+        submodule: fields[2] !== "N...",
+        headMode: fields[3],
+        indexMode: fields[4],
+        worktreeMode: fields[5],
+      });
+    } else if (kind === "2" && fields.length >= 10) {
+      const xy = fields[1];
+      entries.push({
+        path: fields.slice(9).join(" "),
+        oldPath: tokens[++index] || "",
+        indexCode: xy[0],
+        worktreeCode: xy[1],
+        submodule: fields[2] !== "N...",
+        score: fields[8],
+      });
+    } else if (kind === "u" && fields.length >= 11) {
+      entries.push({
+        path: fields.slice(10).join(" "),
+        indexCode: "U",
+        worktreeCode: "U",
+        conflict: fields[1],
+        submodule: fields[2] !== "N...",
+      });
+    }
+  }
+  return entries;
+}
+
+export function parseNameStatusZ(output) {
+  const tokens = splitNul(output);
+  const files = [];
+  for (let index = 0; index < tokens.length;) {
+    const codeToken = tokens[index++];
+    if (!codeToken) continue;
+    const code = codeToken[0];
+    if (code === "R" || code === "C") {
+      const oldPath = tokens[index++] || "";
+      const filePath = tokens[index++] || "";
+      if (filePath) files.push({ path: filePath, oldPath, status: statusName(code), score: codeToken.slice(1) });
+    } else {
+      const filePath = tokens[index++] || "";
+      if (filePath) files.push({ path: filePath, status: statusName(code) });
+    }
+  }
+  return files;
+}
+
+export function parseNumstatZ(output) {
+  const tokens = splitNul(output);
+  const stats = new Map();
+  for (let index = 0; index < tokens.length; index += 1) {
+    const record = tokens[index];
+    const firstTab = record.indexOf("\t");
+    const secondTab = firstTab < 0 ? -1 : record.indexOf("\t", firstTab + 1);
+    if (firstTab < 0 || secondTab < 0) continue;
+    const additionsText = record.slice(0, firstTab);
+    const deletionsText = record.slice(firstTab + 1, secondTab);
+    let filePath = record.slice(secondTab + 1);
+    let oldPath;
+    if (!filePath) {
+      oldPath = tokens[++index] || "";
+      filePath = tokens[++index] || "";
+    }
+    if (!filePath) continue;
+    stats.set(filePath, {
+      additions: additionsText === "-" ? 0 : Number.parseInt(additionsText, 10) || 0,
+      deletions: deletionsText === "-" ? 0 : Number.parseInt(deletionsText, 10) || 0,
+      binary: additionsText === "-" && deletionsText === "-",
+      ...(oldPath ? { oldPath } : {}),
+    });
+  }
+  return stats;
+}
+
+export function parseLsFilesZ(output) {
+  return splitNul(output);
+}
+
+export function parseLsFilesStageZ(output) {
+  return splitNul(output).map((record) => {
+    const tab = record.indexOf("\t");
+    const metadata = record.slice(0, tab).split(" ");
+    return { path: record.slice(tab + 1), mode: metadata[0], objectId: metadata[1], stage: Number(metadata[2]) };
+  }).filter((entry) => entry.path);
+}
+
+export function parseRawDiffZ(output) {
+  const tokens = splitNul(output);
+  const metadata = new Map();
+  for (let index = 0; index < tokens.length;) {
+    const header = tokens[index++];
+    if (!header?.startsWith(":")) continue;
+    const [oldMode, newMode, oldObjectId, newObjectId, statusToken] = header.slice(1).split(" ");
+    const status = statusToken?.[0] || "M";
+    let oldPath;
+    let filePath;
+    if (status === "R" || status === "C") {
+      oldPath = tokens[index++] || "";
+      filePath = tokens[index++] || "";
+    } else filePath = tokens[index++] || "";
+    if (!filePath) continue;
+    metadata.set(filePath, {
+      oldMode,
+      newMode,
+      oldObjectId,
+      newObjectId,
+      executableChange: oldMode !== newMode && (oldMode === "100755" || newMode === "100755"),
+      symlink: oldMode === "120000" || newMode === "120000",
+      submodule: oldMode === "160000" || newMode === "160000",
+      ...(oldPath ? { oldPath } : {}),
+    });
+  }
+  return metadata;
+}
+
+export function mergeStats(files, stats) {
+  return files.map((file) => ({
+    ...file,
+    ...(stats.get(file.path) || { additions: 0, deletions: 0, binary: false }),
+  }));
+}
+
+export function mergeMetadata(files, metadata) {
+  return files.map((file) => ({ ...file, ...(metadata.get(file.path) || {}) }));
+}

@@ -2,483 +2,278 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { spawn, spawnSync } from "node:child_process";
+import { clientMode, loadConfig, resolveViewer } from "../src/config.mjs";
+import { parseUnifiedDiff } from "../src/diff-view.mjs";
+import { loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
 
 const ESC = "\u001b[";
-const C = {
-  reset: `${ESC}0m`,
-  bold: `${ESC}1m`,
-  dim: `${ESC}2m`,
-  gold: `${ESC}38;2;214;176;91m`,
-  green: `${ESC}38;2;91;190;112m`,
-  red: `${ESC}38;2;224;108;117m`,
-  blue: `${ESC}38;2;105;169;230m`,
-  faint: `${ESC}38;2;84;84;84m`,
-  selected: `${ESC}48;2;45;41;34m`,
-};
 const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
-const previewPath = process.env.GIT_RAIL_PREVIEW_PATH || "";
-const requestedMode = process.env.GIT_RAIL_PREVIEW_MODE === "file" ? "raw" : "diff";
+const C = {
+  reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
+  gold: `${ESC}38;2;214;176;91m`, green: `${ESC}38;2;91;190;112m`,
+  red: `${ESC}38;2;224;108;117m`, blue: `${ESC}38;2;105;169;230m`,
+  faint: `${ESC}38;2;84;84;84m`, selected: `${ESC}48;2;45;41;34m`,
+};
+const filePath = process.env.GIT_RAIL_PREVIEW_PATH || "";
 const repoRoot = process.env.GIT_RAIL_PREVIEW_REPO || process.cwd();
-const demoMode = process.env.GIT_RAIL_PREVIEW_DEMO === "1";
-const previewCommit = process.env.GIT_RAIL_PREVIEW_COMMIT || "";
-const previewStatus = process.env.GIT_RAIL_PREVIEW_STATUS || "modified";
-const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const markdownEligible = /\.(md|mdx|markdown)$/i.test(previewPath);
-const clientConfig = resolveClientConfig();
-const viewerConfig = resolveViewerConfig(previewPath);
-let activeMode = requestedMode;
+const descriptor = decode("GIT_RAIL_PREVIEW_DESCRIPTOR", { kind: "clean" });
+const metadata = decode("GIT_RAIL_PREVIEW_METADATA", {});
+const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
+const { config, errors: configErrors } = loadConfig(repoRoot);
+const viewer = resolveViewer(config, filePath);
+const markdownEligible = /\.(md|mdx|markdown)$/i.test(filePath);
+let activeMode = descriptor.kind === "clean" ? "raw" : "diff";
 let scrollOffset = 0;
-let statusMessage = "Click a mode or press 1/2/3";
+let statusMessage = configErrors[0] || "Read-only preview";
+let revisionLabel = "";
+let content = [];
+let loading = false;
+let loadGeneration = 0;
 let hitTargets = [];
-let demoPreviewFile = "";
-const contentCache = new Map();
+let searchActive = false;
+let searchQuery = "";
+let currentMatch = -1;
+let temporaryDirectory = "";
+let renderTimer;
 
-function stripAnsi(value) {
-  return String(value ?? "").replace(ANSI_RE, "");
+function decode(name, fallback) {
+  try { return JSON.parse(Buffer.from(process.env[name] || "", "base64url").toString("utf8")); } catch { return fallback; }
 }
-
-function visibleLength(value) {
-  return [...stripAnsi(value)].length;
-}
-
+function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
+function visibleLength(value) { return [...stripAnsi(value)].length; }
 function truncate(value, width) {
   const chars = [...String(value ?? "")];
-  if (chars.length <= width) return chars.join("");
-  return width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
+  return chars.length <= width ? chars.join("") : width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
 }
-
-function fit(value, width) {
-  return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width);
+function fit(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
+function descriptorLabel() {
+  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef}`;
+  if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
+  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
+  return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
 }
-
-function pad(value, width) {
-  const fitted = fit(value, width);
-  return `${fitted}${" ".repeat(Math.max(0, width - visibleLength(fitted)))}`;
+function comparisonLabel() {
+  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef} · merge base → worktree`;
+  if (descriptor.kind === "against") return `Against ${descriptor.baseRef} · merge base → HEAD`;
+  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)} · parent → commit`;
+  if (descriptor.kind === "staged") return "Staged · HEAD → index";
+  if (descriptor.kind === "unstaged") return "Unstaged · index → worktree";
+  if (descriptor.kind === "untracked") return "Untracked · new file";
+  return "Worktree file";
 }
-
-function safeAbsolutePath() {
-  const root = path.resolve(repoRoot);
-  const resolved = path.resolve(root, previewPath);
-  return resolved === root || resolved.startsWith(`${root}${path.sep}`) ? resolved : "";
+function diffLines(value) {
+  const rows = parseUnifiedDiff(value);
+  const largestLine = rows.reduce((largest, row) => Math.max(largest, row.oldLine || 0, row.newLine || 0), 0);
+  const gutterWidth = Math.max(2, String(largestLine).length);
+  const number = (value) => value === null || value === undefined ? " ".repeat(gutterWidth) : String(value).padStart(gutterWidth);
+  return rows.map((row) => {
+    if (row.kind === "hunk") return `${C.blue}${" ".repeat(gutterWidth * 2 + 3)}  ${row.text}${C.reset}`;
+    if (row.kind === "meta") return `${C.gold}${" ".repeat(gutterWidth * 2 + 3)}  ${row.text}${C.reset}`;
+    if (row.kind === "note") return `${C.dim}${" ".repeat(gutterWidth * 2 + 3)}  ${row.text}${C.reset}`;
+    const marker = row.kind === "added" ? "+" : row.kind === "deleted" ? "−" : " ";
+    const color = row.kind === "added" ? C.green : row.kind === "deleted" ? C.red : "";
+    return `${C.dim}${number(row.oldLine)} ${number(row.newLine)} │${C.reset} ${color}${marker} ${row.text}${C.reset}`;
+  });
 }
-
-function runGit(args) {
-  return spawnSync("git", args, { cwd: repoRoot, encoding: "utf8", timeout: 8_000 });
+function matches() {
+  if (!searchQuery) return [];
+  const query = searchQuery.toLocaleLowerCase();
+  return content.flatMap((line, index) => stripAnsi(line).toLocaleLowerCase().includes(query) ? [index] : []);
 }
-
-function parseClientValue(value) {
-  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
-  return parts.length ? { client: parts[0], args: parts.slice(1), mode: "auto" } : null;
+function matchLabel() {
+  const found = matches();
+  if (!searchQuery) return "";
+  const position = currentMatch >= 0 ? found.indexOf(currentMatch) + 1 : 0;
+  return `${position}/${found.length}`;
 }
-
-function normalizeLaunchConfig(value) {
-  if (typeof value === "string") return parseClientValue(value);
-  if (!value || typeof value !== "object" || typeof value.client !== "string" || !value.client.trim()) return null;
-  return {
-    client: value.client.trim(),
-    args: Array.isArray(value.args) ? value.args.filter((arg) => typeof arg === "string") : [],
-    mode: ["auto", "terminal", "external"].includes(value.mode) ? value.mode : "auto",
-    autoOpen: value.autoOpen !== false,
-  };
+function moveMatch(direction) {
+  const found = matches();
+  if (!found.length) { currentMatch = -1; statusMessage = `No matches for “${searchQuery}”`; return; }
+  const index = found.indexOf(currentMatch);
+  currentMatch = found[(index + direction + found.length) % found.length];
+  scrollOffset = currentMatch;
+  statusMessage = `Match ${found.indexOf(currentMatch) + 1} of ${found.length}`;
 }
-
-function normalizeViewers(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(([pattern, config]) => [pattern, normalizeLaunchConfig(config)])
-      .filter(([, config]) => config),
-  );
-}
-
-function readClientConfig(filePath) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    const openClient = normalizeLaunchConfig(parsed);
-    const viewers = normalizeViewers(parsed.viewers);
-    return openClient || Object.keys(viewers).length ? { ...(openClient || {}), viewers } : null;
-  } catch {
-    return null;
-  }
-}
-
-function resolveClientConfig() {
-  const projectConfig = readClientConfig(path.join(repoRoot, ".git-rail.json"));
-  const userConfig = readClientConfig(path.join(os.homedir(), ".config", "git-rail", "config.json"));
-  const fileConfig = projectConfig || userConfig || {};
-  const environmentClient = parseClientValue(process.env.GIT_RAIL_CLIENT);
-  if (environmentClient) {
-    try {
-      const environmentArgs = JSON.parse(process.env.GIT_RAIL_CLIENT_ARGS || "[]");
-      if (Array.isArray(environmentArgs) && environmentArgs.every((arg) => typeof arg === "string")) {
-        environmentClient.args.push(...environmentArgs);
-      }
-    } catch {
-      // Ignore malformed optional args and retain the configured executable.
-    }
-    if (["auto", "terminal", "external"].includes(process.env.GIT_RAIL_CLIENT_MODE)) {
-      environmentClient.mode = process.env.GIT_RAIL_CLIENT_MODE;
-    }
-    return { ...environmentClient, viewers: fileConfig.viewers || {} };
-  }
-  const fallbackClient = parseClientValue(process.env.EDITOR) || { client: "vim", args: [], mode: "terminal" };
-  return {
-    ...fallbackClient,
-    ...fileConfig,
-    viewers: fileConfig.viewers || {},
-  };
-}
-
-function clientMode(config = clientConfig) {
-  if (config.client === "none") return "disabled";
-  if (config.client === "builtin") return "builtin";
-  if (config.client === "system") return "external";
-  if (config.mode !== "auto") return config.mode;
-  const terminalClients = new Set(["vi", "vim", "nvim", "nano", "micro", "hx", "helix", "kak", "kakoune"]);
-  return terminalClients.has(path.basename(config.client)) ? "terminal" : "external";
-}
-
-function resolveViewerConfig(filePath) {
-  const defaults = {
-    ".md": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: true },
-    ".mdx": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: true },
-    ".markdown": { client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", autoOpen: true },
-  };
-  const viewers = { ...defaults, ...(clientConfig.viewers || {}) };
-  const name = path.basename(filePath).toLocaleLowerCase();
-  const match = Object.keys(viewers)
-    .sort((a, b) => b.length - a.length)
-    .find((pattern) => pattern === "*" || name === pattern.toLocaleLowerCase() || name.endsWith(pattern.toLocaleLowerCase()));
-  return match ? { pattern: match, ...viewers[match] } : null;
-}
-
-function mappedDemoPath() {
-  const prefix = "prototypes/herdr-git-rail/";
-  if (!previewPath.startsWith(prefix)) return "";
-  const relativePath = previewPath.slice(prefix.length);
-  const candidate = path.resolve(pluginRoot, relativePath);
-  const rootPrefix = `${pluginRoot}${path.sep}`;
-  return candidate.startsWith(rootPrefix) && fs.existsSync(candidate) ? candidate : "";
-}
-
-function demoSource() {
-  const mappedPath = mappedDemoPath();
-  if (mappedPath) return fs.readFileSync(mappedPath, "utf8");
-  if (markdownEligible) {
-    return `# Git rail
-
-The right rail keeps repository and branch context visible while you browse Git state.
-
-## Preview behavior
-
-- **Diff** shows the working change against \`HEAD\`.
-- **Raw** shows the source with line numbers.
-- **Markdown** renders this document for reading.
-
-> Double-click a changed file to open its preview without leaving Herdr.
-
-\`\`\`bash
-herdr plugin action invoke local.git-rail.open-git-rail-mockup
-\`\`\`
-`;
-  }
-  const name = path.basename(previewPath) || "file";
-  return `// Read-only demo preview
-export function open${name.replace(/\W+/g, "_")}() {
-  return { repository: "git-rail", branch: "feature/sidebar" };
-}
-`;
-}
-
-function sourceText() {
-  if (demoMode) return demoSource();
-  const absolutePath = safeAbsolutePath();
-  if (!absolutePath) throw new Error("Refusing to preview a path outside the repository.");
-  const buffer = fs.readFileSync(absolutePath);
-  if (buffer.subarray(0, 8_192).includes(0)) throw new Error("Binary file — textual preview unavailable.");
-  return buffer.toString("utf8");
-}
-
-function diffContent() {
-  if (demoMode) {
-    if (previewStatus === "added") {
-      const sourceLines = sourceText().replace(/\n$/, "").split("\n");
-      return [
-        ...(previewCommit ? [`${C.dim}commit ${previewCommit}${C.reset}`] : []),
-        `${C.bold}diff --git a/${previewPath} b/${previewPath}${C.reset}`,
-        `${C.dim}new file mode 100644${C.reset}`,
-        `${C.red}--- /dev/null${C.reset}`,
-        `${C.green}+++ b/${previewPath}${C.reset}`,
-        `${C.blue}@@ -0,0 +1,${sourceLines.length} @@${C.reset}`,
-        ...sourceLines.map((line) => `${C.green}+${line}${C.reset}`),
-      ];
-    }
-    return [
-      ...(previewCommit ? [`${C.dim}commit ${previewCommit}${C.reset}`] : []),
-      `${C.bold}diff --git a/${previewPath} b/${previewPath}${C.reset}`,
-      `${C.red}--- a/${previewPath}${C.reset}`,
-      `${C.green}+++ b/${previewPath}${C.reset}`,
-      `${C.blue}@@ -18,3 +18,8 @@${C.reset}`,
-      `${C.red}-const panel = "files";${C.reset}`,
-      `${C.green}+const panel = "git-rail";${C.reset}`,
-      `${C.green}+const preview = { mode: "diff", readOnly: true };${C.reset}`,
-    ];
-  }
-  const result = previewCommit
-    ? runGit(["show", "--format=", "--no-ext-diff", "--color=always", "--find-renames", previewCommit, "--", previewPath])
-    : runGit(["diff", "--no-ext-diff", "--color=always", "HEAD", "--", previewPath]);
-  if (result.status === 0 && result.stdout) return result.stdout.replace(/\n$/, "").split("\n");
-  return [`${C.dim}${previewCommit ? `No diff for this file in ${previewCommit}.` : "No working-tree diff for this file."}${C.reset}`];
-}
-
-function rawContent() {
-  try {
-    return sourceText().split("\n").map((line, index) => `${C.dim}${String(index + 1).padStart(4)}${C.reset}  ${line}`);
-  } catch (error) {
-    return [`${C.red}${error.message}${C.reset}`];
-  }
-}
-
-function markdownContent() {
-  if (!markdownEligible) return [`${C.dim}Markdown preview is available for .md, .mdx, and .markdown files.${C.reset}`];
-  return [
-    "",
-    `${C.bold}Markdown is viewed by Glow.${C.reset}`,
-    `${C.dim}Press 3 or click Markdown to open the rendered pager.${C.reset}`,
-  ];
-}
-
-function contentFor(mode, width) {
-  const cacheKey = `${mode}:${width}`;
-  if (!contentCache.has(cacheKey)) {
-    const content = mode === "diff" ? diffContent() : mode === "raw" ? rawContent() : markdownContent();
-    contentCache.set(cacheKey, content);
-  }
-  return contentCache.get(cacheKey);
-}
-
-function selectMode(mode) {
-  if (mode === "markdown" && !markdownEligible) {
-    statusMessage = "Markdown mode requires a Markdown file";
-    return;
-  }
-  if (mode === "markdown") {
-    launchMarkdownViewer();
-    return;
-  }
+async function loadMode(mode) {
+  if (mode === "markdown") { launchViewer(); return; }
+  const generation = ++loadGeneration;
   activeMode = mode;
-  scrollOffset = 0;
-  statusMessage = `${mode[0].toUpperCase()}${mode.slice(1)} preview`;
-}
-
-function previewSourcePath() {
-  if (!demoMode) return safeAbsolutePath();
-  if (!demoPreviewFile) {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "git-rail-preview-"));
-    demoPreviewFile = path.join(directory, path.basename(previewPath) || "preview.txt");
-    fs.writeFileSync(demoPreviewFile, demoSource(), "utf8");
+  loading = true;
+  statusMessage = `Loading ${mode}…`;
+  render();
+  try {
+    const result = mode === "diff"
+      ? await loadDiff({ repoRoot, filePath, descriptor, maxOutputBytes: config.limits.maxDiffBytes })
+      : await loadRaw({ repoRoot, filePath, descriptor, metadata, maxFileBytes: config.limits.maxFileBytes });
+    if (generation !== loadGeneration) return;
+    revisionLabel = result.revision;
+    content = mode === "diff"
+      ? diffLines(result.text)
+      : result.text.replace(/\n$/, "").split("\n").map((line, index) => `${C.dim}${String(index + 1).padStart(5)}${C.reset}  ${line}`);
+    scrollOffset = 0;
+    statusMessage = mode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel}`;
+  } catch (error) {
+    if (generation !== loadGeneration) return;
+    content = [`${C.red}${error.message}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`];
+    statusMessage = error.kind === "oversized" ? "Preview is larger than the configured safety limit" : "Preview failed";
+  } finally {
+    if (generation === loadGeneration) { loading = false; render(); }
   }
-  return demoPreviewFile;
 }
-
-function suspendPreview() {
+function suspend() {
   process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
   process.stdin.setRawMode?.(false);
   process.stdin.pause();
 }
-
-function resumePreview() {
+function resume() {
   process.stdin.setRawMode?.(true);
   process.stdin.resume();
   process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
 }
-
-function launchConfiguredViewer(config, sourcePath, label = "viewer") {
-  if (!config || config.client === "builtin") return false;
-  const mode = clientMode(config);
-  if (mode === "disabled") {
-    statusMessage = `${label} is disabled by configuration`;
-    return false;
-  }
-  if (!sourcePath || !fs.existsSync(sourcePath)) {
-    statusMessage = `${label} source is unavailable`;
-    return false;
-  }
-  const executable = config.client === "system"
-    ? process.platform === "darwin" ? "open" : "xdg-open"
-    : config.client;
+function launch(configValue, sourcePath, label) {
+  if (!configValue || configValue.client === "builtin") return;
+  const mode = clientMode(configValue);
+  if (mode === "disabled") { statusMessage = `${label} is disabled`; return; }
+  const executable = configValue.client === "system" ? (process.platform === "darwin" ? "open" : "xdg-open") : configValue.client;
   if (mode === "external") {
-    const result = spawnSync(executable, [...config.args, sourcePath], { stdio: "ignore", timeout: 8_000 });
-    statusMessage = result.error
-      ? `${label} failed: ${result.error.message}`
-      : `Opened with ${config.client === "system" ? "system default" : path.basename(config.client)}`;
-    return !result.error;
+    const child = spawn(executable, [...configValue.args, sourcePath], { detached: true, stdio: "ignore", shell: false });
+    child.on("error", (error) => { statusMessage = `${label} failed: ${error.message}`; render(); });
+    child.on("close", (status) => {
+      if (status !== 0) { statusMessage = `${label} exited with status ${status}`; render(); }
+    });
+    child.unref();
+    statusMessage = `Opened with ${path.basename(configValue.client)}`;
+    return;
   }
-  suspendPreview();
-  const result = spawnSync(executable, [...config.args, sourcePath], { stdio: "inherit" });
-  resumePreview();
-  statusMessage = result.error
-    ? `${label} failed: ${result.error.message}`
-    : `Returned from ${path.basename(config.client)}`;
-  return !result.error;
+  suspend();
+  const result = spawnSync(executable, [...configValue.args, sourcePath], { stdio: "inherit", shell: false });
+  resume();
+  statusMessage = result.error ? `${label} failed: ${result.error.message}` : result.status === 0 ? `Returned from ${path.basename(configValue.client)}` : `${label} exited with status ${result.status}`;
 }
-
-function launchMarkdownViewer() {
-  if (!markdownEligible) {
-    statusMessage = "Markdown mode requires a Markdown file";
-    return;
-  }
-  const sourcePath = previewSourcePath();
-  const markdownViewer = viewerConfig || {
-    client: "glow",
-    args: ["--tui", "--style", "dark"],
-    mode: "terminal",
-  };
-  activeMode = "markdown";
-  launchConfiguredViewer(markdownViewer, sourcePath, "Markdown viewer");
+async function sourceForLaunch(copyForDemo = false) {
+  const source = await safeWorktreePath(repoRoot, filePath);
+  if (!copyForDemo || !temporarySource) return source;
+  if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
+  fs.chmodSync(temporaryDirectory, 0o700);
+  const copy = path.join(temporaryDirectory, path.basename(filePath) || "preview.txt");
+  fs.copyFileSync(source, copy);
+  fs.chmodSync(copy, 0o600);
+  return copy;
 }
-
-function launchEditor() {
-  const sourcePath = demoMode ? previewSourcePath() : safeAbsolutePath();
-  if (!sourcePath || !fs.existsSync(sourcePath)) {
-    statusMessage = "The selected file is unavailable";
-    return;
-  }
-  const mode = clientMode();
-  if (mode === "disabled") {
-    statusMessage = "Editor opening is disabled by configuration";
-    return;
-  }
-  const executable = clientConfig.client === "system"
-    ? process.platform === "darwin" ? "open" : "xdg-open"
-    : clientConfig.client;
-  if (mode === "external") {
-    const result = spawnSync(executable, [...clientConfig.args, sourcePath], { stdio: "ignore", timeout: 8_000 });
-    statusMessage = result.error
-      ? `Client failed: ${result.error.message}`
-      : `Opened with ${clientConfig.client === "system" ? "system default" : path.basename(clientConfig.client)}`;
-    return;
-  }
-  suspendPreview();
-  const result = spawnSync(executable, [...clientConfig.args, sourcePath], { stdio: "inherit" });
-  resumePreview();
-  contentCache.clear();
-  statusMessage = result.error
-    ? `Editor failed: ${result.error.message}`
-    : demoMode ? "Returned from editor · demo copy" : "Returned from editor";
+async function launchViewer() {
+  if (!markdownEligible) { statusMessage = "Markdown is only available for Markdown files"; render(); return; }
+  try { launch(viewer || config.viewers[".md"], await sourceForLaunch(false), "Markdown viewer"); }
+  catch (error) { statusMessage = `Markdown source unavailable: ${error.message}`; }
+  render();
 }
-
+async function launchEditor() {
+  try {
+    const source = await sourceForLaunch(true);
+    launch(config.editor, source, "Editor");
+    if (temporarySource) statusMessage += " · temporary demo copy";
+  } catch (error) { statusMessage = `File unavailable: ${error.message}`; }
+  render();
+}
 function renderTabs(width) {
-  const modes = [
-    ["diff", "1 Diff"],
-    ["raw", "2 Raw"],
-    ["markdown", "3 Markdown"],
-  ];
+  const modes = [["diff", "1 Diff"], ["raw", "2 Raw"], ["markdown", "3 Markdown"]];
   hitTargets = [];
   let line = "";
   let column = 1;
   for (const [mode, label] of modes) {
     const enabled = mode !== "markdown" || markdownEligible;
     const text = ` ${label} `;
-    const styled = mode === activeMode
-      ? `${C.selected}${C.gold}${C.bold}${text}${C.reset}`
-      : enabled ? `${C.dim}${text}${C.reset}` : `${C.faint}${text}${C.reset}`;
-    line += styled;
-    hitTargets.push({ row: 3, x1: column, x2: column + visibleLength(text) - 1, action: () => selectMode(mode) });
+    line += mode === activeMode ? `${C.selected}${C.gold}${C.bold}${text}${C.reset}` : enabled ? `${C.dim}${text}${C.reset}` : `${C.faint}${text}${C.reset}`;
+    hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(text) - 1, action: () => void loadMode(mode) });
     column += visibleLength(text);
   }
-  const clientLabel = clientConfig.client === "none" ? "disabled" : path.basename(clientConfig.client);
-  const editLabel = ` e Open ${clientMode() === "terminal" ? "in" : "with"} ${clientLabel} `;
-  if (column + visibleLength(editLabel) <= width) {
-    line += `${C.dim}${editLabel}${C.reset}`;
-    hitTargets.push({ row: 3, x1: column, x2: column + visibleLength(editLabel) - 1, action: launchEditor });
+  const editorLabel = ` e Open ${clientMode(config.editor) === "terminal" ? "in" : "with"} ${path.basename(config.editor.client)} `;
+  if (column + visibleLength(editorLabel) <= width) {
+    line += `${C.dim}${editorLabel}${C.reset}`;
+    hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(editorLabel) - 1, action: () => void launchEditor() });
   }
   return fit(line, width);
 }
-
 function render() {
-  const width = Math.max(20, process.stdout.columns || 90);
+  const width = Math.max(24, process.stdout.columns || 90);
   const height = Math.max(14, process.stdout.rows || 36);
-  const content = contentFor(activeMode, width);
+  const search = searchActive ? `⌕ ${searchQuery}▏  ${matchLabel()}` : loading ? `${descriptorLabel()} · loading` : activeMode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel || "ready"}`;
   const header = [
-    `${C.gold}${C.bold}◆ GIT PREVIEW${C.reset}  ${C.dim}read-only${C.reset}`,
-    fit(`${C.bold}${previewPath || "No file selected"}${C.reset}`, width),
+    `${C.gold}${C.bold}◆ HERDR GITRAIL PREVIEW${C.reset}  ${C.dim}read-only${C.reset}`,
+    fit(`${C.bold}${filePath || "No file selected"}${C.reset}`, width),
+    fit(`${C.dim}${search}${C.reset}`, width),
     renderTabs(width),
     `${C.faint}${"─".repeat(width)}${C.reset}`,
   ];
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(statusMessage, width)}${C.reset}`,
-    `${C.dim}Tab or 1/2/3 · e ${path.basename(clientConfig.client)} (${clientMode()}) · j/k · q close${C.reset}`,
+    `${C.dim}${fit("1/2/3 view · / search · n/N match · e open · j/k · q close", width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
-  const maxOffset = Math.max(0, content.length - bodyHeight);
-  scrollOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
+  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, content.length - bodyHeight)));
   const body = content.slice(scrollOffset, scrollOffset + bodyHeight);
   while (body.length < bodyHeight) body.push("");
-  process.stdout.write(`${ESC}H${ESC}2J${[...header, ...body, ...footer].map((line) => pad(line, width)).join("\n")}`);
+  const frame = [...header, ...body, ...footer]
+    .map((line) => `${ESC}2K${fit(line, width)}`)
+    .join("\r\n");
+  process.stdout.write(`${ESC}?2026h${ESC}H${frame}${ESC}?2026l`);
 }
-
+function scheduleRender() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = undefined;
+    render();
+  }, 16);
+}
 function cleanup() {
-  if (demoPreviewFile) {
-    try {
-      fs.rmSync(path.dirname(demoPreviewFile), { recursive: true, force: true });
-    } catch {
-      // Temporary preview cleanup is best-effort.
-    }
-    demoPreviewFile = "";
-  }
+  if (temporaryDirectory) { try { fs.rmSync(temporaryDirectory, { recursive: true, force: true }); } catch {} temporaryDirectory = ""; }
   process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
-
-function quit() {
-  cleanup();
-  process.exit(0);
-}
+function quit() { cleanup(); process.exit(0); }
 
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
 process.stdin.setEncoding("utf8");
 process.stdin.setRawMode?.(true);
 process.stdin.resume();
 process.stdin.on("data", (key) => {
-  if (key === "q" || key === "\u001b" || key === "\u0003") return quit();
+  if (key === "\u0003" || (!searchActive && (key === "q" || key === "\u001b"))) return quit();
   const mousePattern = /\u001b\[<(\d+);(\d+);(\d+)([Mm])/g;
-  let match;
-  let handledMouse = false;
-  while ((match = mousePattern.exec(key)) !== null) {
-    handledMouse = true;
-    const button = Number.parseInt(match[1], 10);
-    const column = Number.parseInt(match[2], 10);
-    const row = Number.parseInt(match[3], 10);
-    const phase = match[4];
+  let match; let mouse = false;
+  while ((match = mousePattern.exec(key))) {
+    mouse = true;
+    const button = Number(match[1]); const column = Number(match[2]); const row = Number(match[3]); const phase = match[4];
     if (button === 64 && phase === "M") scrollOffset -= 3;
     if (button === 65 && phase === "M") scrollOffset += 3;
     if (button === 0 && phase === "M") hitTargets.find((target) => target.row === row && column >= target.x1 && column <= target.x2)?.action();
   }
-  if (!handledMouse) {
-    if (key === "1") selectMode("diff");
-    if (key === "2") selectMode("raw");
-    if (key === "3") selectMode("markdown");
-    if (key === "\t") selectMode(activeMode === "diff" ? "raw" : activeMode === "raw" ? (markdownEligible ? "markdown" : "diff") : "diff");
-    if (key === "e") launchEditor();
-    if (key === "j" || key === "\u001b[B") scrollOffset++;
-    if (key === "k" || key === "\u001b[A") scrollOffset--;
+  if (searchActive) {
+    if (key === "\u001b" || key === "\r" || key === "\n") { searchActive = false; if (searchQuery) moveMatch(1); }
+    else if (key === "\u007f" || key === "\b") searchQuery = [...searchQuery].slice(0, -1).join("");
+    else if (key === "\u0015") searchQuery = "";
+    else searchQuery += key.replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
+    currentMatch = -1;
+  } else if (!mouse) {
+    if (key === "1") void loadMode("diff");
+    if (key === "2") void loadMode("raw");
+    if (key === "3") void loadMode("markdown");
+    if (key === "\t") void loadMode(activeMode === "diff" ? "raw" : activeMode === "raw" && markdownEligible ? "markdown" : "diff");
+    if (key === "e") void launchEditor();
+    if (key === "/") searchActive = true;
+    if (key === "n") moveMatch(1);
+    if (key === "N") moveMatch(-1);
+    scrollOffset += (key.match(/j|\u001b\[B/g)?.length || 0);
+    scrollOffset -= (key.match(/k|\u001b\[A/g)?.length || 0);
     if (key === "g") scrollOffset = 0;
-    if (key === "G") scrollOffset = contentFor(activeMode, process.stdout.columns || 90).length;
+    if (key === "G") scrollOffset = content.length;
   }
-  render();
+  scheduleRender();
 });
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
 process.on("exit", cleanup);
 process.stdout.on("resize", render);
 render();
-if (viewerConfig && viewerConfig.autoOpen !== false && viewerConfig.client !== "builtin") {
-  setTimeout(() => {
-    if (markdownEligible) activeMode = "markdown";
-    launchConfiguredViewer(viewerConfig, previewSourcePath(), `${viewerConfig.pattern} viewer`);
-    render();
-  }, 0);
-}
+void loadMode(activeMode).then(() => {
+  if (viewer?.autoOpen) void launchViewer();
+});

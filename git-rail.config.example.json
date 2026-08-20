@@ -1,16 +1,31 @@
 {
-  "client": "vim",
-  "args": [],
-  "mode": "auto",
+  "$schema": "https://raw.githubusercontent.com/KaxyotiK/git-rail/main/schema/v1/git-rail.schema.json",
+  "version": 1,
+  "baseRef": "origin/main",
+  "editor": {
+    "client": "vim",
+    "args": [],
+    "mode": "auto"
+  },
   "viewers": {
     ".md": {
       "client": "glow",
       "args": ["--tui", "--style", "dark"],
-      "mode": "terminal"
+      "mode": "terminal",
+      "autoOpen": false
     },
     ".pdf": {
       "client": "system",
-      "mode": "external"
+      "args": [],
+      "mode": "external",
+      "autoOpen": false
     }
+  },
+  "refresh": {
+    "pollIntervalMs": 10000
+  },
+  "limits": {
+    "maxFileBytes": 4194304,
+    "maxDiffBytes": 8388608
   }
 }

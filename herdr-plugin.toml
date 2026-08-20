@@ -1,41 +1,39 @@
 id = "local.git-rail"
-name = "Git Rail"
+name = "Herdr GitRail"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
-description = "A compact Git sidebar for one repository and branch"
+description = "A trustworthy, read-only Git sidebar for one repository and branch"
 platforms = ["macos", "linux"]
 
 [[actions]]
 id = "open-git-rail"
-title = "Open Git Rail"
+title = "Open GitRail"
 contexts = ["workspace"]
 command = ["bash", "scripts/open-herdr-panel.sh", "git-tui"]
 
 [[actions]]
 id = "open-git-rail-mockup"
-title = "Open Git Rail Mockup"
+title = "Open GitRail Demo"
 contexts = ["workspace"]
 command = ["bash", "scripts/open-herdr-panel.sh", "git-mockup"]
 
 [[panes]]
 id = "git-tui"
-title = "Git Rail"
-description = "Superset-inspired Git rail for the focused repository"
+title = "HERDER GITRAIL"
+description = "Read-only Git inspection for the focused repository"
 placement = "overlay"
 command = ["node", "scripts/git-rail.mjs"]
 
 [[panes]]
 id = "git-mockup"
-title = "Git Rail Mockup"
-description = "Rich deterministic demo of the Git rail"
+title = "GitRail Demo"
+description = "Deterministic GitRail demo derived from a real fixture repository"
 placement = "overlay"
 command = ["node", "scripts/git-rail.mjs", "--demo"]
 
 [[panes]]
 id = "file-preview"
-title = "Git File Preview"
-description = "Read-only file or diff preview opened from the Git rail"
-placement = "popup"
-width = "76%"
-height = "78%"
+title = "GitRail Preview"
+description = "Exact descriptor-aware diff and file preview"
+placement = "tab"
 command = ["node", "scripts/file-preview.mjs"]
