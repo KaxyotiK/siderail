@@ -24,6 +24,7 @@ export function runCommand(command, args = [], options = {}) {
     const child = spawn(command, args, {
       cwd,
       env: env ? { ...process.env, ...env } : process.env,
+      detached: process.platform !== "win32",
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -53,10 +54,16 @@ export function runCommand(command, args = [], options = {}) {
     };
     const terminate = (kind, message) => {
       if (settled) return;
-      child.kill("SIGTERM");
+      const signalTree = (signal) => {
+        try {
+          if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+          else child.kill(signal);
+        } catch { try { child.kill(signal); } catch {} }
+      };
+      signalTree("SIGTERM");
       child.stdout.destroy();
       child.stderr.destroy();
-      setTimeout(() => child.kill("SIGKILL"), 250).unref();
+      setTimeout(() => signalTree("SIGKILL"), 250).unref();
       finish(() => {
         const result = resultSoFar();
         debugLog(command, { durationMs: result.durationMs, exitCode: null, signal: "SIGTERM", outcome: kind });

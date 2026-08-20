@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { runCommand } from "../src/process.mjs";
 
@@ -21,4 +24,23 @@ test("timeouts settle without waiting for descendants that inherited output pipe
     (error) => error.kind === "timeout",
   );
   assert.ok(Date.now() - startedAt < 1_000);
+});
+
+test("timeouts terminate descendants in the command process group", async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-process-tree-"));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const marker = path.join(directory, "survived");
+  const descendant = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'alive'), 300)`;
+  const parent = [
+    "const { spawn } = require('node:child_process')",
+    `const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], { stdio: ['ignore', 1, 2] })`,
+    "child.unref()",
+    "setTimeout(() => {}, 5000)",
+  ].join(";");
+  await assert.rejects(
+    () => runCommand(process.execPath, ["-e", parent], { timeoutMs: 50 }),
+    (error) => error.kind === "timeout",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await assert.rejects(() => fs.access(marker), (error) => error.code === "ENOENT");
 });
