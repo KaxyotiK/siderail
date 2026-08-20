@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { clientMode, loadConfig, resolveViewers } from "../src/config.mjs";
+import { clientMode, loadConfig, resolveViewerActions } from "../src/config.mjs";
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
 import {
@@ -29,10 +29,7 @@ const descriptor = decode("GIT_RAIL_PREVIEW_DESCRIPTOR", { kind: "clean" });
 const metadata = decode("GIT_RAIL_PREVIEW_METADATA", {});
 const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
 const { config, errors: configErrors } = loadConfig(repoRoot);
-const viewerActions = resolveViewers(config, filePath)
-  .filter((viewer) => clientMode(viewer) !== "disabled")
-  .slice(0, 7)
-  .map((viewer, index) => ({ key: String(index + 3), viewer }));
+const viewerActions = resolveViewerActions(config, filePath);
 let activeMode = previewInitialMode(descriptor, metadata);
 let scrollOffset = 0;
 let statusMessage = configErrors[0] || "Read-only preview";

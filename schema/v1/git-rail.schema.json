@@ -58,7 +58,12 @@
         "client": { "type": "string", "pattern": "\\S" },
         "args": { "type": "array", "items": { "type": "string" } },
         "mode": { "enum": ["auto", "terminal", "external"] },
-        "order": { "type": "integer", "minimum": -10000, "maximum": 10000 },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]$",
+          "not": { "enum": ["1", "2", "e", "q", "j", "k", "g", "G", "n", "N"] }
+        },
+        "order": { "type": "integer", "minimum": -10000, "maximum": 10000, "deprecated": true },
         "autoOpen": { "type": "boolean" }
       },
       "required": ["client"]
