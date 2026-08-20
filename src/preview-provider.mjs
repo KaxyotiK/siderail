@@ -24,7 +24,7 @@ async function gitOutput(repoRoot, args, maxOutputBytes, allowExitCodes = [0]) {
 
 export function diffArguments(descriptor, filePath) {
   const common = ["--no-ext-diff", "--color=always", "--find-renames", "--find-copies-harder"];
-  if (descriptor.kind === "head") return ["diff", ...common, "HEAD", "--", filePath];
+  if (descriptor.kind === "workspace") return ["diff", ...common, descriptor.mergeBase || descriptor.baseRef, "--", filePath];
   if (descriptor.kind === "against") return ["diff", ...common, `${descriptor.baseRef}...HEAD`, "--", filePath];
   if (descriptor.kind === "commit") return ["show", "--format=", ...common, descriptor.commitHash, "--", filePath];
   if (descriptor.kind === "staged") return ["diff", ...common, "--cached", "--", filePath];
@@ -46,7 +46,7 @@ export async function loadDiff({ repoRoot, filePath, descriptor, maxOutputBytes 
 }
 
 function descriptorLabel(descriptor) {
-  if (descriptor.kind === "head") return "worktree vs HEAD";
+  if (descriptor.kind === "workspace") return `${descriptor.baseRef} merge base vs worktree`;
   if (descriptor.kind === "against") return `${descriptor.baseRef}...HEAD`;
   if (descriptor.kind === "commit") return descriptor.commitHash;
   if (descriptor.kind === "staged") return "index vs HEAD";
@@ -86,6 +86,7 @@ export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, m
     catch { return { text: await blob(repoRoot, `${descriptor.commitHash}^`, oldPath, maxFileBytes), revision: `${descriptor.commitHash}^:${oldPath}` }; }
   }
   if (descriptor.kind === "against") return { text: await blob(repoRoot, descriptor.baseRef, oldPath, maxFileBytes), revision: `${descriptor.baseRef}:${oldPath}` };
+  if (descriptor.kind === "workspace") return { text: await blob(repoRoot, descriptor.mergeBase || descriptor.baseRef, oldPath, maxFileBytes), revision: `${descriptor.baseRef}:${oldPath}` };
   if (descriptor.kind === "unstaged") return { text: await blob(repoRoot, "", oldPath, maxFileBytes), revision: `index:${oldPath}` };
   return { text: await blob(repoRoot, "HEAD", oldPath, maxFileBytes), revision: `HEAD:${oldPath}` };
 }

@@ -48,13 +48,13 @@ function truncate(value, width) {
 }
 function fit(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
 function descriptorLabel() {
-  if (descriptor.kind === "head") return "Against HEAD";
+  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
   return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
 }
 function comparisonLabel() {
-  if (descriptor.kind === "head") return "Against HEAD · HEAD → worktree";
+  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef} · merge base → worktree`;
   if (descriptor.kind === "against") return `Against ${descriptor.baseRef} · merge base → HEAD`;
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)} · parent → commit`;
   if (descriptor.kind === "staged") return "Staged · HEAD → index";

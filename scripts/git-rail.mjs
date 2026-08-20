@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
-import { displayState, filesAgainstHead, selectionKey } from "../src/model.mjs";
+import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
 import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
@@ -174,7 +174,7 @@ function selectFile(file) {
   statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
-  if (descriptor.kind === "head") return "Against HEAD";
+  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
   return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
@@ -322,7 +322,7 @@ function renderChanges(width) {
   return lines;
 }
 function canonicalFiles() {
-  return filesAgainstHead(state.files || [], state.headChanges || [], Boolean(state.baseRef));
+  return filesAgainstBase(state.files || [], state.workspaceChanges || [], state.workspaceDescriptor);
 }
 function renderFiles(width) {
   const query = fileSearchQuery.trim();

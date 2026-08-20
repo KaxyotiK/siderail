@@ -41,13 +41,13 @@ test("staged, unstaged, against, commit, untracked, and clean descriptors are in
   const options = { repoRoot: root, maxOutputBytes: 1024 * 1024 };
   const staged = await loadDiff({ ...options, filePath: "src/status.mjs", descriptor: { kind: "staged" } });
   const unstaged = await loadDiff({ ...options, filePath: "src/status.mjs", descriptor: { kind: "unstaged" } });
-  const head = await loadDiff({ ...options, filePath: "src/status.mjs", descriptor: { kind: "head" } });
+  const workspace = await loadDiff({ ...options, filePath: "src/status.mjs", descriptor: state.workspaceDescriptor });
   assert.match(staged.text, /staged/);
   assert.doesNotMatch(staged.text, /partially-staged/);
   assert.match(unstaged.text, /partially-staged/);
-  assert.match(head.text, /partially-staged/);
-  assert.match(head.text, /nul-delimited/);
-  assert.doesNotMatch(head.text, /status = 'staged'/);
+  assert.match(workspace.text, /partially-staged/);
+  assert.match(workspace.text, /nul-delimited/);
+  assert.doesNotMatch(workspace.text, /status = 'staged'/);
   const against = await loadDiff({ ...options, filePath: "src/rail.mjs", descriptor: { kind: "against", baseRef: "main" } });
   assert.match(against.text, /staged.*unstaged/s);
   const commit = await loadDiff({ ...options, filePath: "src/rail.mjs", descriptor: { kind: "commit", commitHash: state.commits[0].hash } });
