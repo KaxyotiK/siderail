@@ -9,7 +9,7 @@ import { runGit } from "../src/process.mjs";
 
 const exec = promisify(execFile);
 
-for (const width of [36, 52, 100]) {
+for (const width of [25, 36, 52, 100]) {
   test(`demo snapshot is coherent at ${width} columns`, async () => {
     const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
@@ -19,6 +19,10 @@ for (const width of [36, 52, 100]) {
     assert.doesNotMatch(plain, /CHANGES \d/);
     assert.match(plain, /Staged/);
     assert.match(plain, /Unstaged/);
+    if (width === 25) {
+      assert.match(plain, /status\.mjs/);
+      assert.doesNotMatch(plain, /Untracked/);
+    }
     assert.doesNotMatch(plain, /Read-only demo preview|const panel = "files"/);
     assert.ok(plain.split("\n").every((line) => [...line].length <= width));
   });

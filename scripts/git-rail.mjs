@@ -171,11 +171,18 @@ function descriptorLabel(descriptor = { kind: "clean" }) {
   if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
   return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
 }
+function compactAge(value) {
+  const normalized = String(value || "").replace(/ ago$/, "").replace(/^an? /, "1 ");
+  if (normalized === "just now") return "now";
+  const match = normalized.match(/^(\d+)\s+(second|minute|hour|day|week|month|year)s?/);
+  if (!match) return normalized;
+  const units = { second: "s", minute: "m", hour: "h", day: "d", week: "w", month: "mo", year: "y" };
+  return `${match[1]}${units[match[2]]}`;
+}
 function fileRow(file, width, prefix = " ") {
   keyboardFiles.push(file);
   const stats = statsLabel(file);
-  const contextLabel = file.descriptor?.kind && file.descriptor.kind !== "clean" ? `${C.dim}${descriptorLabel(file.descriptor)}${C.reset}` : "";
-  const suffix = [stats, contextLabel].filter(Boolean).join(" ");
+  const suffix = stats;
   const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
   const body = `${prefix}${statusGlyph(file)} ${truncate(path.basename(file.path), available)}`;
   const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
@@ -255,7 +262,7 @@ function sectionHeader(id, label, count, index, width, forced = false) {
 function renderChanges(width) {
   const query = diffSearchQuery.trim();
   const sections = [
-    { id: "against", label: `Against ${state.baseLabel}`, files: search(state.againstBase || [], query) },
+    { id: "against", label: `Against ${width < 36 ? String(state.baseLabel).split("/").at(-1) : state.baseLabel}`, files: search(state.againstBase || [], query) },
     { id: "commits", label: "Commits", commits: state.commits || [] },
     { id: "staged", label: "Staged", files: search(state.staged || [], query) },
     { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
@@ -280,7 +287,7 @@ function renderChanges(width) {
     const paged = page(section.commits, "commits");
     for (const commit of paged.visible) {
       const open = expandedCommits.has(commit.hash);
-      const age = commit.age?.replace(" ago", "") || "";
+      const age = width < 36 ? compactAge(commit.age) : commit.age?.replace(" ago", "") || "";
       const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
       lines.push(interactive(`${prefix}${truncate(commit.message, Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
       if (!open) continue;
