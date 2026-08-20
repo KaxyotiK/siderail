@@ -29,6 +29,13 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.match(preview, /Opening read-only temporary revision copy/);
 });
 
+test("manual refresh confirmation is transient", async () => {
+  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  assert.match(rail, /showTransientStatus\("Git state refreshed"\)/);
+  assert.match(rail, /statusMessage = transientRestoreStatus;[\s\S]*?draw\(\)/);
+  assert.match(rail, /clearTimeout\(statusTimer\)/);
+});
+
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig(DEFAULT_CONFIG), []);
   assert.deepEqual(validateConfig({ version: 1, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
