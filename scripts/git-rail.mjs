@@ -10,6 +10,7 @@ import {
   compactTerminalPath,
   commitExpansionState,
   createLatestSerialQueue,
+  createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   padAnsiTerminalColumns,
   previewTabName,
@@ -73,7 +74,7 @@ let selectedSection = 0;
 let scrollOffset = 0;
 let selectedIdentity = "";
 let revealSelected = false;
-let keyboardFiles = [];
+let keyboardItems = [];
 let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
 let diffSearchQuery = initialSearch;
@@ -202,6 +203,14 @@ function selectFile(file) {
     ? `${descriptorLabel(file.descriptor)} · ${file.path} · ? stats unavailable (inspection budget)`
     : `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
+function selectKeyboardItem(item) {
+  if (item.file) selectFile(item.file);
+  else {
+    selectedIdentity = item.identity;
+    revealSelected = true;
+    statusMessage = item.status;
+  }
+}
 function descriptorLabel(descriptor = { kind: "clean" }) {
   if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;
   if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)}`;
@@ -210,20 +219,25 @@ function descriptorLabel(descriptor = { kind: "clean" }) {
   return kind[0].toUpperCase() + kind.slice(1);
 }
 function fileRow(file, width, prefix = " ") {
-  keyboardFiles.push(file);
   const stats = statsLabel(file);
   const suffix = stats;
   const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
   const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
   const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
   const identity = selectionKey(state.repoRoot, file);
+  keyboardItems.push({
+    identity,
+    file,
+    status: `${descriptorLabel(file.descriptor)} · ${file.path}`,
+    action: () => void requestPreview(file),
+  });
   const row = interactive(
     identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
     () => selectFile(file),
     `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
     () => void requestPreview(file),
   );
-  row.fileIdentity = identity;
+  row.keyboardIdentity = identity;
   return row;
 }
 function renderTree(files, width, scope) {
@@ -325,6 +339,9 @@ function renderChanges(width) {
   if (state.historyTruncated) lines.push(` ${C.dim}Commit history: newest ${state.commits.length} of ${state.totalCommits}${C.reset}`);
   if (query && state.historyPathsAvailable === false) lines.push(` ${C.dim}Commit path search unavailable; searching summaries only${C.reset}`);
   if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(safe(diffSearchQuery), Math.max(4, width - 31))}”${C.reset}`];
+  if (!query && sections.every((section) => !(section.files?.length || section.commits?.length))) {
+    return [...lines, ` ${C.dim}No changes against ${safe(state.baseLabel)} · working tree clean${C.reset}`];
+  }
   sections.forEach((section, index) => {
     const count = section.files?.length ?? (query
       ? section.commits.length
@@ -344,7 +361,21 @@ function renderChanges(width) {
       const open = expansion.open;
       const age = safe(compactAge(commit.age));
       const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${safe(commit.shortHash)}${C.reset} `;
-      lines.push(interactive(`${prefix}${truncate(safe(commit.message), Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`));
+      const identity = `commit:${commit.hash}`;
+      const line = `${prefix}${truncate(safe(commit.message), Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`;
+      const keyboardItem = {
+        identity,
+        status: `Commit ${safe(commit.shortHash)} · ${safe(commit.message)}`,
+        action: () => void toggleCommit(commit),
+      };
+      keyboardItems.push(keyboardItem);
+      const row = interactive(
+        identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
+        () => { selectKeyboardItem(keyboardItem); void toggleCommit(commit); },
+        `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`,
+      );
+      row.keyboardIdentity = identity;
+      lines.push(row);
       if (!open) continue;
       if (query) {
         const loaded = commitFiles.get(commit.hash);
@@ -374,7 +405,7 @@ function renderFiles(width) {
   return [...lines, ...renderFilesList(files, width, `files:${query}`)];
 }
 function renderBody(width) {
-  keyboardFiles = [];
+  keyboardItems = [];
   if (state.error && !state.repoRoot) return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Focus a Git worktree and press r."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
@@ -401,7 +432,7 @@ function renderFrame() {
   const scrollable = body.slice(fixed.length);
   const visibleHeight = Math.max(0, bodyHeight - fixed.length);
   if (revealSelected) {
-    const selectedRow = scrollable.findIndex((entry) => typeof entry !== "string" && entry.fileIdentity === selectedIdentity);
+    const selectedRow = scrollable.findIndex((entry) => typeof entry !== "string" && entry.keyboardIdentity === selectedIdentity);
     scrollOffset = revealScrollOffset(selectedRow, scrollOffset, visibleHeight, scrollable.length);
     revealSelected = false;
   }
@@ -492,11 +523,12 @@ async function openPreview(file) {
     if (paneId && stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
       try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd }); } catch {}
     }
-    statusMessage = `Preview opened · ${descriptorLabel(file.descriptor)}`;
+    let previewStatus = `Preview opened · ${descriptorLabel(file.descriptor)}`;
     if (tabId) {
       try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: focusedCwd }); }
-      catch (error) { statusMessage += ` · tab name unavailable: ${safe(error.message)}`; }
+      catch (error) { previewStatus += ` · tab name unavailable: ${safe(error.message)}`; }
     }
+    showTransientStatus(previewStatus);
   } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
 }
@@ -584,13 +616,10 @@ process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
 process.stdin.setEncoding("utf8");
 process.stdin.setRawMode?.(true);
 process.stdin.resume();
-process.stdin.on("data", (key) => {
+function handleInput(key) {
   if (!key) return;
-  const mousePattern = /\u001b\[<(\d+);(\d+);(\d+)([Mm])/g;
-  let match;
-  let mouse = false;
-  while ((match = mousePattern.exec(key))) {
-    mouse = true;
+  const match = key.match(/^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/);
+  if (match) {
     const button = Number(match[1]); const column = Number(match[2]); const row = Number(match[3]); const phase = match[4];
     if (button === 64 && phase === "M") scrollOffset = Math.max(0, scrollOffset - 3);
     if (button === 65 && phase === "M") scrollOffset += 3;
@@ -602,35 +631,37 @@ process.stdin.on("data", (key) => {
         else { target.action(); lastClick = { label: target.label, at: now }; }
       }
     }
+    scheduleDraw();
+    return;
   }
-  if (mouse) { scheduleDraw(); return; }
   if (key === "\u0003" || (!activeSearch && (key === "q" || key === "\u001b"))) { void quit(); return; }
   if (activeSearch) {
     let query = activeSearch === "files" ? fileSearchQuery : diffSearchQuery;
+    const searchKind = activeSearch;
     if (key === "\u001b" || key === "\r" || key === "\n") activeSearch = "";
     else if (key === "\u007f" || key === "\b") query = [...query].slice(0, -1).join("");
     else if (key === "\u0015") query = "";
     else query += key.replaceAll("\u001b[200~", "").replaceAll("\u001b[201~", "").replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
-    if (activeSearch === "files") fileSearchQuery = query; else if (activeSearch === "changes") diffSearchQuery = query;
+    if (searchKind === "files") fileSearchQuery = query; else if (searchKind === "changes") diffSearchQuery = query;
     scrollOffset = 0; scheduleDraw(); return;
   }
   if (key === "\t") { mainTab = mainTab === "changes" ? "files" : "changes"; scrollOffset = 0; }
   else if (key === "/") activeSearch = mainTab;
   else if (/^(?:j|\u001b\[B)+$/.test(key)) {
     const steps = key.match(/j|\u001b\[B/g)?.length || 1;
-    const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + steps))];
-    if (next) selectFile(next);
+    const index = keyboardItems.findIndex((item) => item.identity === selectedIdentity);
+    const next = keyboardItems[Math.min(keyboardItems.length - 1, Math.max(0, index + steps))];
+    if (next) selectKeyboardItem(next);
   }
   else if (/^(?:k|\u001b\[A)+$/.test(key)) {
     const steps = key.match(/k|\u001b\[A/g)?.length || 1;
-    const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - steps)];
-    if (next) selectFile(next);
+    const index = keyboardItems.findIndex((item) => item.identity === selectedIdentity);
+    const next = keyboardItems[Math.max(0, index < 0 ? 0 : index - steps)];
+    if (next) selectKeyboardItem(next);
   }
   else if (key === "\r" || key === "\n" || key === "o") {
-    const selected = keyboardFiles.find((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    if (selected) void requestPreview(selected);
+    const selected = keyboardItems.find((item) => item.identity === selectedIdentity);
+    if (selected && (key !== "o" || selected.file)) selected.action();
   }
   else if (key === "l" || key === "\u001b[C") selectedSection = Math.min(sectionIds.length - 1, selectedSection + 1);
   else if (key === "h" || key === "\u001b[D") selectedSection = Math.max(0, selectedSection - 1);
@@ -640,7 +671,9 @@ process.stdin.on("data", (key) => {
   else if (key === "g") toggleViewMode(Math.max(24, process.stdout.columns || 52));
   else if (key === "r") { void refreshState(true); return; }
   scheduleDraw();
-});
+}
+const inputDecoder = createTerminalInputDecoder(handleInput);
+process.stdin.on("data", (key) => inputDecoder.push(key));
 process.on("SIGTERM", () => void quit());
 process.on("SIGINT", () => void quit());
 process.stdout.on("resize", scheduleDraw);

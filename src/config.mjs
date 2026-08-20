@@ -95,7 +95,10 @@ export function validateConfig(config) {
   if (config.editor !== undefined) validateLaunch(config.editor, "editor", errors);
   if (config.viewers !== undefined) {
     if (!isObject(config.viewers)) errors.push("viewers must be an object");
-    else for (const [pattern, value] of Object.entries(config.viewers)) validateViewer(value, `viewers[${JSON.stringify(pattern)}]`, errors);
+    else for (const [pattern, value] of Object.entries(config.viewers)) {
+      if (!pattern) errors.push("viewer patterns must not be empty");
+      validateViewer(value, `viewers[${JSON.stringify(pattern)}]`, errors);
+    }
   }
   if (config.refresh !== undefined) {
     if (!isObject(config.refresh)) errors.push("refresh must be an object");
@@ -181,9 +184,13 @@ export function loadConfig(repoRoot, env = process.env) {
 }
 
 export function resolveViewers(config, filePath) {
-  const name = path.basename(filePath).toLocaleLowerCase();
+  const name = path.basename(filePath).toLowerCase();
   return Object.entries(config.viewers || {})
-    .filter(([pattern]) => pattern === "*" || name === pattern.toLocaleLowerCase() || name.endsWith(pattern.toLocaleLowerCase()))
+    .filter(([pattern]) => {
+      const normalized = pattern.toLowerCase();
+      if (pattern === "*") return true;
+      return normalized.startsWith(".") ? name.endsWith(normalized) : name === normalized;
+    })
     .flatMap(([pattern, value], patternOrder) => (Array.isArray(value) ? value : [value])
       .map((rule, ruleOrder) => ({ pattern, patternOrder, ruleOrder, ...rule })))
     .sort((left, right) => (left.order ?? 100) - (right.order ?? 100)

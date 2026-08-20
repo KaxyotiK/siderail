@@ -10,6 +10,8 @@ press `r`. GitRail is deliberately scoped to one focused worktree.
 Set `baseRef` in configuration or `GIT_RAIL_BASE`. Without an override, GitRail
 tries the remote HEAD, `origin/main`, `origin/master`, `main`, and `master`.
 Unborn repositories have no Against-base or commit range until the first commit.
+An explicit base must resolve to a commit. Missing refs and blob/tree object
+expressions are reported instead of silently falling back to another branch.
 
 ## Configuration error
 
@@ -24,6 +26,8 @@ the preview omits the `e` action. Otherwise, confirm the executable is on
 preview pane; external clients open outside Herdr. Set `mode` explicitly when
 automatic detection is unsuitable. Viewer actions appear only when the selected
 filename matches enabled rules and use their configured `key` bindings.
+Patterns beginning with `.` match filename suffixes; other patterns match an
+exact basename.
 The `*` rule matches every filename. No viewer auto-opens unless its rule sets
 `autoOpen: true`; the installed Markdown rules enable it for Glow by default.
 If Glow is missing, GitRail does not attempt to spawn it repeatedly: the preview
@@ -31,8 +35,13 @@ stays usable in Diff or Raw and reports how to disable auto-open.
 
 ## Binary or oversized preview
 
-The safety limit is intentional. Increase `limits.maxFileBytes` or
+Raw is a textual UTF-8 view, but configured external Open/viewer actions receive
+a bounded byte-preserving copy of the exact selected revision and can handle
+binary formats. The safety limit is intentional. Increase `limits.maxFileBytes` or
 `limits.maxDiffBytes` only for a trusted repository, up to 64 MiB.
+The terminal preview also rejects content above 100,000 lines before splitting
+or parsing it to prevent small, highly fragmented files from amplifying memory.
+Use a configured external Open/viewer action for those files.
 
 ## State appears stale
 

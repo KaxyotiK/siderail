@@ -34,11 +34,17 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.match(preview, /viewerActions\.find/);
   assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?Glow is not installed/);
   assert.ok(preview.indexOf("executableAvailable(viewer)") < preview.indexOf("sourceForLaunch(false, true)"));
+  assert.doesNotMatch(preview, /Math\.max\([^)]*\.\.\.(?:content|rows)/);
+  assert.match(preview, /repeat\(contentGutterColumns\)/);
+  assert.match(preview, /MAX_PREVIEW_LINES = 100_000/);
+  assert.ok(preview.indexOf("assertPreviewLineLimit(result.text)") < preview.indexOf("diffLines(result.text)"));
 });
 
 test("manual refresh confirmation is transient", async () => {
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
   assert.match(rail, /showTransientStatus\("Git state refreshed"\)/);
+  assert.match(rail, /showTransientStatus\(previewStatus\)/);
+  assert.doesNotMatch(rail, /statusMessage = `Preview opened/);
   assert.match(rail, /statusMessage = transientRestoreStatus;[\s\S]*?draw\(\)/);
   assert.match(rail, /clearTimeout\(statusTimer\)/);
 });
@@ -57,6 +63,7 @@ test("published schema exposes labels only on viewer rules", async () => {
   assert.equal(schema.$defs.viewer.properties.key.pattern, "^[A-Za-z0-9]$");
   assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].type, "array");
   assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].minItems, 1);
+  assert.equal(schema.properties.viewers.propertyNames.minLength, 1);
 });
 
 test("configuration requires a version and rejects nested unknown keys", () => {
@@ -69,6 +76,7 @@ test("configuration requires a version and rejects nested unknown keys", () => {
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", key: "q" } } }).includes('viewers[".md"].key must be one unreserved letter or digit'));
   assert.deepEqual(validateConfig({ version: 1, viewers: { "*": [{ client: "system", key: "o" }, { client: "code", key: "9" }] } }), []);
   assert.ok(validateConfig({ version: 1, viewers: { "*": [] } }).includes('viewers["*"] must contain at least one viewer action'));
+  assert.ok(validateConfig({ version: 1, viewers: { "": { client: "open" } } }).includes("viewer patterns must not be empty"));
   assert.ok(validateConfig({ version: 1, refresh: { intervalMs: 5000 } }).includes("unknown refresh key: intervalMs"));
   assert.ok(validateConfig({ version: 1, limits: { maxFilesBytes: 4096 } }).includes("unknown limits key: maxFilesBytes"));
 });
@@ -97,6 +105,8 @@ test("viewer actions resolve conditionally by selected filename", () => {
   };
   assert.deepEqual(resolveViewers(config, "reports/summary.PDF").map(({ label }) => label), ["Open PDF", "Open File", "Open in Code"]);
   assert.deepEqual(resolveViewers(config, "Makefile").map(({ label }) => label), ["Build file", "Open File", "Open in Code"]);
+  assert.deepEqual(resolveViewers(config, "NotMakefile").map(({ label }) => label), ["Open File", "Open in Code"]);
+  assert.deepEqual(resolveViewers(config, "report.notpdf").map(({ label }) => label), ["Open File", "Open in Code"]);
   assert.equal(resolveViewer(config, "package.json").label, "Open File");
   assert.deepEqual(resolveViewerActions(config, "reports/summary.PDF").map(({ key, viewer }) => [key, viewer.label]), [
     ["3", "Open PDF"], ["o", "Open File"], ["9", "Open in Code"],

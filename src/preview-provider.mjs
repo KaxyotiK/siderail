@@ -13,6 +13,12 @@ async function safeWorktreePath(repoRoot, relativePath) {
     return resolved;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
+    try {
+      const entry = await fs.lstat(lexical);
+      if (entry.isSymbolicLink()) throw new Error("Refusing to follow a dangling symlink");
+    } catch (entryError) {
+      if (entryError.code !== "ENOENT") throw entryError;
+    }
     const parent = await fs.realpath(path.dirname(lexical));
     if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to resolve a path through a symlink outside the repository");
     return lexical;
@@ -42,7 +48,9 @@ export function diffArguments(descriptor, filePath, metadata = {}) {
   const common = ["--no-ext-diff", "--color=always", "--find-renames", "--find-copies-harder"];
   const paths = pathspecs(filePath, metadata);
   if (descriptor.kind === "workspace") return ["diff", ...common, descriptor.mergeBase || descriptor.baseRef, "--", ...paths];
-  if (descriptor.kind === "against") return ["diff", ...common, `${descriptor.baseRef}...HEAD`, "--", ...paths];
+  if (descriptor.kind === "against") return descriptor.mergeBase
+    ? ["diff", ...common, descriptor.mergeBase, "HEAD", "--", ...paths]
+    : ["diff", ...common, `${descriptor.baseRef}...HEAD`, "--", ...paths];
   if (descriptor.kind === "commit" && descriptor.parentHash) return ["diff", ...common, descriptor.parentHash, descriptor.commitHash, "--", ...paths];
   if (descriptor.kind === "commit" && descriptor.parentHash === "") return ["show", "--root", "--format=", ...common, descriptor.commitHash, "--", ...paths];
   if (descriptor.kind === "staged") return ["diff", ...common, "--cached", "--", ...paths];
@@ -81,7 +89,7 @@ function descriptorLabel(descriptor) {
   return descriptor.kind;
 }
 
-async function readBounded(filePath, maxBytes) {
+async function readBoundedBuffer(filePath, maxBytes) {
   const handle = await fs.open(filePath, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
@@ -94,7 +102,7 @@ async function readBounded(filePath, maxBytes) {
       if (!bytesRead) break;
       offset += bytesRead;
     }
-    return decodeText(buffer.subarray(0, offset));
+    return buffer.subarray(0, offset);
   } finally {
     await handle.close();
   }
@@ -106,7 +114,7 @@ function decodeText(content) {
   catch { throw new Error("File is not valid UTF-8 — textual preview unavailable"); }
 }
 
-async function readSymlink(repoRoot, relativePath, maxBytes) {
+async function readSymlinkBuffer(repoRoot, relativePath, maxBytes) {
   const root = await fs.realpath(repoRoot);
   const lexical = path.resolve(root, relativePath);
   if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to read a path outside the repository");
@@ -116,13 +124,12 @@ async function readSymlink(repoRoot, relativePath, maxBytes) {
   if (!stat.isSymbolicLink()) throw new Error("Expected a symbolic link");
   const target = await fs.readlink(lexical, { encoding: "buffer" });
   if (target.length > maxBytes) throw new Error(`File is ${target.length} bytes; preview limit is ${maxBytes} bytes`);
-  return decodeText(target);
+  return target;
 }
 
-async function blob(repoRoot, revision, filePath, maxBytes) {
-  const spec = `${revision}:${filePath}`;
-  const content = (await runGit(repoRoot, ["show", spec], { maxOutputBytes: maxBytes, stdoutEncoding: null })).stdout;
-  return decodeText(content);
+async function blobBuffer(repoRoot, revision, filePath, maxBytes) {
+  const spec = revision === "index" ? `:./${filePath}` : `${revision}:${filePath}`;
+  return (await runGit(repoRoot, ["show", spec], { maxOutputBytes: maxBytes, stdoutEncoding: null })).stdout;
 }
 
 function isMissingContent(error) {
@@ -147,23 +154,23 @@ async function submoduleText(repoRoot, revision, filePath, maxBytes) {
     await fs.lstat(path.join(absolute, ".git"));
     objectId = (await gitOutput(absolute, ["rev-parse", "HEAD"], maxBytes)).trim();
   } else if (revision === "index") {
-    objectId = (await gitOutput(repoRoot, ["rev-parse", `:${filePath}`], maxBytes)).trim();
+    objectId = (await gitOutput(repoRoot, ["rev-parse", `:./${filePath}`], maxBytes)).trim();
   } else {
     objectId = (await gitOutput(repoRoot, ["rev-parse", `${revision}:${filePath}`], maxBytes)).trim();
   }
   return `Submodule commit ${objectId}\n`;
 }
 
-export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, maxFileBytes }) {
+async function loadRawContent({ repoRoot, filePath, descriptor, metadata = {}, maxFileBytes }, decode) {
   const oldPath = metadata.oldPath || filePath;
   const raw = async (revision, rawPath, label, contentMetadata = metadata) => ({
-    text: contentMetadata.submodule
-      ? await submoduleText(repoRoot, revision, rawPath, maxFileBytes)
+    content: contentMetadata.submodule
+      ? decode(Buffer.from(await submoduleText(repoRoot, revision, rawPath, maxFileBytes)))
       : revision === "worktree"
         ? contentMetadata.symlink
-          ? await readSymlink(repoRoot, rawPath, maxFileBytes)
-          : await readBounded(await safeWorktreePath(repoRoot, rawPath), maxFileBytes)
-        : await blob(repoRoot, revision === "index" ? "" : revision, rawPath, maxFileBytes),
+          ? decode(await readSymlinkBuffer(repoRoot, rawPath, maxFileBytes))
+          : decode(await readBoundedBuffer(await safeWorktreePath(repoRoot, rawPath), maxFileBytes))
+        : decode(await blobBuffer(repoRoot, revision, rawPath, maxFileBytes)),
     revision: label,
   });
   if (descriptor.kind === "commit") {
@@ -178,7 +185,8 @@ export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, m
     try { return await raw("HEAD", filePath, `HEAD:${filePath}`); }
     catch (error) {
       if (!isMissingContent(error)) throw error;
-      return raw(descriptor.baseRef, oldPath, `${descriptor.baseRef}:${oldPath}`, previousMetadata(metadata));
+      const revision = descriptor.mergeBase || descriptor.baseRef;
+      return raw(revision, oldPath, `${revision}:${oldPath}`, previousMetadata(metadata));
     }
   }
   if (descriptor.kind === "staged") {
@@ -208,6 +216,16 @@ export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, m
     }
   }
   throw new Error(`Unsupported raw descriptor: ${descriptor.kind}`);
+}
+
+export async function loadRaw(options) {
+  const result = await loadRawContent(options, decodeText);
+  return { text: result.content, revision: result.revision };
+}
+
+export async function loadRawBytes(options) {
+  const result = await loadRawContent(options, (content) => content);
+  return { bytes: result.content, revision: result.revision };
 }
 
 export { safeWorktreePath };

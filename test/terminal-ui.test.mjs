@@ -10,12 +10,14 @@ import {
   commitExpansionState,
   commitComparisonSource,
   createLatestSerialQueue,
+  createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   padAnsiTerminalColumns,
   previewInitialMode,
   previewTabName,
   revealScrollOffset,
   sanitizeTerminalText,
+  sliceAnsiTerminalColumns,
   startupFailureState,
   stripSgrMouseEvents,
   terminalColumns,
@@ -73,6 +75,18 @@ test("terminal layout helpers measure, truncate, pad, and compact by display col
   assert.ok(terminalColumns(compact) <= 12);
   assert.match(compact, /^…\//);
   assert.equal(compactTerminalPath("long/path", 1), "…");
+  assert.equal(sliceAnsiTerminalColumns("\u001b[31m0123456789\u001b[0m", 4, 3), "\u001b[31m456\u001b[0m");
+  assert.equal(terminalColumns(sliceAnsiTerminalColumns("A界BC", 1, 3)), 3);
+});
+
+test("terminal input decoder preserves ordered coalesced keyboard, CSI, and mouse events", async () => {
+  const events = [];
+  const decoder = createTerminalInputDecoder((event) => events.push(event), 5);
+  decoder.push("/return\r\u001b[B\u001b[<0;12;4Mj");
+  assert.deepEqual(events, ["/", "r", "e", "t", "u", "r", "n", "\r", "\u001b[B", "\u001b[<0;12;4M", "j"]);
+  decoder.push("\u001b");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(events.at(-1), "\u001b");
 });
 
 test("summary-only commit matches can expand to meaningful file content", () => {

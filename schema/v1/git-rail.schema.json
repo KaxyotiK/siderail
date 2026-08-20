@@ -11,6 +11,7 @@
     "editor": { "$ref": "#/$defs/launch" },
     "viewers": {
       "type": "object",
+      "propertyNames": { "minLength": 1 },
       "additionalProperties": {
         "oneOf": [
           { "$ref": "#/$defs/viewer" },

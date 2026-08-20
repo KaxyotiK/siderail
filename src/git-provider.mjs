@@ -48,9 +48,9 @@ async function resolveBranch(repoRoot) {
   }
 }
 
-async function refExists(repoRoot, ref) {
+async function commitRefExists(repoRoot, ref) {
   try {
-    await runGit(repoRoot, ["rev-parse", "--verify", "--quiet", ref]);
+    await runGit(repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
     return true;
   } catch {
     return false;
@@ -58,13 +58,18 @@ async function refExists(repoRoot, ref) {
 }
 
 async function resolveBase(repoRoot, requested) {
+  if (requested) {
+    return await commitRefExists(repoRoot, requested)
+      ? { baseRef: requested, error: "" }
+      : { baseRef: "", error: `Configured base ref does not resolve to a commit: ${requested}` };
+  }
   let remoteHead = "";
   try {
     remoteHead = (await gitText(repoRoot, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])).trim();
   } catch {}
-  const candidates = [...new Set([requested, remoteHead, "origin/main", "origin/master", "main", "master"].filter(Boolean))];
-  for (const candidate of candidates) if (await refExists(repoRoot, candidate)) return candidate;
-  return (await refExists(repoRoot, "HEAD")) ? "HEAD" : "";
+  const candidates = [...new Set([remoteHead, "origin/main", "origin/master", "main", "master"].filter(Boolean))];
+  for (const candidate of candidates) if (await commitRefExists(repoRoot, candidate)) return { baseRef: candidate, error: "" };
+  return { baseRef: await commitRefExists(repoRoot, "HEAD") ? "HEAD" : "", error: "" };
 }
 
 function withDescriptor(files, descriptor) {
@@ -162,12 +167,12 @@ function comparisonModeMetadata(oldMode, newMode) {
 async function workingFiles(repoRoot, maxFileBytes) {
   const output = await gitText(repoRoot, ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
   const records = parsePorcelainV2Z(output);
-  const [stagedStatsOutput, unstagedStatsOutput] = await Promise.all([
-    gitText(repoRoot, ["diff", "--cached", "--numstat", "-z", "--find-renames", "--find-copies"]),
-    gitText(repoRoot, ["diff", "--numstat", "-z", "--find-renames", "--find-copies"]),
+  const [stagedChanges, unstagedChanges] = await Promise.all([
+    changedFiles(repoRoot, ["--cached"], { kind: "staged" }),
+    changedFiles(repoRoot, [], { kind: "unstaged" }),
   ]);
-  const stagedStats = parseNumstatZ(stagedStatsOutput);
-  const unstagedStats = parseNumstatZ(unstagedStatsOutput);
+  const stagedByPath = new Map(stagedChanges.map((file) => [file.path, file]));
+  const unstagedByPath = new Map(unstagedChanges.map((file) => [file.path, file]));
   const staged = [];
   const unstaged = [];
   let untrackedFilesInspected = 0;
@@ -199,20 +204,28 @@ async function workingFiles(repoRoot, maxFileBytes) {
       continue;
     }
     if (record.indexCode && ![".", " ", "?"].includes(record.indexCode)) {
+      const change = stagedByPath.get(record.path) || {};
       staged.push({
         ...record,
+        ...change,
         ...comparisonModeMetadata(record.headMode, record.indexMode),
-        status: statusName(record.indexCode),
-        ...(stagedStats.get(record.path) || { additions: 0, deletions: 0, binary: false }),
+        status: record.indexCode === "U" ? "conflicted" : change.status || statusName(record.indexCode),
+        additions: change.additions || 0,
+        deletions: change.deletions || 0,
+        binary: Boolean(change.binary),
         descriptor: { kind: "staged" },
       });
     }
     if (record.worktreeCode && ![".", " ", "?"].includes(record.worktreeCode)) {
+      const change = unstagedByPath.get(record.path) || {};
       unstaged.push({
         ...record,
+        ...change,
         ...comparisonModeMetadata(record.indexMode, record.worktreeMode),
-        status: statusName(record.worktreeCode),
-        ...(unstagedStats.get(record.path) || { additions: 0, deletions: 0, binary: false }),
+        status: record.worktreeCode === "U" ? "conflicted" : change.status || statusName(record.worktreeCode),
+        additions: change.additions || 0,
+        deletions: change.deletions || 0,
+        binary: Boolean(change.binary),
         descriptor: { kind: "unstaged" },
       });
     }
@@ -295,17 +308,23 @@ export async function getRepositoryState(cwd, options = {}) {
       configErrors: [],
     };
   }
-  const { config, errors: configErrors } = loadConfig(repoRoot, options.env || process.env);
-  const [branch, baseRef] = await Promise.all([resolveBranch(repoRoot), resolveBase(repoRoot, config.baseRef)]);
+  const { config, errors: loadedConfigErrors } = loadConfig(repoRoot, options.env || process.env);
+  const [branch, resolvedBase] = await Promise.all([resolveBranch(repoRoot), resolveBase(repoRoot, config.baseRef)]);
+  const { baseRef } = resolvedBase;
+  const configErrors = [...loadedConfigErrors, ...(resolvedBase.error ? [resolvedBase.error] : [])];
   const workingPromise = workingFiles(repoRoot, config.limits.maxFileBytes);
   const trackedPromise = gitText(repoRoot, ["ls-files", "-z", "--stage"]).then((output) => {
     const entries = parseLsFilesStageZ(output);
     return { paths: [...new Set(entries.map((entry) => entry.path))], entries };
   });
-  const againstPromise = baseRef && baseRef !== "HEAD"
-    ? changedFiles(repoRoot, [`${baseRef}...HEAD`], { kind: "against", baseRef })
-    : Promise.resolve([]);
   const workspacePromise = workspaceState(repoRoot, baseRef);
+  const againstPromise = baseRef && baseRef !== "HEAD"
+    ? workspacePromise.then(({ workspaceDescriptor }) => changedFiles(
+      repoRoot,
+      [workspaceDescriptor.mergeBase, "HEAD"],
+      { kind: "against", baseRef, mergeBase: workspaceDescriptor.mergeBase },
+    ))
+    : Promise.resolve([]);
   const [working, trackedData, againstBase, workspace, commitData, tracking] = await Promise.all([
     workingPromise,
     trackedPromise,
