@@ -22,11 +22,15 @@ json_value() {
 }
 
 workspace_id="${HERDR_WORKSPACE_ID:-}"
+tab_id="${HERDR_TAB_ID:-}"
 target_pane_id="${HERDR_PANE_ID:-${HERDR_TARGET_PANE_ID:-}}"
 workspace_cwd="${GIT_RAIL_WORKSPACE_CWD:-}"
 context_json="${HERDR_PLUGIN_CONTEXT_JSON:-}"
 if [[ -z "$workspace_id" && -n "$context_json" ]]; then
   workspace_id="$(json_value "$context_json" 'workspace_id' | head -n1 | tr -d '\r\n')"
+fi
+if [[ -z "$tab_id" && -n "$context_json" ]]; then
+  tab_id="$(json_value "$context_json" 'tab_id' | head -n1 | tr -d '\r\n')"
 fi
 if [[ -z "$target_pane_id" && -n "$context_json" ]]; then
   target_pane_id="$(json_value "$context_json" 'focused_pane_id' | head -n1 | tr -d '\r\n')"
@@ -53,8 +57,23 @@ fi
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/herdr-gitrail/panes"
 mkdir -p "$state_dir"
 chmod 700 "$state_dir"
-state_key="$(printf '%s-%s' "$workspace_id" "$entrypoint" | tr -cs 'A-Za-z0-9._-' '_')"
+state_scope="${tab_id:-$workspace_id}"
+state_key="$(printf '%s-%s-%s' "$workspace_id" "$state_scope" "$entrypoint" | tr -cs 'A-Za-z0-9._-' '_')"
 state_file="$state_dir/$state_key"
+lock_dir="$state_file.lock"
+lock_acquired=false
+for _ in {1..400}; do
+  if mkdir "$lock_dir" 2>/dev/null; then
+    lock_acquired=true
+    break
+  fi
+  sleep 0.05
+done
+if [[ "$lock_acquired" != true ]]; then
+  echo "GitRail pane creation is already in progress for this tab" >&2
+  exit 0
+fi
+trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT
 if [[ -f "$state_file" ]]; then
   previous_pane_id="$(head -n1 "$state_file" | tr -d '\r\n')"
   previous_pane_json=""
@@ -62,9 +81,10 @@ if [[ -f "$state_file" ]]; then
     previous_pane_json="$("$herdr" pane get "$previous_pane_id" 2>/dev/null || true)"
   fi
   previous_workspace_id="$(json_value "$previous_pane_json" 'result.pane.workspace_id' | head -n1 | tr -d '\r\n')"
+  previous_tab_id="$(json_value "$previous_pane_json" 'result.pane.tab_id' | head -n1 | tr -d '\r\n')"
   previous_label="$(json_value "$previous_pane_json" 'result.pane.label' | head -n1 | tr -d '\r\n')"
   previous_configured_cwd="$(sed -n '2p' "$state_file" | tr -d '\r\n')"
-  if [[ "$previous_workspace_id" == "$workspace_id" && "$previous_label" == "HERDER GITRAIL" ]]; then
+  if [[ "$previous_workspace_id" == "$workspace_id" && ( -z "$tab_id" || "$previous_tab_id" == "$tab_id" ) && "$previous_label" == "HERDER GITRAIL" ]]; then
     if [[ "$open_mode" == "ensure" && ( -z "$workspace_cwd" || "$previous_configured_cwd" == "$workspace_cwd" ) ]]; then
       printf '%s\n' "$previous_pane_json"
       exit 0

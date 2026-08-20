@@ -5,38 +5,58 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
-import { autoOpenEnabled, collectWorkspaceTargets, workspaceTargetFromContext } from "../scripts/auto-open-herdr-workspaces.mjs";
+import { autoOpenEnabled, collectTabTargets, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
 
 const execFileAsync = promisify(execFile);
 
-test("workspace creation uses the event workspace instead of the globally focused workspace", () => {
-  const target = workspaceTargetFromContext({
+test("tab creation uses the event tab instead of the globally focused tab", () => {
+  const target = tabTargetFromContext({
     workspace_id: "w2",
+    tab_id: "w2:t3",
     workspace_cwd: "/repos/two",
     focused_pane_id: "w2:p1",
     focused_pane_cwd: "/repos/two/subdir",
     worktree: { checkout_path: "/worktrees/two" },
   }, {});
-  assert.deepEqual(target, { workspaceId: "w2", paneId: "w2:p1", cwd: "/worktrees/two" });
+  assert.deepEqual(target, { workspaceId: "w2", tabId: "w2:t3", paneId: "w2:p1", cwd: "/worktrees/two" });
 });
 
-test("startup reconciliation chooses one non-GitRail pane per workspace", () => {
+test("startup reconciliation chooses one non-GitRail pane per tab", () => {
   const workspaces = { result: { workspaces: [
-    { workspace_id: "w1", active_tab_id: "w1:t2" },
-    { workspace_id: "w2", active_tab_id: "w2:t1", worktree: { checkout_path: "/worktrees/two" } },
-    { workspace_id: "w3", active_tab_id: "w3:t1" },
-    { workspace_id: "w4", active_tab_id: "w4:t1" },
+    { workspace_id: "w1" },
+    { workspace_id: "w2", worktree: { checkout_path: "/worktrees/two" } },
+  ] } };
+  const tabs = { result: { tabs: [
+    { workspace_id: "w1", tab_id: "w1:t1" },
+    { workspace_id: "w1", tab_id: "w1:t2" },
+    { workspace_id: "w1", tab_id: "w1:t3" },
+    { workspace_id: "w2", tab_id: "w2:t1" },
   ] } };
   const panes = { result: { panes: [
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/wrong-tab" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repos/one-a" },
     { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p1", cwd: "/repos/one", focused: true },
+    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p3", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t3", pane_id: "w1:p4", cwd: "/repos/preview", label: "GitRail Preview" },
     { workspace_id: "w2", tab_id: "w2:t1", pane_id: "w2:p1", cwd: "/wrong" },
-    { workspace_id: "w3", pane_id: "w3:p1", label: "HERDER GITRAIL" },
-    { workspace_id: "w4", pane_id: "w4:p1", label: "Grove Git Rail" },
   ] } };
-  assert.deepEqual(collectWorkspaceTargets(workspaces, panes), [
-    { workspaceId: "w1", paneId: "w1:p1", cwd: "/repos/one" },
-    { workspaceId: "w2", paneId: "w2:p1", cwd: "/worktrees/two" },
+  assert.deepEqual(collectTabTargets(workspaces, tabs, panes), [
+    { workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p2", cwd: "/repos/one-a" },
+    { workspaceId: "w2", tabId: "w2:t1", paneId: "w2:p1", cwd: "/worktrees/two" },
+  ]);
+});
+
+test("event reconciliation filters to the created tab", () => {
+  const workspaces = { result: { workspaces: [{ workspace_id: "w1" }] } };
+  const tabs = { result: { tabs: [
+    { workspace_id: "w1", tab_id: "w1:t1" },
+    { workspace_id: "w1", tab_id: "w1:t2" },
+  ] } };
+  const panes = { result: { panes: [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/one" },
+    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p2", cwd: "/two" },
+  ] } };
+  assert.deepEqual(collectTabTargets(workspaces, tabs, panes, { workspaceId: "w1", tabId: "w1:t2" }), [
+    { workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p2", cwd: "/two" },
   ]);
 });
 
@@ -78,6 +98,7 @@ printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"pane_id":"w1:p2"}}}}'
       HERDR_BIN_PATH: mock,
       HERDR_PLUGIN_ID: "local.git-rail",
       HERDR_WORKSPACE_ID: "w1",
+      HERDR_TAB_ID: "w1:t1",
       HERDR_PANE_ID: "w1:p1",
       HERDR_PLUGIN_CONTEXT_JSON: "",
       GIT_RAIL_WORKSPACE_CWD: selectedRepo,
@@ -90,4 +111,6 @@ printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"pane_id":"w1:p2"}}}}'
   assert.deepEqual(args.slice(args.indexOf("--env"), args.indexOf("--env") + 2), [
     "--env", `GIT_RAIL_REPO_ROOT=${selectedRepo}`,
   ]);
+  const stateFiles = await fs.readdir(path.join(root, "cache", "herdr-gitrail", "panes"));
+  assert.ok(stateFiles.some((name) => name.includes("w1_t1")));
 });

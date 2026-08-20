@@ -29,8 +29,8 @@ intentional configuration changes documented here.
 - Add explicit clean state, keyboard-reachable commit history, ordered terminal
   input decoding, horizontal preview navigation, wrapped narrow actions, and
   transient preview-open feedback.
-- Auto-open one unfocused GitRail pane in Git-backed Herdr workspaces at startup
-  and workspace creation, with a global or per-repository `herdr.autoOpen`
-  opt-out.
+- Auto-open one unfocused GitRail pane per Git-backed Herdr tab at startup and
+  workspace or tab creation, with a global or per-repository `herdr.autoOpen`
+  opt-out and duplicate-open protection.
 - Configure the initial rail width with `herdr.sidebarWidth`, defaulting to the
   34-column development layout while preserving later manual resizing.

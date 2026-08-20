@@ -7,11 +7,12 @@ press `r`. GitRail is deliberately scoped to one focused worktree.
 
 ## GitRail did not open automatically
 
-Automatic opening runs for Git-backed workspaces when Herdr starts or emits
-`workspace.created`. Confirm the plugin is enabled and that
+Automatic opening runs for each Git-backed tab when Herdr starts or emits
+`workspace.created` or `tab.created`. Confirm the plugin is enabled and that
 `herdr.autoOpen` is not `false` in the user or repository configuration. A
 newly linked plugin does not receive Herdr's one-shot startup hook until the next
-server start; use **Open GitRail** for the current workspace in the meantime.
+server start; use **Open GitRail** for an existing tab in the meantime. GitRail
+file-preview tabs are intentionally excluded.
 
 ## GitRail opened at the wrong width
 

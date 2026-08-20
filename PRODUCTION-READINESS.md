@@ -84,10 +84,10 @@ choose editor and viewer executables.
 
 ## Refresh and lifecycle
 
-Herdr startup and `workspace.created` hooks ensure one unfocused GitRail pane
-for each Git-backed workspace. Automatic opening is enabled by default and can
-be disabled globally or per repository with `herdr.autoOpen`; non-Git
-workspaces are ignored.
+Herdr startup plus `workspace.created` and `tab.created` hooks ensure one
+unfocused GitRail pane for each Git-backed tab. Automatic opening is enabled by
+default and can be disabled globally or per repository with `herdr.autoOpen`;
+non-Git tabs and GitRail's own file-preview tabs are ignored.
 New rails apply `herdr.sidebarWidth` once at creation without taking focus;
 subsequent manual resizing remains owned by Herdr.
 

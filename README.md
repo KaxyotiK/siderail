@@ -117,7 +117,7 @@ fields as commands. Backward-compatible additions remain on version 1. Viewer
 should use explicit `key` values.
 
 GitRail opens automatically, without taking focus, in every Git-backed Herdr
-workspace when Herdr starts or a workspace is created. Disable that globally in
+tab when Herdr starts or a workspace or tab is created. Disable that globally in
 `~/.config/git-rail/config.json`, or for one repository in `.git-rail.json`:
 
 ```json
@@ -127,8 +127,8 @@ workspace when Herdr starts or a workspace is created. Disable that globally in
 }
 ```
 
-Non-Git workspaces are ignored. Manual **Open GitRail** actions remain available
-when automatic opening is disabled.
+Non-Git tabs and GitRail's own file-preview tabs are ignored. Manual **Open
+GitRail** actions remain available when automatic opening is disabled.
 
 New rails open at the configured terminal-column width. The installed default
 matches the 34-column development rail; narrower layouts cap the rail at half

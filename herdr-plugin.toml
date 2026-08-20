@@ -6,11 +6,15 @@ description = "A trustworthy, read-only Git sidebar for one repository and branc
 platforms = ["macos", "linux"]
 
 [[startup]]
-command = ["node", "scripts/auto-open-herdr-workspaces.mjs"]
+command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[events]]
 on = "workspace.created"
-command = ["node", "scripts/auto-open-herdr-workspaces.mjs"]
+command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+
+[[events]]
+on = "tab.created"
+command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[actions]]
 id = "open-git-rail"
