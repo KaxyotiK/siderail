@@ -61,3 +61,19 @@ test("diff rows neutralize repository-controlled terminal sequences", () => {
   assert.equal(rows.at(-1).text, "before�after");
   assert.doesNotMatch(JSON.stringify(rows), /(?:\u001b|]52;|c3RlYWw=)/);
 });
+
+test("structured diff parsing strips Git color without losing hunk semantics", () => {
+  const color = (code, text) => `\u001b[${code}m${text}\u001b[m`;
+  const rows = parseUnifiedDiff([
+    color("1", "diff --git a/file.txt b/file.txt"),
+    color("36", "@@ -1 +1 @@"),
+    color("31", "-before"),
+    color("32", "+after"),
+  ].join("\n"));
+
+  assert.deepEqual(rows, [
+    { kind: "hunk", text: "@@ -1 +1 @@" },
+    { kind: "deleted", oldLine: 1, newLine: null, text: "before" },
+    { kind: "added", oldLine: null, newLine: 1, text: "after" },
+  ]);
+});

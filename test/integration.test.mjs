@@ -194,6 +194,11 @@ test("untracked text line counts match Git numstat semantics", async (t) => {
   assert.equal(counts.get("unterminated.txt"), 1);
   assert.equal(counts.get("mixed.txt"), 2);
   assert.equal(counts.get("link.txt"), 1);
+  const link = state.unstaged.find((file) => file.path === "link.txt");
+  assert.equal(link.symlink, true);
+  const raw = await loadRaw({ repoRoot: root, filePath: link.path, descriptor: link.descriptor, metadata: link, maxFileBytes: 1024 });
+  assert.equal(raw.text, "../outside-target");
+  assert.equal(raw.revision, "worktree");
 });
 
 test("against-base model retains deletion, rename, copy, executable, and symlink metadata", async (t) => {
@@ -226,6 +231,15 @@ test("against-base model retains deletion, rename, copy, executable, and symlink
   assert.equal(statuses.get("tool.sh").executableChange, true);
   assert.equal(statuses.get("source-link").status, "added");
   assert.equal(statuses.get("source-link").symlink, true);
+  const symlinkRaw = await loadRaw({
+    repoRoot: root,
+    filePath: "source-link",
+    descriptor: state.workspaceDescriptor,
+    metadata: statuses.get("source-link"),
+    maxFileBytes: 1024,
+  });
+  assert.equal(symlinkRaw.text, "copy-source.txt");
+  assert.equal(symlinkRaw.revision, "worktree");
 });
 
 test("unmerged porcelain state remains an explicit conflict in both scopes", async (t) => {

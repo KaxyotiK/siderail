@@ -154,7 +154,17 @@ function launch(configValue, sourcePath, label) {
   resume();
   statusMessage = result.error ? `${label} failed: ${safe(result.error.message)}` : result.status === 0 ? `Returned from ${safe(path.basename(configValue.client))}` : `${label} exited with status ${result.status}`;
 }
-async function sourceForLaunch(copyForDemo = false) {
+async function materializedRawSource() {
+  if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
+  fs.chmodSync(temporaryDirectory, 0o700);
+  const copy = path.join(temporaryDirectory, path.basename(filePath) || "preview.txt");
+  const raw = await loadRaw({ repoRoot, filePath, descriptor, metadata, maxFileBytes: config.limits.maxFileBytes });
+  fs.writeFileSync(copy, raw.text, { mode: 0o600 });
+  return copy;
+}
+async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
+  const materialize = exactRevision && (["commit", "against", "staged"].includes(descriptor.kind) || metadata.status === "deleted");
+  if (materialize) return materializedRawSource();
   const source = await safeWorktreePath(repoRoot, filePath);
   if (!copyForDemo || !temporarySource) return source;
   if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
@@ -166,7 +176,7 @@ async function sourceForLaunch(copyForDemo = false) {
 }
 async function launchViewer() {
   if (!markdownEligible) { statusMessage = "Markdown is only available for Markdown files"; render(); return; }
-  try { launch(viewer || config.viewers[".md"], await sourceForLaunch(false), "Markdown viewer"); }
+  try { launch(viewer || config.viewers[".md"], await sourceForLaunch(false, true), "Markdown viewer"); }
   catch (error) { statusMessage = `Markdown source unavailable: ${safe(error.message)}`; }
   render();
 }

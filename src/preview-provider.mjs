@@ -75,13 +75,33 @@ async function readBounded(filePath, maxBytes) {
     const stat = await handle.stat();
     if (stat.size > maxBytes) throw new Error(`File is ${stat.size} bytes; preview limit is ${maxBytes} bytes`);
     const buffer = Buffer.alloc(stat.size);
-    await handle.read(buffer, 0, stat.size, 0);
-    if (buffer.subarray(0, Math.min(8_192, buffer.length)).includes(0)) throw new Error("Binary file — textual preview unavailable");
-    try { return new TextDecoder("utf-8", { fatal: true }).decode(buffer); }
+    let offset = 0;
+    while (offset < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
+      if (!bytesRead) break;
+      offset += bytesRead;
+    }
+    const content = buffer.subarray(0, offset);
+    if (content.subarray(0, Math.min(8_192, content.length)).includes(0)) throw new Error("Binary file — textual preview unavailable");
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(content); }
     catch { throw new Error("File is not valid UTF-8 — textual preview unavailable"); }
   } finally {
     await handle.close();
   }
+}
+
+async function readSymlink(repoRoot, relativePath, maxBytes) {
+  const root = await fs.realpath(repoRoot);
+  const lexical = path.resolve(root, relativePath);
+  if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to read a path outside the repository");
+  const parent = await fs.realpath(path.dirname(lexical));
+  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to resolve a path through a symlink outside the repository");
+  const stat = await fs.lstat(lexical);
+  if (!stat.isSymbolicLink()) throw new Error("Expected a symbolic link");
+  const target = await fs.readlink(lexical, { encoding: "buffer" });
+  if (target.length > maxBytes) throw new Error(`File is ${target.length} bytes; preview limit is ${maxBytes} bytes`);
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(target); }
+  catch { throw new Error("File is not valid UTF-8 — textual preview unavailable"); }
 }
 
 async function blob(repoRoot, revision, filePath, maxBytes) {
@@ -109,7 +129,9 @@ export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, m
     text: metadata.submodule
       ? await submoduleText(repoRoot, revision, rawPath, maxFileBytes)
       : revision === "worktree"
-        ? await readBounded(await safeWorktreePath(repoRoot, rawPath), maxFileBytes)
+        ? metadata.symlink
+          ? await readSymlink(repoRoot, rawPath, maxFileBytes)
+          : await readBounded(await safeWorktreePath(repoRoot, rawPath), maxFileBytes)
         : await blob(repoRoot, revision === "index" ? "" : revision, rawPath, maxFileBytes),
     revision: label,
   });

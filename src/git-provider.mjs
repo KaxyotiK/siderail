@@ -94,10 +94,11 @@ async function countUntracked(repoRoot, filePath, maxBytes) {
     const lexical = path.resolve(root, filePath);
     if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
     const lexicalStat = await fs.lstat(lexical);
+    const symlink = lexicalStat.isSymbolicLink();
     let buffer;
-    if (lexicalStat.isSymbolicLink()) {
+    if (symlink) {
       buffer = await fs.readlink(lexical, { encoding: "buffer" });
-      if (buffer.length > maxBytes) return { additions: 0, binary: false, oversized: true };
+      if (buffer.length > maxBytes) return { additions: 0, binary: false, oversized: true, symlink };
     } else {
       const absolute = await fs.realpath(lexical);
       if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
@@ -121,7 +122,7 @@ async function countUntracked(repoRoot, filePath, maxBytes) {
     const additions = buffer.length === 0
       ? 0
       : buffer.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0) + (buffer.at(-1) === 0x0a ? 0 : 1);
-    return { additions: binary ? 0 : additions, binary };
+    return { additions: binary ? 0 : additions, binary, symlink };
   } catch {
     return { additions: 0, binary: false };
   }
@@ -148,6 +149,7 @@ async function workingFiles(repoRoot, maxFileBytes) {
         deletions: 0,
         binary: counted.binary,
         oversized: counted.oversized,
+        symlink: counted.symlink,
         descriptor: { kind: "untracked" },
       });
       continue;

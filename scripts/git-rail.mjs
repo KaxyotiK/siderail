@@ -408,6 +408,22 @@ function paneStateFile(workspaceId) {
   return path.join(directory, `${workspaceId.replace(/[^A-Za-z0-9._-]/g, "_")}.preview`);
 }
 async function openPreview(file) {
+  if (file.descriptor?.kind === "commit" && !Object.hasOwn(file.descriptor, "parentHash")) {
+    try {
+      let details = commitFiles.get(file.descriptor.commitHash);
+      if (!details) {
+        details = await getCommitFiles(state.repoRoot, file.descriptor.commitHash, state.config.limits.maxDiffBytes);
+        commitFiles.set(file.descriptor.commitHash, details);
+      }
+      file = details.find((candidate) => candidate.path === file.path)
+        || details.find((candidate) => candidate.oldPath === file.path)
+        || file;
+    } catch (error) {
+      statusMessage = `Commit file details failed: ${error.message}`;
+      draw();
+      return;
+    }
+  }
   const herdr = process.env.HERDR_BIN_PATH || "herdr";
   const workspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
   const selfPaneId = await currentPaneId();
@@ -419,7 +435,13 @@ async function openPreview(file) {
     } catch {}
   }
   const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
-  const metadata = Buffer.from(JSON.stringify({ status: file.status, oldPath: file.oldPath, binary: file.binary })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({
+    status: file.status,
+    oldPath: file.oldPath,
+    binary: file.binary,
+    submodule: file.submodule,
+    symlink: file.symlink,
+  })).toString("base64url");
   const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);

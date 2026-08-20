@@ -38,7 +38,7 @@ descriptors for overlapping staged and unstaged changes.
 | --- | --- |
 | Files, changed | merge base of configured base and `HEAD` to worktree |
 | Against base | configured base merge base to `HEAD` |
-| Commit | selected commit's patch for the selected path |
+| Commit | selected commit against its first parent; root commits use the empty tree |
 | Staged | `HEAD` to index |
 | Unstaged | index to worktree |
 | Untracked | complete addition from `/dev/null` |

@@ -69,7 +69,7 @@ oversized content produce bounded, actionable errors.
 | Files tab, changed | `git diff <merge-base(base, HEAD)> -- <path>` |
 | Files tab, unchanged | Raw by default; Diff reports no change |
 | Against base | `git diff <base>...HEAD -- <path>` |
-| Commit | `git show --format= <commit> -- <path>` |
+| Commit | first-parent diff (`<parent>..<commit>`); root commits use the empty tree |
 | Staged | `git diff --cached -- <path>` |
 | Unstaged | `git diff -- <path>` |
 | Untracked | complete addition from `/dev/null` |

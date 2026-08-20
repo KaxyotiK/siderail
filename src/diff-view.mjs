@@ -1,5 +1,7 @@
 import { sanitizeTerminalText } from "./terminal-ui.mjs";
 
+const CSI = /(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g;
+
 export function parseUnifiedDiff(value) {
   const rows = [];
   let oldLine = 0;
@@ -9,7 +11,10 @@ export function parseUnifiedDiff(value) {
   let parentLines = [];
 
   for (const unsafeLine of String(value ?? "").replace(/\n$/, "").split("\n")) {
-    const sourceLine = sanitizeTerminalText(unsafeLine);
+    // Git owns color CSI in this stream. Strip it before sanitizing repository
+    // content so hunk/file prefixes remain machine-readable without allowing
+    // any terminal control sequence through to the renderer.
+    const sourceLine = sanitizeTerminalText(unsafeLine.replace(CSI, ""));
     const hunk = sourceLine.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
     if (hunk) {
       oldLine = Number(hunk[1]);

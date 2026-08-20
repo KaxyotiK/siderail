@@ -4,6 +4,7 @@ const STRING_CONTROL = /(?:\u001b[PX^_]|[\u0090\u0098\u009e\u009f])[\s\S]*?(?:\u
 const OSC = /(?:\u001b\]|\u009d)[\s\S]*?(?:\u0007|\u001b\\|\u009c)/g;
 const CSI = /(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+const BIDI_CONTROL = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const COMBINING = /\p{Mark}/u;
 const EMOJI = /\p{Extended_Pictographic}/u;
 
@@ -14,7 +15,8 @@ export function sanitizeTerminalText(value, replacement = "�") {
     .replace(CSI, replacement)
     .replace(/\u001b./gs, replacement)
     .replace(/\u001b/g, replacement)
-    .replace(CONTROL, replacement);
+    .replace(CONTROL, replacement)
+    .replace(BIDI_CONTROL, replacement);
 }
 
 function terminalWidth(value) {

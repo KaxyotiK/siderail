@@ -26,9 +26,10 @@ test("terminal text blocks OSC52 and every terminal control family", () => {
     "\u0098sos\u009c",
     "\u001b[31mred",
     "\u0000\u001f\u007f\u0085",
+    "\u202econcealed",
   ].join("");
   const clean = sanitizeTerminalText(malicious);
-  assert.doesNotMatch(clean, /(?:secret|device-control|privacy|apc|sos|\u001b|[\u0000-\u001f\u007f-\u009f])/);
+  assert.doesNotMatch(clean, /(?:secret|device-control|privacy|apc|sos|\u001b|\u202e|[\u0000-\u001f\u007f-\u009f])/);
   assert.match(clean, /^safe/);
 });
 
