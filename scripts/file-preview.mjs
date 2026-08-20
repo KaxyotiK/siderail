@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { clientMode, loadConfig, resolveViewerActions } from "../src/config.mjs";
+import { clientMode, executableAvailable, launchExecutable, loadConfig, resolveViewerActions } from "../src/config.mjs";
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
 import {
@@ -139,7 +139,7 @@ function launch(configValue, sourcePath, label) {
   if (!configValue || configValue.client === "builtin") return;
   const mode = clientMode(configValue);
   if (mode === "disabled") { statusMessage = `${label} is disabled`; return; }
-  const executable = configValue.client === "system" ? (process.platform === "darwin" ? "open" : "xdg-open") : configValue.client;
+  const executable = launchExecutable(configValue);
   if (mode === "external") {
     const child = spawn(executable, [...configValue.args, sourcePath], { detached: true, stdio: "ignore", shell: false });
     child.on("error", (error) => { statusMessage = `${label} failed: ${safe(error.message)}`; render(); });
@@ -179,6 +179,14 @@ async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
 }
 async function launchViewer(viewer) {
   if (!viewer) { statusMessage = "No viewer is configured for this file"; render(); return; }
+  if (!executableAvailable(viewer)) {
+    const client = path.basename(viewer.client);
+    statusMessage = client.toLocaleLowerCase() === "glow"
+      ? "Glow is not installed · install glow or set autoOpen to false"
+      : `${client || "Viewer"} is not available · install it or update viewer config`;
+    render();
+    return;
+  }
   const label = viewer.label || `View with ${path.basename(viewer.client)}`;
   try { launch(viewer, await sourceForLaunch(false, true), label); }
   catch (error) { statusMessage = `Viewer source unavailable: ${safe(error.message)}`; }

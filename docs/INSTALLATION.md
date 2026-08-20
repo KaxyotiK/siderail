@@ -10,6 +10,12 @@ herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
 ```
 
+Install [Glow](https://github.com/charmbracelet/glow) to use the installed
+Markdown default. GitRail automatically launches Glow for `.md`, `.mdx`, and
+`.markdown` previews. Diff and Raw do not require Glow, and the viewer rule can
+be disabled or replaced in configuration. When Glow is not on `PATH`, GitRail
+skips automatic launch and keeps the preview open with an installation hint.
+
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the
 checkout, run `npm run check`, relink with `herdr plugin link .`, and reopen it.
 Use a tagged release in production rather than an arbitrary moving branch.

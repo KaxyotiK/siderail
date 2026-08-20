@@ -22,3 +22,5 @@ intentional configuration changes documented here.
   selected filename matches a configured rule; Markdown defaults to Glow.
 - Compose multiple matching global and file-specific viewer actions with
   configurable key bindings.
+- Ship `o Open` globally and auto-open Markdown through the `3` Glow action.
+- Skip unavailable viewer auto-launches and retain Diff/Raw with an install hint.

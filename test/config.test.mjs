@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { clientMode, DEFAULT_CONFIG, loadConfig, resolveViewer, resolveViewerActions, resolveViewers, validateConfig } from "../src/config.mjs";
+import { clientMode, DEFAULT_CONFIG, executableAvailable, launchExecutable, loadConfig, resolveViewer, resolveViewerActions, resolveViewers, validateConfig } from "../src/config.mjs";
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
@@ -32,6 +32,8 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.equal(preview.includes("markdownEligible"), false);
   assert.match(preview, /resolveViewerActions\(config, filePath\)/);
   assert.match(preview, /viewerActions\.find/);
+  assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?Glow is not installed/);
+  assert.ok(preview.indexOf("executableAvailable(viewer)") < preview.indexOf("sourceForLaunch(false, true)"));
 });
 
 test("manual refresh confirmation is transient", async () => {
@@ -75,7 +77,13 @@ test("viewer actions resolve conditionally by selected filename", () => {
   const markdown = resolveViewer(DEFAULT_CONFIG, "docs/README.md");
   assert.equal(markdown.client, "glow");
   assert.equal(markdown.label, "View Markdown");
-  assert.equal(resolveViewer(DEFAULT_CONFIG, "docs/README.txt"), null);
+  assert.equal(markdown.autoOpen, true);
+  assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.md").map(({ key, viewer }) => [key, viewer.label]), [
+    ["3", "View Markdown"], ["o", "Open"],
+  ]);
+  assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.txt").map(({ key, viewer }) => [key, viewer.label]), [
+    ["o", "Open"],
+  ]);
 
   const config = {
     viewers: {
@@ -101,6 +109,21 @@ test("viewer actions resolve conditionally by selected filename", () => {
   assert.deepEqual(resolveViewerActions(legacy, "README.txt").map(({ key, viewer }) => [key, viewer.label]), [
     ["3", "First"], ["4", "Second"],
   ]);
+});
+
+test("viewer executable preflight detects commands without invoking them", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-viewer-bin-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const executable = path.join(root, "test-viewer");
+  await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+  await fs.chmod(executable, 0o700);
+
+  assert.equal(executableAvailable({ client: "test-viewer", mode: "external" }, { PATH: root }), true);
+  assert.equal(executableAvailable({ client: "missing-viewer", mode: "external" }, { PATH: root }), false);
+  assert.equal(executableAvailable({ client: "none", mode: "auto" }, { PATH: root }), false);
+  assert.equal(executableAvailable({ client: "builtin", mode: "auto" }, { PATH: "" }), true);
+  assert.equal(launchExecutable({ client: "system" }, "darwin"), "open");
+  assert.equal(launchExecutable({ client: "system" }, "linux"), "xdg-open");
 });
 
 test("configuration rejects mistyped structured values", () => {

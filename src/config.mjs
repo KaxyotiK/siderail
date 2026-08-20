@@ -9,9 +9,10 @@ export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
-    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
-    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
+    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    "*": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
   limits: { maxFileBytes: 4 * 1024 * 1024, maxDiffBytes: 8 * 1024 * 1024 },
@@ -211,6 +212,24 @@ export function resolveViewerActions(config, filePath) {
     if (!key) return [];
     used.add(key);
     return [{ key, viewer }];
+  });
+}
+
+export function launchExecutable(config, platform = process.platform) {
+  if (config.client === "system") return platform === "darwin" ? "open" : "xdg-open";
+  return config.client;
+}
+
+export function executableAvailable(config, env = process.env, platform = process.platform) {
+  const mode = clientMode(config);
+  if (mode === "disabled") return false;
+  if (mode === "builtin") return true;
+  const executable = launchExecutable(config, platform);
+  const candidates = /[\\/]/.test(executable)
+    ? [executable]
+    : String(env.PATH || "").split(path.delimiter).filter(Boolean).map((directory) => path.join(directory, executable));
+  return candidates.some((candidate) => {
+    try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
   });
 }
 
