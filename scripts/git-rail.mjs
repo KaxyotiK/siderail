@@ -73,6 +73,7 @@ let hitTargets = [];
 let lastClick = { label: "", at: 0 };
 let refreshGeneration = 0;
 let refreshRunning = false;
+let refreshVisible = false;
 let refreshQueued = false;
 let refreshTimer;
 let watchTimer;
@@ -236,7 +237,7 @@ function search(files, rawQuery) {
 }
 function toolbar(width) {
   const layout = resolvedViewMode(width) === "tree" ? "≡ Tree" : "≣ Folders";
-  const refresh = refreshRunning ? "↻ Refreshing…" : "↻ Refresh";
+  const refresh = refreshVisible ? "↻ Refreshing…" : "↻ Refresh";
   const text = ` ${C.gold}${layout}${C.reset}   ${C.fog}${refresh}${C.reset}`;
   return regions(fitAnsi(text, width), [
     { x1: 1, x2: 1 + visibleLength(layout), action: () => toggleViewMode(width), label: "Toggle layout" },
@@ -399,7 +400,13 @@ async function refreshState(announce = false) {
   if (refreshRunning) { refreshQueued = true; return; }
   refreshRunning = true;
   const generation = ++refreshGeneration;
-  draw();
+  let indicatorTimer;
+  if (announce) { refreshVisible = true; draw(); }
+  else {
+    indicatorTimer = setTimeout(() => {
+      if (refreshRunning && generation === refreshGeneration) { refreshVisible = true; draw(); }
+    }, 150);
+  }
   try {
     const next = await getRepositoryState(providerCwd);
     if (generation === refreshGeneration) {
@@ -410,7 +417,9 @@ async function refreshState(announce = false) {
     }
   } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
   finally {
+    clearTimeout(indicatorTimer);
     refreshRunning = false;
+    refreshVisible = false;
     draw();
     if (refreshQueued) { refreshQueued = false; void refreshState(false); }
   }
@@ -418,9 +427,13 @@ async function refreshState(announce = false) {
 function startInvalidation() {
   if (demoMode || !state.repoRoot) return;
   const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
-  for (const target of [state.repoRoot, path.join(state.repoRoot, ".git")]) {
-    try { watchers.push(fs.watch(target, { recursive: process.platform === "darwin" }, debounce)); } catch {}
-  }
+  try {
+    watchers.push(fs.watch(state.repoRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
+      if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
+      debounce();
+    }));
+  } catch {}
+  try { watchers.push(fs.watch(path.join(state.repoRoot, ".git"), { recursive: process.platform === "darwin" }, debounce)); } catch {}
   refreshTimer = setInterval(() => void refreshState(false), state.config.refresh.pollIntervalMs);
   refreshTimer.unref();
 }

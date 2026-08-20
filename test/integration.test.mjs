@@ -24,6 +24,16 @@ test("fixture state is derived by the production provider", async (t) => {
   assert.ok(files.every((file) => file.descriptor.commitHash === state.commits[0].hash));
 });
 
+test("read-only refresh does not rewrite the Git index", async (t) => {
+  const root = await createFixtureRepository();
+  t.after(() => removeFixtureRepository(root));
+  const indexPath = path.join(root, ".git", "index");
+  const before = await fs.stat(indexPath, { bigint: true });
+  await getRepositoryState(root);
+  const after = await fs.stat(indexPath, { bigint: true });
+  assert.equal(after.mtimeNs, before.mtimeNs);
+});
+
 test("staged, unstaged, against, commit, untracked, and clean descriptors are independent", async (t) => {
   const root = await createFixtureRepository();
   t.after(() => removeFixtureRepository(root));

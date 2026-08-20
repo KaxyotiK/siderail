@@ -89,5 +89,9 @@ export function runCommand(command, args = [], options = {}) {
 }
 
 export function runGit(cwd, args, options = {}) {
-  return runCommand("git", args, { cwd, ...options });
+  return runCommand("git", args, {
+    cwd,
+    ...options,
+    env: { GIT_OPTIONAL_LOCKS: "0", ...(options.env || {}) },
+  });
 }
