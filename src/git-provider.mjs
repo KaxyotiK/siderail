@@ -16,6 +16,8 @@ import {
 import { buildPathIndex } from "./model.mjs";
 import { ProcessError, runGit } from "./process.mjs";
 
+const HISTORY_LIMIT = 200;
+
 async function gitText(cwd, args, options = {}) {
   return (await runGit(cwd, args, options)).stdout;
 }
@@ -128,6 +130,21 @@ async function countUntracked(repoRoot, filePath, maxBytes) {
   }
 }
 
+function comparisonModeMetadata(oldMode, newMode) {
+  if (!oldMode || !newMode) return {};
+  return {
+    mode: newMode,
+    oldMode,
+    newMode,
+    executableChange: oldMode !== newMode && (oldMode === "100755" || newMode === "100755"),
+    executable: newMode === "100755",
+    oldSymlink: oldMode === "120000",
+    symlink: newMode === "120000",
+    oldSubmodule: oldMode === "160000",
+    submodule: newMode === "160000",
+  };
+}
+
 async function workingFiles(repoRoot, maxFileBytes) {
   const output = await gitText(repoRoot, ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
   const records = parsePorcelainV2Z(output);
@@ -157,6 +174,7 @@ async function workingFiles(repoRoot, maxFileBytes) {
     if (record.indexCode && ![".", " ", "?"].includes(record.indexCode)) {
       staged.push({
         ...record,
+        ...comparisonModeMetadata(record.headMode, record.indexMode),
         status: statusName(record.indexCode),
         ...(stagedStats.get(record.path) || { additions: 0, deletions: 0, binary: false }),
         descriptor: { kind: "staged" },
@@ -165,6 +183,7 @@ async function workingFiles(repoRoot, maxFileBytes) {
     if (record.worktreeCode && ![".", " ", "?"].includes(record.worktreeCode)) {
       unstaged.push({
         ...record,
+        ...comparisonModeMetadata(record.indexMode, record.worktreeMode),
         status: statusName(record.worktreeCode),
         ...(unstagedStats.get(record.path) || { additions: 0, deletions: 0, binary: false }),
         descriptor: { kind: "unstaged" },
@@ -185,16 +204,40 @@ async function trackingState(repoRoot) {
 }
 
 async function commitState(repoRoot, baseRef) {
-  if (!baseRef || baseRef === "HEAD") return { commits: [], totalCommits: 0, commitPathIndex: new Map() };
+  if (!baseRef || baseRef === "HEAD") return {
+    commits: [],
+    totalCommits: 0,
+    commitPathIndex: new Map(),
+    historyLimit: HISTORY_LIMIT,
+    historyTruncated: false,
+    historyPathsAvailable: true,
+  };
   const range = `${baseRef}..HEAD`;
-  const [log, countText, pathLog] = await Promise.all([
-    gitText(repoRoot, ["log", "--first-parent", "-z", "--format=%H%x00%h%x00%s%x00%an%x00%ar", range]),
+  const [log, countText] = await Promise.all([
+    gitText(repoRoot, ["log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H%x00%h%x00%s%x00%an%x00%ar", range]),
     gitText(repoRoot, ["rev-list", "--first-parent", "--count", range]),
-    gitText(repoRoot, ["log", "--first-parent", "-z", "--format=%H", "--raw", "--no-abbrev", "--no-renames", range]),
   ]);
   const commits = parseCommitLogZ(log);
-  const commitPathIndex = parseCommitPathsRawLogZ(pathLog);
-  return { commits, totalCommits: Number.parseInt(countText.trim(), 10) || 0, commitPathIndex };
+  const totalCommits = Number.parseInt(countText.trim(), 10) || 0;
+  let commitPathIndex = new Map();
+  let historyPathsAvailable = true;
+  try {
+    const pathLog = await gitText(repoRoot, [
+      "log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H",
+      "--raw", "--no-abbrev", "--no-renames", range,
+    ]);
+    commitPathIndex = parseCommitPathsRawLogZ(pathLog);
+  } catch {
+    historyPathsAvailable = false;
+  }
+  return {
+    commits,
+    totalCommits,
+    commitPathIndex,
+    historyLimit: HISTORY_LIMIT,
+    historyTruncated: totalCommits > commits.length,
+    historyPathsAvailable,
+  };
 }
 
 export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 * 1024 * 1024) {
@@ -269,8 +312,19 @@ export async function getRepositoryState(cwd, options = {}) {
     executable: entry.mode === "100755",
   }]));
   for (const list of [state.againstBase, state.workspaceChanges, state.staged, state.unstaged]) {
-    for (const file of list) Object.assign(file, trackedMetadata.get(file.path) || {});
+    for (const file of list) {
+      const tracked = trackedMetadata.get(file.path);
+      if (!tracked) continue;
+      for (const [key, value] of Object.entries(tracked)) {
+        if (!Object.hasOwn(file, key)) file[key] = value;
+      }
+    }
   }
-  state.files = buildPathIndex(state);
+  state.files = buildPathIndex({
+    ...state,
+    tracked: trackedData.entries
+      .filter((entry) => entry.stage === 0)
+      .map((entry) => ({ path: entry.path, ...trackedMetadata.get(entry.path) })),
+  });
   return state;
 }

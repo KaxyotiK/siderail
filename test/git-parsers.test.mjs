@@ -6,6 +6,7 @@ import {
   parseNameStatusZ,
   parseNumstatZ,
   parsePorcelainV2Z,
+  parseRawDiffZ,
 } from "../src/git-parsers.mjs";
 
 test("commit machine formats preserve control characters and unambiguous paths", () => {
@@ -53,8 +54,19 @@ test("porcelain v2 parser preserves spaces, tabs, unicode, renames, and conflict
   assert.equal(entries[0].path, "path with space.txt");
   assert.equal(entries[1].path, "renamed → file.txt");
   assert.equal(entries[1].oldPath, "old\tname.txt");
+  assert.equal(entries[1].headMode, "100644");
+  assert.equal(entries[1].indexMode, "100644");
+  assert.equal(entries[1].worktreeMode, "100644");
   assert.equal(entries[2].conflict, "UU");
   assert.equal(entries[3].path, "leading - and ünicode.txt");
+});
+
+test("raw mode metadata describes the new side while retaining the old type", () => {
+  const metadata = parseRawDiffZ(":120000 100644 aaaaaaa bbbbbbb T\0link-to-file\0").get("link-to-file");
+  assert.equal(metadata.oldSymlink, true);
+  assert.equal(metadata.symlink, false);
+  assert.equal(metadata.oldSubmodule, false);
+  assert.equal(metadata.submodule, false);
 });
 
 test("name-status and numstat parse rename pairs without human-format reconstruction", () => {

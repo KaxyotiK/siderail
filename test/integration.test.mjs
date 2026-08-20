@@ -6,7 +6,7 @@ import test from "node:test";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import { diffArguments, loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
-import { runGit } from "../src/process.mjs";
+import { runCommand, runGit } from "../src/process.mjs";
 
 test("fixture state is derived by the production provider", async (t) => {
   const root = await createFixtureRepository();
@@ -199,6 +199,55 @@ test("untracked text line counts match Git numstat semantics", async (t) => {
   const raw = await loadRaw({ repoRoot: root, filePath: link.path, descriptor: link.descriptor, metadata: link, maxFileBytes: 1024 });
   assert.equal(raw.text, "../outside-target");
   assert.equal(raw.revision, "worktree");
+  const diff = await loadDiff({ repoRoot: root, filePath: link.path, descriptor: link.descriptor, metadata: link, maxOutputBytes: 1024 });
+  assert.match(diff.text.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, ""), /\+\.\.\/outside-target/);
+});
+
+test("clean tracked files retain symlink and executable metadata", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-clean-modes-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "target.txt"), "target\n");
+  await fs.writeFile(path.join(root, "tool.sh"), "#!/bin/sh\n", { mode: 0o755 });
+  await fs.symlink("target.txt", path.join(root, "link"));
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "modes"], { env: identity });
+  const state = await getRepositoryState(root);
+  const files = new Map(state.files.map((file) => [file.path, file]));
+  assert.equal(files.get("link").clean, true);
+  assert.equal(files.get("link").symlink, true);
+  assert.equal(files.get("tool.sh").clean, true);
+  assert.equal(files.get("tool.sh").executable, true);
+  assert.equal((await loadRaw({ repoRoot: root, filePath: "link", descriptor: { kind: "clean" }, metadata: files.get("link"), maxFileBytes: 1024 })).text, "target.txt");
+});
+
+test("unstaged type changes use worktree mode rather than index mode", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-type-mode-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "target.txt"), "target\n");
+  await fs.symlink("target.txt", path.join(root, "value"));
+  await fs.writeFile(path.join(root, "other"), "regular in index\n");
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "types"], { env: identity });
+  await fs.unlink(path.join(root, "value"));
+  await fs.writeFile(path.join(root, "value"), "regular in worktree\n");
+  await fs.unlink(path.join(root, "other"));
+  await fs.symlink("target.txt", path.join(root, "other"));
+  const state = await getRepositoryState(root);
+  const regular = state.unstaged.find((file) => file.path === "value");
+  const symlink = state.unstaged.find((file) => file.path === "other");
+  assert.equal(regular.status, "type-changed");
+  assert.equal(regular.oldSymlink, true);
+  assert.equal(regular.symlink, false);
+  assert.equal(regular.mode, "100644");
+  assert.equal((await loadRaw({ repoRoot: root, filePath: regular.path, descriptor: regular.descriptor, metadata: regular, maxFileBytes: 1024 })).text, "regular in worktree\n");
+  assert.equal(symlink.oldSymlink, false);
+  assert.equal(symlink.symlink, true);
+  assert.equal(symlink.mode, "120000");
+  assert.equal((await loadRaw({ repoRoot: root, filePath: symlink.path, descriptor: symlink.descriptor, metadata: symlink, maxFileBytes: 1024 })).text, "target.txt");
 });
 
 test("against-base model retains deletion, rename, copy, executable, and symlink metadata", async (t) => {
@@ -278,6 +327,85 @@ test("raw content limits fail safely before reading unbounded data", async (t) =
   );
 });
 
+test("historical and index blobs receive bounded binary and UTF-8 validation without fallback", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-blob-validation-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  for (const name of ["binary.dat", "invalid.txt", "large.txt", "deleted.txt"]) await fs.writeFile(path.join(root, name), "base text\n");
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature/blobs"]);
+  await fs.writeFile(path.join(root, "binary.dat"), Buffer.from([0x61, 0x00, 0x62]));
+  await fs.writeFile(path.join(root, "invalid.txt"), Buffer.from([0x66, 0x80, 0x6f]));
+  await fs.writeFile(path.join(root, "large.txt"), "x".repeat(4096));
+  await fs.rm(path.join(root, "deleted.txt"));
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "hostile blobs"], { env: identity });
+  const state = await getRepositoryState(root);
+  const files = new Map(state.againstBase.map((file) => [file.path, file]));
+  await assert.rejects(
+    () => loadRaw({ repoRoot: root, filePath: "binary.dat", descriptor: files.get("binary.dat").descriptor, metadata: files.get("binary.dat"), maxFileBytes: 1024 }),
+    /Binary file/,
+  );
+  await assert.rejects(
+    () => loadRaw({ repoRoot: root, filePath: "invalid.txt", descriptor: files.get("invalid.txt").descriptor, metadata: files.get("invalid.txt"), maxFileBytes: 1024 }),
+    /not valid UTF-8/,
+  );
+  await assert.rejects(
+    () => loadRaw({ repoRoot: root, filePath: "large.txt", descriptor: files.get("large.txt").descriptor, metadata: files.get("large.txt"), maxFileBytes: 1024 }),
+    /exceeded 1024 bytes/,
+  );
+  const deleted = await loadRaw({ repoRoot: root, filePath: "deleted.txt", descriptor: files.get("deleted.txt").descriptor, metadata: files.get("deleted.txt"), maxFileBytes: 1024 });
+  assert.equal(deleted.text, "base text\n");
+  assert.match(deleted.revision, /^main:deleted\.txt$/);
+
+  await fs.writeFile(path.join(root, "invalid-index.txt"), "valid worktree\n");
+  await runGit(root, ["add", "invalid-index.txt"]);
+  await fs.writeFile(path.join(root, "invalid-index.txt"), Buffer.from([0x66, 0x80, 0x6f]));
+  await runGit(root, ["add", "invalid-index.txt"]);
+  await assert.rejects(
+    () => loadRaw({ repoRoot: root, filePath: "invalid-index.txt", descriptor: { kind: "staged" }, metadata: { status: "added" }, maxFileBytes: 1024 }),
+    /not valid UTF-8/,
+  );
+});
+
+test("non-regular worktree entries are rejected without opening a blocking stream", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-fifo-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await runCommand("mkfifo", [path.join(root, "pipe")]);
+  await assert.rejects(
+    () => loadRaw({ repoRoot: root, filePath: "pipe", descriptor: { kind: "untracked" }, maxFileBytes: 1024 }),
+    /Only regular files/,
+  );
+  await assert.rejects(
+    () => loadDiff({ repoRoot: root, filePath: "pipe", descriptor: { kind: "untracked" }, maxOutputBytes: 1024 }),
+    /Only regular files and symbolic links/,
+  );
+});
+
+test("commit history is bounded while retaining an exact total", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-history-limit-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "seed"), "seed\n");
+  await runGit(root, ["add", "seed"]);
+  await runGit(root, ["commit", "-m", "seed"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature/history"]);
+  for (let index = 0; index < 205; index += 1) {
+    await runGit(root, ["commit", "--allow-empty", "-m", `history ${index}`], { env: identity });
+  }
+  const state = await getRepositoryState(root);
+  assert.equal(state.totalCommits, 205);
+  assert.equal(state.commits.length, 200);
+  assert.equal(state.historyLimit, 200);
+  assert.equal(state.historyTruncated, true);
+  assert.equal(state.historyPathsAvailable, true);
+  assert.equal(state.commitPathIndex.size, 200);
+});
+
 test("submodule gitlinks remain first-class canonical metadata", async (t) => {
   const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-submodule-"));
   t.after(() => fs.rm(container, { recursive: true, force: true }));
@@ -300,6 +428,10 @@ test("submodule gitlinks remain first-class canonical metadata", async (t) => {
   await runGit(path.join(root, "deps/sample"), ["checkout", first]);
   await runGit(root, ["add", "--all"]);
   await runGit(root, ["commit", "-m", "base submodule"], { env: identity });
+  const cleanState = await getRepositoryState(root);
+  const cleanSubmodule = cleanState.files.find((file) => file.path === "deps/sample");
+  assert.equal(cleanSubmodule.clean, true);
+  assert.equal(cleanSubmodule.submodule, true);
   await runGit(root, ["switch", "-c", "feature/submodule"]);
   await runGit(path.join(root, "deps/sample"), ["checkout", second]);
   await runGit(root, ["add", "deps/sample"]);

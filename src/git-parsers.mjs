@@ -81,6 +81,9 @@ export function parsePorcelainV2Z(output) {
         indexCode: xy[0],
         worktreeCode: xy[1],
         submodule: fields[2] !== "N...",
+        headMode: fields[3],
+        indexMode: fields[4],
+        worktreeMode: fields[5],
         score: fields[8],
       });
     } else if (kind === "u" && fields.length >= 11) {
@@ -170,13 +173,17 @@ export function parseRawDiffZ(output) {
     } else filePath = tokens[index++] || "";
     if (!filePath) continue;
     metadata.set(filePath, {
+      mode: newMode,
       oldMode,
       newMode,
       oldObjectId,
       newObjectId,
       executableChange: oldMode !== newMode && (oldMode === "100755" || newMode === "100755"),
-      symlink: oldMode === "120000" || newMode === "120000",
-      submodule: oldMode === "160000" || newMode === "160000",
+      executable: newMode === "100755",
+      oldSymlink: oldMode === "120000",
+      symlink: newMode === "120000",
+      oldSubmodule: oldMode === "160000",
+      submodule: newMode === "160000",
       ...(oldPath ? { oldPath } : {}),
     });
   }

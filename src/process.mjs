@@ -16,6 +16,7 @@ export function runCommand(command, args = [], options = {}) {
     timeoutMs = 8_000,
     maxOutputBytes = 16 * 1024 * 1024,
     allowExitCodes = [0],
+    stdoutEncoding = "utf8",
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -55,12 +56,13 @@ export function runCommand(command, args = [], options = {}) {
       { kind: cause.code === "ENOENT" ? "missing-executable" : "spawn", command, args, cause },
     ))));
     child.on("close", (exitCode, signal) => finish(() => {
+      const stdoutBuffer = Buffer.concat(stdout);
       const result = {
         command,
         args,
         exitCode,
         signal,
-        stdout: Buffer.concat(stdout).toString("utf8"),
+        stdout: stdoutEncoding === null ? stdoutBuffer : stdoutBuffer.toString(stdoutEncoding),
         stderr: Buffer.concat(stderr).toString("utf8"),
         durationMs: Date.now() - startedAt,
       };
