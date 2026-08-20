@@ -37,30 +37,37 @@ signal.
 ## Interaction
 
 - `Tab` switches Changes and Files.
-- `/` searches the active view; `Ctrl-U` clears; Enter finishes.
+- `/` searches the active view; Changes search includes commit metadata and the
+  paths changed by each commit. `Ctrl-U` clears; Enter finishes.
 - `g` toggles Tree and Folders layouts.
 - `j`/`k` or arrows select files; Enter opens the selection. `J`/`K` and the
   mouse wheel scroll, while `h`/`l` chooses a section and Space toggles it.
 - `r` refreshes without resetting selection, expansion, layout, search, or
   scroll position.
-- A click selects. A double-click opens GitRail Preview in a dedicated Herdr tab.
+- A click selects. A double-click opens a dedicated Herdr preview tab.
 - `q` or Escape closes the rail.
 
 Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
 Large sections expose explicit **Show more** rows, so displayed totals never
 refer to unreachable content.
 
-GitRail Preview replaces the previous preview tab, then starts in the selected
-descriptor's exact diff, or Raw for a clean file. Use `1`, `2`, and `3` for
-Diff, Raw, and Markdown; `/` searches the current content and `n`/`N` moves
-through matches. `e` opens the configured editor. Binary and oversized content
-produce bounded, actionable errors.
+Files contains every tracked and untracked worktree path. Files changed since
+the merge base use the same status and statistics as Against-base; unchanged
+files use a neutral grey icon and have no diff statistics.
+
+The preview tab uses the selected basename as its label, sanitized and capped at
+32 terminal columns. It replaces the previous plugin-owned preview tab, then
+starts in the selected descriptor's exact diff, or Raw for a clean file. Use
+`1`, `2`, and `3` for Diff, Raw, and Markdown; `/` searches the current content
+and `n`/`N` moves through matches. `e` opens the configured editor. Binary and
+oversized content produce bounded, actionable errors.
 
 ## Git semantics
 
 | Selected row | Preview command |
 | --- | --- |
-| Files tab | `git diff <merge-base(base, HEAD)> -- <path>` |
+| Files tab, changed | `git diff <merge-base(base, HEAD)> -- <path>` |
+| Files tab, unchanged | Raw by default; Diff reports no change |
 | Against base | `git diff <base>...HEAD -- <path>` |
 | Commit | `git show --format= <commit> -- <path>` |
 | Staged | `git diff --cached -- <path>` |
@@ -110,6 +117,12 @@ npm run check
 The test suite builds disposable repositories and independently verifies each
 descriptor. CI runs the full check on macOS and Linux.
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md),
-[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [SECURITY.md](SECURITY.md),
-and [CONTRIBUTING.md](CONTRIBUTING.md) for release and support details.
+## Documentation
+
+- [Installation and upgrades](docs/INSTALLATION.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Production readiness](PRODUCTION-READINESS.md)
+- [Releasing](docs/RELEASING.md)
+- [Screenshot verification](docs/screenshots/README.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)

@@ -11,4 +11,10 @@ intentional configuration changes documented here.
 - Generate the demo from a temporary real Git repository.
 - Add bounded asynchronous Git execution and state-preserving refresh.
 - Add descriptor-aware Diff and Raw previews with in-preview search.
+- Render structured file diffs and open previews in a dedicated Herdr tab.
+- Search commit metadata and commit file paths from Changes.
+- Compare Files with the base-branch merge point and mark unchanged files
+  neutrally.
+- Preserve stable, flicker-free scrolling and refresh state.
 - Add versioned configuration, safety limits, tests, CI, and release guidance.
+- Reject unknown or mistyped nested configuration and pin CI actions by commit.

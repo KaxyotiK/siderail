@@ -24,4 +24,6 @@ checkout. Optional pane ownership state lives in
 
 Copy `git-rail.config.example.json` to `.git-rail.json` in a trusted repository
 or to `~/.config/git-rail/config.json`. Values merge by key; repository values
-override user values, and environment overrides win last.
+override user values, and environment overrides win last. Every configuration
+file must declare `"version": 1`; unknown keys and mistyped nested structures
+are rejected instead of being silently ignored.
