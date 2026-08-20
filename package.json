@@ -1,0 +1,19 @@
+{
+  "name": "herdr-gitrail",
+  "version": "0.1.0",
+  "description": "A compact, read-only Git sidebar for Herdr",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "lint": "node scripts/lint.mjs",
+    "format:check": "node scripts/lint.mjs",
+    "snapshot": "node scripts/git-rail.mjs --demo --snapshot --width 52 --height 46",
+    "fixture:verify": "node --test test/integration.test.mjs",
+    "check": "npm run lint && npm test"
+  },
+  "license": "MIT"
+}

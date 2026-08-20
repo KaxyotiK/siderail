@@ -1,6 +1,6 @@
-# Superset Git rail source review
+# Superset source review for Herdr GitRail
 
-This note records the behavior reproduced by the terminal-native Git rail
+This note records the behavior reproduced by the terminal-native GitRail
 mockup. The reference is Superset's legacy right sidebar—the implementation shown
 in the supplied screenshot—not its newer V2 sidebar.
 

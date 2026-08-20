@@ -1,1152 +1,505 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
+import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
+import { displayState, selectionKey } from "../src/model.mjs";
+import { runCommand } from "../src/process.mjs";
 
 const ESC = "\u001b[";
 const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
-const RGB = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
-const BG = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
+const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
+const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
 const C = {
-  reset: `${ESC}0m`,
-  bold: `${ESC}1m`,
-  dim: `${ESC}2m`,
-  inverse: `${ESC}7m`,
-  gold: RGB(214, 176, 91),
-  leaf: RGB(91, 190, 112),
-  red: RGB(224, 108, 117),
-  amber: RGB(229, 180, 84),
-  blue: RGB(105, 169, 230),
-  purple: RGB(190, 132, 220),
-  fog: RGB(139, 139, 139),
-  faint: RGB(84, 84, 84),
-  selected: BG(45, 41, 34),
+  reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
+  gold: rgb(214, 176, 91), leaf: rgb(91, 190, 112), red: rgb(224, 108, 117),
+  amber: rgb(229, 180, 84), blue: rgb(105, 169, 230), purple: rgb(190, 132, 220),
+  fog: rgb(139, 139, 139), faint: rgb(84, 84, 84), selected: bg(45, 41, 34),
 };
+const cliArgs = new Set(process.argv.slice(2));
+const snapshotMode = cliArgs.has("--snapshot");
+const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
+const forcedWidth = numberArg("--width");
+const forcedHeight = numberArg("--height");
+const PAGE_SIZE = 100;
+const NARROW_RAIL_MAX = 88;
 
-const args = new Set(process.argv.slice(2));
-const snapshotMode = args.has("--snapshot");
-const demoMode = args.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
-const forcedWidth = readNumberArg("--width");
-const forcedHeight = readNumberArg("--height");
-
-function readNumberArg(name) {
+function numberArg(name) {
   const index = process.argv.indexOf(name);
-  if (index === -1) return null;
-  const value = Number.parseInt(process.argv[index + 1] || "", 10);
+  const value = index < 0 ? NaN : Number.parseInt(process.argv[index + 1] || "", 10);
   return Number.isFinite(value) ? value : null;
 }
-
-function stripAnsi(value) {
-  return String(value ?? "").replace(ANSI_RE, "");
-}
-
-function visibleLength(value) {
-  return [...stripAnsi(value)].length;
-}
-
+function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
+function visibleLength(value) { return [...stripAnsi(value)].length; }
 function truncate(value, width) {
-  const source = String(value ?? "");
-  if (width <= 0) return "";
-  if ([...source].length <= width) return source;
-  if (width === 1) return "…";
-  return `${[...source].slice(0, width - 1).join("")}…`;
+  const chars = [...String(value ?? "")];
+  if (chars.length <= width) return chars.join("");
+  return width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
 }
-
-function compactFolderPath(value, width) {
-  const source = String(value ?? "");
-  if (width <= 0) return "";
-  if ([...source].length <= width) return source;
-
-  const parts = source.split("/").filter(Boolean);
-  if (parts.length <= 1) return truncate(source, width);
-
-  const first = parts[0];
-  const last = parts.at(-1);
-  const lastTwo = parts.slice(-2).join("/");
-  const anchoredCandidates = [
-    parts.length > 3 ? `${first}/…/${lastTwo}` : "",
-    `${first}/…/${last}`,
-  ].filter(Boolean);
-  const anchored = anchoredCandidates.find((candidate) => [...candidate].length <= width);
-  if (anchored) return anchored;
-
-  const anchor = `${first}/…/`;
-  if (width >= [...anchor].length + 6) {
-    return `${anchor}${truncate(last, width - [...anchor].length)}`;
-  }
-
-  const tailCandidates = [
-    parts.length > 2 ? `…/${lastTwo}` : "",
-    `…/${last}`,
-  ].filter(Boolean);
-
-  return tailCandidates.find((candidate) => [...candidate].length <= width)
-    || `…${[...last].slice(-Math.max(0, width - 1)).join("")}`;
-}
-
-function fitAnsi(value, width) {
-  const plain = stripAnsi(value);
-  if ([...plain].length <= width) return value;
-  return truncate(plain, width);
-}
-
+function fitAnsi(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
 function padAnsi(value, width) {
   const fitted = fitAnsi(value, width);
   return `${fitted}${" ".repeat(Math.max(0, width - visibleLength(fitted)))}`;
 }
-
+function compactPath(value, width) {
+  if ([...value].length <= width) return value;
+  const parts = value.split("/").filter(Boolean);
+  if (parts.length < 2) return truncate(value, width);
+  const candidate = `${parts[0]}/…/${parts.at(-1)}`;
+  return [...candidate].length <= width ? candidate : `…/${truncate(parts.at(-1), Math.max(1, width - 2))}`;
+}
 function parseContext() {
-  try {
-    return JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function run(cwd, command, commandArgs) {
-  const result = spawnSync(command, commandArgs, {
-    cwd,
-    encoding: "utf8",
-    timeout: 8_000,
-  });
-  return {
-    ok: result.status === 0,
-    stdout: String(result.stdout || ""),
-    stderr: String(result.stderr || ""),
-  };
-}
-
-function runGit(cwd, commandArgs) {
-  return run(cwd, "git", commandArgs);
-}
-
-function getRepoRoot(cwd) {
-  const result = runGit(cwd, ["rev-parse", "--show-toplevel"]);
-  return result.ok ? result.stdout.trim() : "";
-}
-
-function getBranch(repoRoot) {
-  const symbolic = runGit(repoRoot, ["symbolic-ref", "--short", "HEAD"]);
-  if (symbolic.ok && symbolic.stdout.trim()) return symbolic.stdout.trim();
-  const detached = runGit(repoRoot, ["rev-parse", "--short", "HEAD"]);
-  return detached.stdout.trim() || "detached";
-}
-
-function resolveBase(repoRoot) {
-  const requested = process.env.GIT_RAIL_BASE;
-  const remoteHead = runGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
-  const defaultRemoteBranch = remoteHead.ok ? remoteHead.stdout.trim() : "";
-  const candidates = [requested, defaultRemoteBranch, "origin/main", "origin/master", "main", "master"].filter(Boolean);
-  for (const candidate of candidates) {
-    const result = runGit(repoRoot, ["rev-parse", "--verify", "--quiet", candidate]);
-    if (result.ok) return candidate;
-  }
-  return "HEAD";
-}
-
-function parseNumstat(output) {
-  const stats = new Map();
-  for (const line of output.split("\n")) {
-    if (!line.trim()) continue;
-    const [adds, deletes, ...pathParts] = line.split("\t");
-    const filePath = pathParts.join("\t").replace(/^.* => /, "");
-    if (!filePath) continue;
-    stats.set(filePath, {
-      additions: adds === "-" ? 0 : Number.parseInt(adds || "0", 10) || 0,
-      deletions: deletes === "-" ? 0 : Number.parseInt(deletes || "0", 10) || 0,
-      binary: adds === "-" && deletes === "-",
-    });
-  }
-  return stats;
-}
-
-function mapStatus(code) {
-  if (code === "A" || code === "?") return "added";
-  if (code === "D") return "deleted";
-  if (code === "R") return "renamed";
-  if (code === "C") return "copied";
-  return "modified";
-}
-
-function withStats(file, stats) {
-  return { ...file, ...(stats.get(file.path) || { additions: 0, deletions: 0 }) };
-}
-
-function parseWorkingStatus(repoRoot) {
-  const result = runGit(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"]);
-  if (!result.ok) return { staged: [], unstaged: [] };
-  const stagedStats = parseNumstat(runGit(repoRoot, ["diff", "--cached", "--numstat"]).stdout);
-  const unstagedStats = parseNumstat(runGit(repoRoot, ["diff", "--numstat"]).stdout);
-  const staged = [];
-  const unstaged = [];
-  for (const line of result.stdout.split("\n")) {
-    if (!line) continue;
-    const indexCode = line[0] || " ";
-    const workCode = line[1] || " ";
-    const rawPath = line.slice(3);
-    const filePath = rawPath.includes(" -> ") ? rawPath.split(" -> ").at(-1) : rawPath;
-    if (!filePath) continue;
-    if (indexCode === "?" && workCode === "?") {
-      let additions = 0;
-      try {
-        const content = fs.readFileSync(path.join(repoRoot, filePath));
-        additions = content.length > 1_048_576 || content.includes(0) ? 0 : String(content).split("\n").length;
-      } catch {}
-      unstaged.push({ path: filePath, status: "added", additions, deletions: 0, untracked: true });
-      continue;
-    }
-    if (indexCode !== " " && indexCode !== "?") {
-      staged.push(withStats({ path: filePath, status: mapStatus(indexCode) }, stagedStats));
-    }
-    if (workCode !== " " && workCode !== "?") {
-      unstaged.push(withStats({ path: filePath, status: mapStatus(workCode) }, unstagedStats));
-    }
-  }
-  return { staged, unstaged };
-}
-
-function parseNameStatus(output, stats) {
-  const files = [];
-  for (const line of output.split("\n")) {
-    if (!line.trim()) continue;
-    const parts = line.split("\t");
-    const code = parts[0]?.[0] || "M";
-    const renamed = code === "R" || code === "C";
-    const filePath = renamed ? parts[2] : parts[1];
-    if (!filePath) continue;
-    files.push(withStats({ path: filePath, status: mapStatus(code), oldPath: renamed ? parts[1] : undefined }, stats));
-  }
-  return files;
-}
-
-function getTracking(repoRoot) {
-  const result = runGit(repoRoot, ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]);
-  if (!result.ok) return { hasUpstream: false, pull: 0, push: 0 };
-  const [pull, push] = result.stdout.trim().split(/\s+/).map((value) => Number.parseInt(value || "0", 10));
-  return { hasUpstream: true, pull: pull || 0, push: push || 0 };
-}
-
-function getCommitFiles(repoRoot, commitHash) {
-  if (!repoRoot || !commitHash) return [];
-  const stats = parseNumstat(runGit(repoRoot, ["show", "--format=", "--find-renames", "--numstat", commitHash]).stdout);
-  return parseNameStatus(
-    runGit(repoRoot, ["show", "--format=", "--find-renames", "--name-status", commitHash]).stdout,
-    stats,
-  ).map((file) => ({ ...file, commitHash }));
-}
-
-function getLiveState(cwd) {
-  const repoRoot = getRepoRoot(cwd);
-  if (!repoRoot) {
-    return {
-      cwd,
-      repoRoot: "",
-      repository: path.basename(cwd),
-      branch: "—",
-      error: "No Git repository in the focused Herdr pane",
-    };
-  }
-  const branch = getBranch(repoRoot);
-  const baseRef = resolveBase(repoRoot);
-  const baseLabel = baseRef.replace(/^origin\//, "");
-  const working = parseWorkingStatus(repoRoot);
-  const range = baseRef === "HEAD" ? "" : `${baseRef}...HEAD`;
-  const againstStats = range
-    ? parseNumstat(runGit(repoRoot, ["diff", "--numstat", range]).stdout)
-    : new Map();
-  const againstBase = range
-    ? parseNameStatus(runGit(repoRoot, ["diff", "--name-status", "--find-renames", range]).stdout, againstStats)
-    : [];
-  const commitRange = baseRef === "HEAD" ? "" : `${baseRef}..HEAD`;
-  const logArgs = ["log", "--max-count=40", "--format=%h%x1f%s%x1f%an%x1f%cr"];
-  if (commitRange) logArgs.push(commitRange);
-  const commits = runGit(repoRoot, logArgs).stdout
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [shortHash, message, author, age] = line.split("\x1f");
-      return { shortHash, message, author, age };
-    });
-  const countResult = commitRange ? runGit(repoRoot, ["rev-list", "--count", commitRange]) : { stdout: "0" };
-  const totalCommits = Number.parseInt(countResult.stdout.trim() || "0", 10) || 0;
-  const tracked = runGit(repoRoot, ["ls-files"]).stdout.split("\n").filter(Boolean);
-  const tracking = getTracking(repoRoot);
-  return {
-    cwd,
-    repoRoot,
-    repository: path.basename(repoRoot),
-    branch,
-    baseLabel,
-    againstBase,
-    commits,
-    totalCommits,
-    staged: working.staged,
-    unstaged: working.unstaged,
-    tracked,
-    tracking,
-    reviewCount: 0,
-    error: "",
-  };
-}
-
-function getDemoState(cwd) {
-  return {
-    cwd,
-    repoRoot: "/demo/git-rail",
-    repository: "git-rail",
-    branch: "feature/sidebar",
-    baseLabel: "main",
-    tracking: { hasUpstream: true, pull: 0, push: 3 },
-    reviewCount: 2,
-    totalCommits: 4,
-    commits: [
-      {
-        shortHash: "9f14c2a", message: "add terminal Git rail model", author: "John", age: "12 minutes ago",
-        files: [
-          { path: "prototypes/herdr-git-rail/scripts/git-rail.mjs", status: "added", additions: 486, deletions: 0, commitHash: "9f14c2a" },
-          { path: "prototypes/herdr-git-rail/README.md", status: "modified", additions: 22, deletions: 5, commitHash: "9f14c2a" },
-        ],
-      },
-      {
-        shortHash: "47b8d11", message: "preserve worktree context across focus", author: "John", age: "1 hour ago",
-        files: [
-          { path: "packages/core/src/workspace/context.ts", status: "modified", additions: 64, deletions: 8, commitHash: "47b8d11" },
-        ],
-      },
-      {
-        shortHash: "ca93e20", message: "render nested change paths", author: "John", age: "3 hours ago",
-        files: [
-          { path: "packages/core/src/git/status.ts", status: "modified", additions: 47, deletions: 12, commitHash: "ca93e20" },
-          { path: "packages/core/src/git/status.test.ts", status: "added", additions: 91, deletions: 0, commitHash: "ca93e20" },
-        ],
-      },
-      {
-        shortHash: "1a4df83", message: "define Herdr panel entrypoint", author: "John", age: "yesterday",
-        files: [
-          { path: "prototypes/herdr-git-rail/herdr-plugin.toml", status: "added", additions: 8, deletions: 0, commitHash: "1a4df83" },
-        ],
-      },
-    ],
-    againstBase: [
-      { path: "packages/cli/src/commands/status.ts", status: "modified", additions: 118, deletions: 21 },
-      { path: "packages/core/src/workspace/context.ts", status: "modified", additions: 64, deletions: 8 },
-      { path: "prototypes/herdr-git-rail/scripts/git-rail.mjs", status: "added", additions: 486, deletions: 0 },
-      { path: "prototypes/herdr-git-rail/README.md", status: "modified", additions: 22, deletions: 5 },
-      { path: "docs/work/git-rail.md", status: "added", additions: 91, deletions: 0 },
-      { path: "packages/core/src/git/status.test.ts", status: "modified", additions: 47, deletions: 12 },
-    ],
-    staged: [
-      { path: "prototypes/herdr-git-rail/herdr-plugin.toml", status: "modified", additions: 8, deletions: 2 },
-      { path: "prototypes/herdr-git-rail/README.md", status: "modified", additions: 22, deletions: 5 },
-    ],
-    unstaged: [
-      { path: "packages/cli/src/commands/status.ts", status: "modified", additions: 118, deletions: 21 },
-      { path: "packages/core/src/workspace/context.ts", status: "modified", additions: 64, deletions: 8 },
-      { path: "packages/core/src/git/status.test.ts", status: "modified", additions: 47, deletions: 12 },
-      { path: "prototypes/herdr-git-rail/scripts/git-rail.mjs", status: "added", additions: 486, deletions: 0, untracked: true },
-    ],
-    tracked: [
-      "README.md",
-      "package.json",
-      "packages/cli/src/commands/status.ts",
-      "packages/cli/src/index.ts",
-      "packages/core/src/git/status.ts",
-      "packages/core/src/git/status.test.ts",
-      "packages/core/src/workspace/context.ts",
-      "prototypes/herdr-git-rail/README.md",
-      "prototypes/herdr-git-rail/herdr-plugin.toml",
-      "prototypes/herdr-git-rail/scripts/git-rail.mjs",
-      "docs/work/git-rail.md",
-    ],
-    error: "",
-  };
+  try { return JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || "{}"); } catch { return {}; }
 }
 
 const context = parseContext();
-const contextCwd =
-  context.focused_pane_cwd ||
-  context.workspace_cwd ||
-  process.env.HERDR_WORKSPACE_CWD ||
-  process.cwd();
-
-let state = demoMode ? getDemoState(contextCwd) : getLiveState(contextCwd);
+const focusedCwd = context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
+let fixtureRoot = demoMode ? await createFixtureRepository() : "";
+const providerCwd = fixtureRoot || focusedCwd;
+let state = await getRepositoryState(providerCwd);
+if (demoMode) state.repository = "gitrail-fixture";
 let mainTab = "changes";
 let viewModePreference = "auto";
 let selectedSection = 0;
 let scrollOffset = 0;
-let selectedPath = "";
-let statusMessage = "Click a tab, section, commit, or file";
+let selectedIdentity = "";
+let keyboardFiles = [];
+let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
-let fileSearchActive = false;
 let diffSearchQuery = "";
-let diffSearchActive = false;
+let activeSearch = "";
 let hitTargets = [];
 let lastClick = { label: "", at: 0 };
+let refreshGeneration = 0;
+let refreshRunning = false;
+let refreshQueued = false;
+let refreshTimer;
+let watchTimer;
+let watchers = [];
 const expanded = { against: false, commits: false, staged: true, unstaged: true };
 const sectionIds = ["against", "commits", "staged", "unstaged"];
 const collapsedGroups = new Set();
-const collapsedFileFolders = new Set();
-const collapsedTreeFolders = new Map();
+const collapsedFolders = new Map();
 const expandedCommits = new Set();
-const NARROW_RAIL_MAX = 88;
+const commitFiles = new Map();
+const pageSizes = new Map();
 
-function resolvedViewMode(width) {
-  if (viewModePreference !== "auto") return viewModePreference;
-  return width <= NARROW_RAIL_MAX ? "grouped" : "tree";
-}
-
+function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
+function regions(text, targets) { return { text, targets }; }
+function textOf(line) { return typeof line === "string" ? line : line.text; }
+function resolvedViewMode(width) { return viewModePreference === "auto" ? (width <= NARROW_RAIL_MAX ? "grouped" : "tree") : viewModePreference; }
 function toggleViewMode(width) {
-  const current = resolvedViewMode(width);
-  viewModePreference = current === "tree" ? "grouped" : "tree";
-  statusMessage = `File layout: ${viewModePreference}`;
+  viewModePreference = resolvedViewMode(width) === "tree" ? "grouped" : "tree";
+  statusMessage = `Layout: ${viewModePreference === "tree" ? "Tree" : "Folders"}`;
 }
-
-function interactive(text, onClick, label, onDoubleClick = null) {
-  return { text, onClick, label, onDoubleClick };
-}
-
-function interactiveRegions(text, targets) {
-  return { text, targets };
-}
-
-function lineText(value) {
-  return typeof value === "string" ? value : value.text;
-}
-
 function statusGlyph(file) {
-  switch (file.status) {
-    case "added": return `${C.leaf}⊞${C.reset}`;
-    case "deleted": return `${C.red}⊟${C.reset}`;
-    case "renamed": return `${C.blue}↪${C.reset}`;
-    case "copied": return `${C.purple}⧉${C.reset}`;
-    default: return `${C.amber}⊡${C.reset}`;
-  }
+  const status = file.status || displayState(file).status;
+  if (file.binary) return `${C.purple}◆${C.reset}`;
+  if (status === "clean") return `${C.dim}·${C.reset}`;
+  if (status === "added") return `${C.leaf}⊞${C.reset}`;
+  if (status === "deleted") return `${C.red}⊟${C.reset}`;
+  if (status === "renamed") return `${C.blue}↪${C.reset}`;
+  if (status === "copied") return `${C.purple}⧉${C.reset}`;
+  if (status === "conflicted") return `${C.red}!${C.reset}`;
+  if (status === "type-changed") return `${C.blue}◇${C.reset}`;
+  return `${C.amber}⊡${C.reset}`;
 }
-
-function displayGlyph(file, surface) {
-  return surface === "file" && file.clean ? `${C.dim}·${C.reset}` : statusGlyph(file);
-}
-
 function statsLabel(file) {
-  const added = file.additions > 0 ? `${C.leaf}+${file.additions}${C.reset}` : "";
-  const deleted = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
-  return [added, deleted].filter(Boolean).join(" ");
+  if (file.binary) return `${C.purple}binary${C.reset}`;
+  const additions = file.additions > 0 ? `${C.leaf}+${file.additions}${C.reset}` : "";
+  const deletions = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
+  return [additions, deletions].filter(Boolean).join(" ");
 }
-
+function rule(width) { return `${C.faint}${"─".repeat(width)}${C.reset}`; }
 function tab(label, active, width) {
-  const content = ` ${label} `;
-  const padded = padAnsi(content, width);
-  return active ? `${C.selected}${C.gold}${C.bold}${padded}${C.reset}` : `${C.dim}${padded}${C.reset}`;
+  const line = padAnsi(` ${label} `, width);
+  return active ? `${C.selected}${C.gold}${C.bold}${line}${C.reset}` : `${C.dim}${line}${C.reset}`;
 }
-
-function searchField(query, active, placeholder, countText, width) {
-  const countWidth = visibleLength(countText);
-  const fieldWidth = Math.max(8, width - countWidth - (countText ? 1 : 0));
-  const value = active ? query : query || placeholder;
-  const caret = active ? "▏" : "";
-  const content = ` ⌕ ${truncate(value, Math.max(1, fieldWidth - 4 - visibleLength(caret)))}${caret}`;
+function searchField(query, active, placeholder, count, width) {
+  const countText = count ? `${C.dim}${count}${C.reset}` : "";
+  const fieldWidth = Math.max(8, width - visibleLength(countText) - (countText ? 1 : 0));
+  const value = active ? `${query}▏` : query || placeholder;
   const tone = active ? C.gold : query ? C.bold : C.dim;
-  const field = `${C.selected}${tone}${padAnsi(content, fieldWidth)}${C.reset}`;
-  return `${field}${countText ? ` ${countText}` : ""}`;
+  return `${C.selected}${tone}${padAnsi(` ⌕ ${truncate(value, Math.max(1, fieldWidth - 4))}`, fieldWidth)}${C.reset}${countText ? ` ${countText}` : ""}`;
 }
+function treeGuides(depth, width) { return `${C.faint}${(width <= 46 ? "│" : "│ ").repeat(depth)}${C.reset}`; }
 
-function rule(width) {
-  return `${C.faint}${"─".repeat(width)}${C.reset}`;
+function page(files, scope) {
+  const limit = pageSizes.get(scope) || PAGE_SIZE;
+  return { visible: files.slice(0, limit), remaining: Math.max(0, files.length - limit) };
 }
-
-function treeGuides(depth, width) {
-  if (depth <= 0) return "";
-  const unit = width <= 46 ? "│" : "│ ";
-  return `${C.faint}${unit.repeat(depth)}${C.reset}`;
+function showMoreRow(scope, remaining) {
+  if (!remaining) return [];
+  return [interactive(
+    `${C.gold}  Show ${Math.min(PAGE_SIZE, remaining)} more${C.reset}  ${C.dim}(${remaining} remaining)${C.reset}`,
+    () => { pageSizes.set(scope, (pageSizes.get(scope) || PAGE_SIZE) + PAGE_SIZE); statusMessage = `Loaded more ${scope}`; },
+    `Show more ${scope}`,
+  )];
 }
-
-function buildTree(files, collapsedFolders = null) {
+function buildTree(files, collapsed) {
   const root = { children: new Map() };
   for (const file of files) {
-    const parts = file.path.split("/");
-    let current = root;
-    parts.forEach((part, index) => {
-      if (!current.children.has(part)) {
-        current.children.set(part, {
-          name: part,
-          type: index === parts.length - 1 ? "file" : "folder",
-          file: index === parts.length - 1 ? file : null,
-          children: new Map(),
-        });
-      }
-      current = current.children.get(part);
+    let node = root;
+    file.path.split("/").forEach((part, index, parts) => {
+      if (!node.children.has(part)) node.children.set(part, { name: part, file: index === parts.length - 1 ? file : null, children: new Map() });
+      node = node.children.get(part);
     });
   }
-  const sortNodes = (node) => [...node.children.values()].sort((a, b) => {
-    if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
   const rows = [];
-  const visit = (node, depth, parentPath = "") => {
-    const children = sortNodes(node);
-    children.forEach((child) => {
-      const nodePath = parentPath ? `${parentPath}/${child.name}` : child.name;
-      if (child.type === "folder") {
-        rows.push({ kind: "folder", depth, name: child.name, path: nodePath });
-        if (!collapsedFolders?.has(nodePath)) visit(child, depth + 1, nodePath);
-      } else {
-        rows.push({ kind: "file", depth, name: child.name, file: child.file });
+  const visit = (node, depth, parent = "") => {
+    const children = [...node.children.values()].sort((a, b) => Boolean(a.file) - Boolean(b.file) || a.name.localeCompare(b.name));
+    for (const child of children) {
+      const nodePath = parent ? `${parent}/${child.name}` : child.name;
+      if (child.file) rows.push({ kind: "file", depth, file: child.file, name: child.name });
+      else {
+        rows.push({ kind: "folder", depth, path: nodePath, name: child.name });
+        if (!collapsed.has(nodePath)) visit(child, depth + 1, nodePath);
       }
-    });
+    }
   };
   visit(root, 0);
   return rows;
 }
-
-function selectFile(file, surface = "diff") {
-  selectedPath = file.path;
-  statusMessage = `${surface === "file" ? "File" : "Diff"}: ${file.path}`;
+function selectFile(file) {
+  selectedIdentity = selectionKey(state.repoRoot, file);
+  statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
-
-function currentHerdrPaneId() {
-  if (process.env.HERDR_PANE_ID) return process.env.HERDR_PANE_ID;
-  const result = run(contextCwd, process.env.HERDR_BIN_PATH || "herdr", ["pane", "current", "--current"]);
-  if (!result.ok) return "";
-  try {
-    return JSON.parse(result.stdout)?.result?.pane?.pane_id || "";
-  } catch {
-    return "";
-  }
+function descriptorLabel(descriptor = { kind: "clean" }) {
+  if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
+  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
+  return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
 }
-
-function openExternally(file) {
-  if (!state.repoRoot || demoMode) return false;
-  const absolutePath = path.resolve(state.repoRoot, file.path);
-  const rootPrefix = `${path.resolve(state.repoRoot)}${path.sep}`;
-  if (!absolutePath.startsWith(rootPrefix) || !fs.existsSync(absolutePath)) return false;
-  const launcher = process.platform === "darwin" ? "open" : "xdg-open";
-  const result = spawnSync(launcher, [absolutePath], { stdio: "ignore", timeout: 8_000 });
-  return result.status === 0;
+function fileRow(file, width, prefix = " ") {
+  keyboardFiles.push(file);
+  const stats = statsLabel(file);
+  const contextLabel = file.descriptor?.kind && file.descriptor.kind !== "clean" ? `${C.dim}${descriptorLabel(file.descriptor)}${C.reset}` : "";
+  const suffix = [stats, contextLabel].filter(Boolean).join(" ");
+  const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
+  const body = `${prefix}${statusGlyph(file)} ${truncate(path.basename(file.path), available)}`;
+  const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
+  const identity = selectionKey(state.repoRoot, file);
+  return interactive(
+    identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
+    () => selectFile(file),
+    `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
+    () => openPreview(file),
+  );
 }
-
-function openPreview(file, surface = "diff") {
-  const herdr = process.env.HERDR_BIN_PATH || "herdr";
-  const pluginId = process.env.HERDR_PLUGIN_ID || "local.git-rail";
-  const workspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
-  const paneId = currentHerdrPaneId();
-
-  if (workspaceId) {
-    const paneList = run(contextCwd, herdr, ["pane", "list", "--workspace", workspaceId]);
-    if (paneList.ok) {
-      try {
-        const panes = JSON.parse(paneList.stdout)?.result?.panes || [];
-        for (const pane of panes) {
-          if (pane.label === "Git File Preview" && pane.pane_id !== paneId) {
-            run(contextCwd, herdr, ["pane", "close", pane.pane_id]);
-          }
-        }
-      } catch {
-        // A stale preview is harmless; opening the new one is the useful action.
-      }
-    }
-  }
-
-  const previewArgs = [
-    "plugin", "pane", "open",
-    "--plugin", pluginId,
-    "--entrypoint", "file-preview",
-    "--placement", "overlay",
-    "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`,
-    "--env", `GIT_RAIL_PREVIEW_MODE=${surface}`,
-    "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot || ""}`,
-    "--env", `GIT_RAIL_PREVIEW_DEMO=${demoMode ? "1" : "0"}`,
-    "--env", `GIT_RAIL_PREVIEW_COMMIT=${file.commitHash || ""}`,
-    "--env", `GIT_RAIL_PREVIEW_STATUS=${file.status || "modified"}`,
-    "--focus",
-  ];
-
-  const result = run(contextCwd, herdr, previewArgs);
-  if (result.ok) {
-    statusMessage = `Preview opened: ${file.path}`;
-    return;
-  }
-  statusMessage = openExternally(file)
-    ? `Opened externally: ${file.path}`
-    : `Could not open preview: ${file.path}`;
-}
-
-function renderTree(files, width, limit = 18, surface = "diff", baseIndent = 1, treeScope = "") {
-  if (treeScope && !collapsedTreeFolders.has(treeScope)) collapsedTreeFolders.set(treeScope, new Set());
-  const collapsedFolders = treeScope ? collapsedTreeFolders.get(treeScope) : null;
-  const rows = buildTree(files, collapsedFolders).slice(0, limit);
-  return rows.map((row) => {
+function renderTree(files, width, scope) {
+  if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
+  const paged = page(files, scope);
+  const collapsed = collapsedFolders.get(scope);
+  const rows = buildTree(paged.visible, collapsed).map((row) => {
     const guides = treeGuides(row.depth, width);
-    const indentation = " ".repeat(baseIndent);
-    if (row.kind === "folder") {
-      const isOpen = !collapsedFolders?.has(row.path);
-      const folderLine = fitAnsi(`${indentation}${guides}${C.fog}${isOpen ? "⌄" : "›"} ${row.name}/${C.reset}`, width);
-      if (!collapsedFolders) return folderLine;
-      return interactive(folderLine, () => {
-        if (isOpen) collapsedFolders.add(row.path);
-        else collapsedFolders.delete(row.path);
-        statusMessage = `${isOpen ? "Collapsed" : "Expanded"} ${row.path}`;
-      }, `${isOpen ? "Collapse" : "Expand"} folder: ${row.path}`);
-    }
-    const prefix = `${indentation}${guides}${displayGlyph(row.file, surface)} `;
-    const stats = statsLabel(row.file);
-    const available = Math.max(1, width - visibleLength(prefix) - visibleLength(stats) - (stats ? 1 : 0));
-    const fileLabel = `${prefix}${truncate(row.name, available)}`;
-    const text = stats
-      ? `${padAnsi(fileLabel, width - visibleLength(stats) - 1)} ${stats}`
-      : fileLabel;
-    return interactive(
-      row.file.path === selectedPath ? `${C.selected}${padAnsi(text, width)}${C.reset}` : text,
-      () => selectFile(row.file, surface),
-      `${surface === "file" ? "Select file" : "Select diff"}: ${row.file.path}`,
-      () => openPreview(row.file, surface),
-    );
+    if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
+    const open = !collapsed.has(row.path);
+    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${row.name}/${C.reset}`, width), () => {
+      if (open) collapsed.add(row.path); else collapsed.delete(row.path);
+      statusMessage = `${open ? "Collapsed" : "Expanded"} ${row.path}`;
+    }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`);
   });
+  return [...rows, ...showMoreRow(scope, paged.remaining)];
 }
-
-function renderGrouped(files, width, limit = 18, surface = "diff", groupScope = surface, baseIndent = 1) {
+function renderGrouped(files, width, scope) {
+  const paged = page(files, scope);
   const groups = new Map();
-  for (const file of files) {
+  for (const file of paged.visible) {
     const folder = path.dirname(file.path) === "." ? "" : path.dirname(file.path);
     if (!groups.has(folder)) groups.set(folder, []);
     groups.get(folder).push(file);
   }
   const lines = [];
-  for (const [folder, entries] of [...groups.entries()].sort()) {
-    const indentation = " ".repeat(baseIndent);
-    const sortedEntries = entries.sort((a, b) => a.path.localeCompare(b.path));
+  for (const [folder, entries] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (!folder) {
-      for (const file of sortedEntries) {
-        const prefix = `${indentation}${displayGlyph(file, surface)} `;
-        const stats = statsLabel(file);
-        const available = Math.max(1, width - visibleLength(prefix) - visibleLength(stats) - (stats ? 1 : 0));
-        const fileLabel = `${prefix}${truncate(path.basename(file.path), available)}`;
-        const text = stats
-          ? `${padAnsi(fileLabel, width - visibleLength(stats) - 1)} ${stats}`
-          : fileLabel;
-        lines.push(interactive(
-          file.path === selectedPath ? `${C.selected}${padAnsi(text, width)}${C.reset}` : text,
-          () => selectFile(file, surface),
-          `${surface === "file" ? "Select file" : "Select diff"}: ${file.path}`,
-          () => openPreview(file, surface),
-        ));
-        if (lines.length >= limit) return lines;
-      }
+      lines.push(...entries.sort((a, b) => a.path.localeCompare(b.path)).map((file) => fileRow(file, width)));
       continue;
     }
-
-    const groupKey = `${groupScope}:${folder}`;
-    const isOpen = !collapsedGroups.has(groupKey);
-    const folderPrefix = `${indentation}${C.fog}${isOpen ? "⌄" : "›"} ${C.reset}`;
-    const folderCount = `${C.dim}${entries.length}${C.reset}`;
-    const folderWidth = Math.max(1, width - visibleLength(folderPrefix) - visibleLength(folderCount) - 1);
-    const folderName = compactFolderPath(folder, folderWidth);
-    const folderLeft = `${folderPrefix}${C.fog}${folderName}${C.reset}`;
-    const folderLine = `${padAnsi(folderLeft, width - visibleLength(folderCount) - 1)} ${folderCount}`;
-    lines.push(interactive(folderLine, () => {
-      if (isOpen) collapsedGroups.add(groupKey);
-      else collapsedGroups.delete(groupKey);
-      statusMessage = `${isOpen ? "Collapsed" : "Expanded"} ${folder}`;
-    }, `${isOpen ? "Collapse" : "Expand"} folder: ${folder}`));
-    if (!isOpen) {
-      if (lines.length >= limit) return lines;
-      continue;
-    }
-
-    for (const [entryIndex, file] of sortedEntries.entries()) {
-      const name = path.basename(file.path);
-      const connector = entryIndex === sortedEntries.length - 1 ? "└─" : "├─";
-      const prefix = `${indentation} ${C.faint}${connector}${C.reset} ${displayGlyph(file, surface)} `;
-      const stats = statsLabel(file);
-      const available = Math.max(1, width - visibleLength(prefix) - visibleLength(stats) - (stats ? 1 : 0));
-      const fileLabel = `${prefix}${truncate(name, available)}`;
-      const text = stats
-        ? `${padAnsi(fileLabel, width - visibleLength(stats) - 1)} ${stats}`
-        : fileLabel;
-      lines.push(interactive(
-        file.path === selectedPath ? `${C.selected}${padAnsi(text, width)}${C.reset}` : text,
-        () => selectFile(file, surface),
-        `${surface === "file" ? "Select file" : "Select diff"}: ${file.path}`,
-        () => openPreview(file, surface),
-      ));
-      if (lines.length >= limit) return lines;
-    }
-    if (lines.length >= limit) return lines;
+    const key = `${scope}:${folder}`;
+    const open = !collapsedGroups.has(key);
+    lines.push(interactive(
+      `${C.fog} ${open ? "⌄" : "›"} ${compactPath(folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${entries.length}${C.reset}`,
+      () => { if (open) collapsedGroups.add(key); else collapsedGroups.delete(key); },
+      `${open ? "Collapse" : "Expand"} folder: ${folder}`,
+    ));
+    if (open) entries.sort((a, b) => a.path.localeCompare(b.path)).forEach((file, index) => {
+      lines.push(fileRow(file, width, `  ${C.faint}${index === entries.length - 1 ? "└─" : "├─"}${C.reset} `));
+    });
   }
-  return lines;
+  return [...lines, ...showMoreRow(scope, paged.remaining)];
 }
-
-function sectionHeader(id, label, count, index, width, badgeColor = C.dim, forceExpanded = false) {
-  const isSelected = selectedSection === index;
-  const isOpen = forceExpanded || expanded[id];
-  const chevron = isOpen ? "⌄" : "›";
-  const badge = `${badgeColor}${count}${C.reset}`;
-  const marker = isSelected ? `${C.gold}▏${C.reset}` : " ";
-  const content = `${marker}${chevron} ${isSelected ? `${C.bold}${label}${C.reset}` : label}  ${badge}`;
-  return interactive(fitAnsi(content, width), () => {
-    selectedSection = index;
-    if (forceExpanded) {
-      statusMessage = "Clear the search to collapse filtered sections";
-      return;
-    }
-    expanded[id] = !expanded[id];
-    statusMessage = `${expanded[id] ? "Expanded" : "Collapsed"} ${label}`;
-  }, `${isOpen ? "Collapse" : "Expand"} ${label}`);
+function renderFilesList(files, width, scope) { return resolvedViewMode(width) === "tree" ? renderTree(files, width, scope) : renderGrouped(files, width, scope); }
+function search(files, rawQuery) {
+  const query = rawQuery.trim().toLocaleLowerCase();
+  if (!query) return files;
+  return files.filter((file) => file.path.toLocaleLowerCase().includes(query)).sort((a, b) => a.path.localeCompare(b.path));
 }
-
-function filesForCommit(commit) {
-  if (!Array.isArray(commit.files)) {
-    commit.files = getCommitFiles(state.repoRoot, commit.shortHash);
-  }
-  return commit.files;
-}
-
-function toggleCommit(commit) {
-  if (expandedCommits.has(commit.shortHash)) {
-    expandedCommits.delete(commit.shortHash);
-    statusMessage = `Collapsed commit ${commit.shortHash}`;
-    return;
-  }
-  filesForCommit(commit);
-  expandedCommits.add(commit.shortHash);
-  statusMessage = `Expanded commit ${commit.shortHash}`;
-}
-
-function gitToolbar(width) {
-  const viewMode = resolvedViewMode(width);
-  const layoutLabel = viewMode === "tree" ? "≡ Tree" : "≣ Folders";
-  const refreshLabel = "↻ Refresh";
-  const separator = "   ";
-  const refreshStart = 2 + visibleLength(layoutLabel) + visibleLength(separator);
-  const toolLine = ` ${C.gold}${layoutLabel}${C.reset}${separator}${C.fog}${refreshLabel}${C.reset}`;
-  return interactiveRegions(fitAnsi(toolLine, width), [
-    {
-      x1: 1,
-      x2: 1 + visibleLength(layoutLabel),
-      label: "Toggle tree/folder layout",
-      action: () => toggleViewMode(width),
-    },
-    {
-      x1: refreshStart,
-      x2: refreshStart + visibleLength(refreshLabel) - 1,
-      label: "Refresh Git state",
-      action: () => refresh(true),
-    },
+function toolbar(width) {
+  const layout = resolvedViewMode(width) === "tree" ? "≡ Tree" : "≣ Folders";
+  const refresh = refreshRunning ? "↻ Refreshing…" : "↻ Refresh";
+  const text = ` ${C.gold}${layout}${C.reset}   ${C.fog}${refresh}${C.reset}`;
+  return regions(fitAnsi(text, width), [
+    { x1: 1, x2: 1 + visibleLength(layout), action: () => toggleViewMode(width), label: "Toggle layout" },
+    { x1: 5 + visibleLength(layout), x2: 4 + visibleLength(layout) + visibleLength(refresh), action: () => void refreshState(true), label: "Refresh" },
   ]);
 }
-
-function renderDiffs(width) {
-  const lines = [];
-  const viewMode = resolvedViewMode(width);
+function sectionHeader(id, label, count, index, width, forced = false) {
+  const open = forced || expanded[id];
+  const marker = selectedSection === index ? `${C.gold}▏${C.reset}` : " ";
+  return interactive(fitAnsi(`${marker}${open ? "⌄" : "›"} ${label}  ${C.dim}${count}${C.reset}`, width), () => {
+    selectedSection = index;
+    if (!forced) expanded[id] = !expanded[id];
+  }, `${open ? "Collapse" : "Expand"} ${label}`);
+}
+function renderChanges(width) {
   const query = diffSearchQuery.trim();
-  const againstFiles = query ? searchFiles(state.againstBase, query) : state.againstBase;
-  const stagedFiles = query ? searchFiles(state.staged, query) : state.staged;
-  const unstagedFiles = query ? searchFiles(state.unstaged, query) : state.unstaged;
-  const matchCount = againstFiles.length + stagedFiles.length + unstagedFiles.length;
-  const countText = query
-    ? `${C.dim}${matchCount} match${matchCount === 1 ? "" : "es"}${C.reset}`
-    : "";
-  lines.push(interactive(
-    searchField(diffSearchQuery, diffSearchActive, "Search changed files…", countText, width),
-    () => {
-      diffSearchActive = true;
-      fileSearchActive = false;
-      scrollOffset = 0;
-      statusMessage = "Type to search changed files";
-    },
-    "Search changed files",
-  ));
-
-  lines.push(gitToolbar(width));
-
-  lines.push(rule(width));
-
-  if (query && matchCount === 0) {
-    lines.push(` ${C.dim}No changed files match “${truncate(diffSearchQuery, Math.max(4, width - 27))}”${C.reset}`);
-    return lines;
-  }
-
   const sections = [
-    ["against", `Against ${state.baseLabel}`, againstFiles.length, againstFiles],
-    ...(query ? [] : [["commits", "Commits", state.totalCommits, state.commits]]),
-    ["staged", "Staged", stagedFiles.length, stagedFiles],
-    ["unstaged", "Unstaged", unstagedFiles.length, unstagedFiles],
+    { id: "against", label: `Against ${state.baseLabel}`, files: search(state.againstBase || [], query) },
+    { id: "commits", label: "Commits", commits: state.commits || [] },
+    { id: "staged", label: "Staged", files: search(state.staged || [], query) },
+    { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
   ];
-
-  sections.forEach(([id, label, count, items], index) => {
-    if (count === 0) return;
-    const badgeColor = id === "staged" ? C.leaf : id === "unstaged" ? C.amber : C.dim;
-    const forceExpanded = Boolean(query) && id !== "commits";
-    lines.push(sectionHeader(id, label, count, index, width, badgeColor, forceExpanded));
-    if (!forceExpanded && !expanded[id]) return;
-    if (id === "commits") {
-      for (const commit of items.slice(0, 7)) {
-        const isOpen = expandedCommits.has(commit.shortHash);
-        const prefix = ` ${C.faint}${isOpen ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
-        const age = commit.age?.replace(" ago", "") || "";
-        const available = Math.max(1, width - visibleLength(prefix) - age.length - 1);
-        const commitLine = `${prefix}${truncate(commit.message, available)} ${C.dim}${age}${C.reset}`;
-        lines.push(interactive(commitLine, () => toggleCommit(commit), `${isOpen ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
-        if (!isOpen) continue;
-
-        const commitFiles = filesForCommit(commit);
-        if (commitFiles.length === 0) {
-          lines.push(`    ${C.dim}No changed files${C.reset}`);
-        } else if (viewMode === "tree") {
-          lines.push(...renderTree(commitFiles, width, 40, "diff", 1, `commit:${commit.shortHash}`));
-        } else {
-          lines.push(...renderGrouped(commitFiles, width, 40, "diff", `commit:${commit.shortHash}`, 1));
-        }
-      }
-    } else {
-      lines.push(...(viewMode === "tree" ? renderTree(items, width, 18, "diff", 1, id) : renderGrouped(items, width, 18, "diff", id)));
+  const matchCount = sections.filter((item) => item.files).reduce((sum, item) => sum + item.files.length, 0);
+  const lines = [
+    interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changed files…", query ? `${matchCount} matches` : "", width), () => { activeSearch = "changes"; }, "Search changes"),
+    toolbar(width), rule(width),
+  ];
+  if (query && !matchCount) return [...lines, ` ${C.dim}No changed files match “${truncate(diffSearchQuery, width - 28)}”${C.reset}`];
+  sections.forEach((section, index) => {
+    if (query && section.id === "commits") return;
+    const count = section.files?.length ?? state.totalCommits;
+    if (!count) return;
+    const forced = Boolean(query) && section.id !== "commits";
+    lines.push(sectionHeader(section.id, section.label, count, index, width, forced));
+    if (!forced && !expanded[section.id]) return;
+    if (section.files) {
+      lines.push(...renderFilesList(section.files, width, `${section.id}:${query}`));
+      return;
     }
+    const paged = page(section.commits, "commits");
+    for (const commit of paged.visible) {
+      const open = expandedCommits.has(commit.hash);
+      const age = commit.age?.replace(" ago", "") || "";
+      const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
+      lines.push(interactive(`${prefix}${truncate(commit.message, Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
+      if (!open) continue;
+      if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
+      else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
+    }
+    lines.push(...showMoreRow("commits", paged.remaining));
   });
   return lines;
 }
-
-function fileEntries() {
-  const byPath = new Map();
-  for (const filePath of state.tracked || []) {
-    byPath.set(filePath, {
-      path: filePath,
-      status: "modified",
-      additions: 0,
-      deletions: 0,
-      clean: true,
-    });
-  }
-  for (const file of [...(state.staged || []), ...(state.unstaged || [])]) {
-    byPath.set(file.path, { ...file, clean: false });
-  }
-  return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+function canonicalFiles() {
+  return (state.files || []).map((file) => ({ ...file, ...displayState(file), descriptor: { kind: "clean" } }));
 }
-
-function searchFiles(files, rawQuery) {
-  const query = rawQuery.trim().toLocaleLowerCase();
-  if (!query) return files;
-  return files
-    .filter((file) => file.path.toLocaleLowerCase().includes(query))
-    .sort((a, b) => {
-      const aName = path.basename(a.path).toLocaleLowerCase();
-      const bName = path.basename(b.path).toLocaleLowerCase();
-      const score = (name, fullPath) => {
-        if (name === query) return 0;
-        if (name.startsWith(query)) return 1;
-        if (name.includes(query)) return 2;
-        if (fullPath.toLocaleLowerCase().startsWith(query)) return 3;
-        return 4;
-      };
-      return score(aName, a.path) - score(bName, b.path) || a.path.localeCompare(b.path);
-    });
-}
-
 function renderFiles(width) {
-  const files = fileEntries();
-  const results = searchFiles(files, fileSearchQuery);
   const query = fileSearchQuery.trim();
-  const viewMode = resolvedViewMode(width);
-  const countText = query ? `${C.dim}${results.length} match${results.length === 1 ? "" : "es"}${C.reset}` : "";
-  const searchRow = interactive(
-    searchField(fileSearchQuery, fileSearchActive, "Search files…", countText, width),
-    () => {
-      fileSearchActive = true;
-      scrollOffset = 0;
-      statusMessage = "Type to search files";
-    },
-    "Search files",
-  );
-  const toolbarRow = gitToolbar(width);
-
-  if (query) {
-    const resultRows = results.slice(0, 200).map((file) => {
-      const glyph = file.clean ? `${C.dim}·${C.reset}` : statusGlyph(file);
-      const name = path.basename(file.path);
-      const parent = path.dirname(file.path) === "." ? "" : path.dirname(file.path);
-      const prefix = ` ${glyph} `;
-      const parentWidth = Math.max(8, Math.floor(width * 0.46));
-      const parentLabel = parent ? compactFolderPath(parent, parentWidth) : "";
-      const suffix = parentLabel ? `  ${C.dim}${parentLabel}${C.reset}` : "";
-      const available = Math.max(1, width - visibleLength(prefix) - visibleLength(suffix));
-      const text = `${prefix}${truncate(name, available)}${suffix}`;
-      return interactive(
-        file.path === selectedPath ? `${C.selected}${padAnsi(text, width)}${C.reset}` : fitAnsi(text, width),
-        () => selectFile(file, "file"),
-        `Select file: ${file.path}`,
-        () => openPreview(file, "file"),
-      );
-    });
-    return [
-      searchRow,
-      toolbarRow,
-      rule(width),
-      ...(resultRows.length ? resultRows : [` ${C.dim}No files match “${truncate(fileSearchQuery, Math.max(4, width - 19))}”${C.reset}`]),
-    ];
-  }
-
-  if (viewMode === "grouped") {
-    return [
-      searchRow,
-      toolbarRow,
-      rule(width),
-      ...renderGrouped(files, width, 200, "file", "files"),
-    ];
-  }
-
-  const rows = buildTree(files, collapsedFileFolders).slice(0, 200);
-  return [
-    searchRow,
-    toolbarRow,
-    rule(width),
-    ...rows.map((row) => {
-      const guides = treeGuides(row.depth, width);
-      if (row.kind === "folder") {
-        const isOpen = !collapsedFileFolders.has(row.path);
-        const folderLine = fitAnsi(` ${guides}${C.fog}${isOpen ? "⌄" : "›"} ${row.name}/${C.reset}`, width);
-        return interactive(folderLine, () => {
-          if (isOpen) collapsedFileFolders.add(row.path);
-          else collapsedFileFolders.delete(row.path);
-          statusMessage = `${isOpen ? "Collapsed" : "Expanded"} ${row.path}`;
-        }, `${isOpen ? "Collapse" : "Expand"} folder: ${row.path}`);
-      }
-      const glyph = displayGlyph(row.file, "file");
-      const text = fitAnsi(` ${guides}${glyph} ${row.name}`, width);
-      return interactive(
-        row.file.path === selectedPath ? `${C.selected}${padAnsi(text, width)}${C.reset}` : text,
-        () => selectFile(row.file, "file"),
-        `Select file: ${row.file.path}`,
-        () => openPreview(row.file, "file"),
-      );
-    }),
+  const files = search(canonicalFiles(), query);
+  const lines = [
+    interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
+    toolbar(width), rule(width),
   ];
+  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(query, width - 19)}”` : "Repository has no files"}${C.reset}`];
+  return [...lines, ...renderFilesList(files, width, `files:${query}`)];
 }
-
 function renderBody(width) {
-  if (state.error) {
-    return ["", `${C.red}${state.error}${C.reset}`, `${C.dim}${truncate(state.cwd, width)}${C.reset}`, "", "Focus a pane inside a Git worktree, then press r."];
-  }
-  if (mainTab === "files") return renderFiles(width);
-  return renderDiffs(width);
+  keyboardFiles = [];
+  if (state.error && !state.repoRoot) return ["", `${C.red}${state.error}${C.reset}`, `${C.dim}${truncate(state.cwd, width)}${C.reset}`, "", "Focus a Git worktree and press r."];
+  return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
-
 function renderHeader(width) {
-  const changedCount = state.error ? 0 : new Set([...state.staged, ...state.unstaged].map((file) => file.path)).size;
-  const primaryWidth = Math.floor(width / 2);
-  const repository = state.repository || "repository";
-  const branch = state.branch || "—";
-  return {
-    primaryWidth,
-    primaryRow: 4,
-    lines: [
-      ` ${C.bold}${truncate(repository, Math.max(1, width - 1))}${C.reset}`,
-      `  ${C.fog}⑂ ${truncate(branch, Math.max(1, width - 4))}${C.reset}`,
-      rule(width),
-      `${tab(`CHANGES ${changedCount}`, mainTab === "changes", primaryWidth)}${tab("FILES", mainTab === "files", width - primaryWidth)}`,
-    ],
-  };
-}
-
-function renderFrame() {
-  const width = Math.max(20, forcedWidth || process.stdout.columns || 52);
-  const height = Math.max(18, forcedHeight || process.stdout.rows || 42);
-  const { lines: header, primaryWidth, primaryRow } = renderHeader(width);
-  const searchActive = fileSearchActive || diffSearchActive;
-  const controls = searchActive
-    ? "type to filter · Enter done · Esc close · Ctrl-U clear"
-    : mainTab === "files"
-      ? "/ search · Tab changes · g layout · dbl-click open · q"
-      : "/ search · Tab files · g layout · q close";
-  const genericStatuses = new Set([
-    "Click a tab, section, commit, or file",
-    "Changes",
-    "Files",
-    "Diffs",
-    "Review",
-    "Git state refreshed",
-  ]);
-  const footerText = searchActive || genericStatuses.has(statusMessage) ? controls : statusMessage;
-  const footer = [
+  const changes = new Set([...(state.staged || []), ...(state.unstaged || [])].map((file) => file.path)).size;
+  const half = Math.floor(width / 2);
+  return { half, lines: [
+    ` ${C.gold}${C.bold}HERDR GITRAIL${C.reset}`,
+    ` ${C.bold}${truncate(state.repository || "repository", width - 1)}${C.reset}`,
+    `  ${C.fog}⑂ ${truncate(state.branch || "—", width - 4)}${C.reset}`,
     rule(width),
-    `${C.dim}${fitAnsi(footerText, width)}${C.reset}`,
-  ];
-  const bodyHeight = Math.max(1, height - header.length - footer.length);
+    `${tab(`CHANGES ${changes}`, mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
+  ] };
+}
+function renderFrame() {
+  const width = Math.max(24, forcedWidth || process.stdout.columns || 52);
+  const height = Math.max(18, forcedHeight || process.stdout.rows || 42);
+  const { half, lines: header } = renderHeader(width);
   const body = renderBody(width);
-  const fixedBodyCount = state.error
-    ? 0
-    : mainTab === "files"
-      ? 3
-      : 3;
-  const fixedBody = body.slice(0, Math.min(fixedBodyCount, bodyHeight));
-  const scrollableBody = body.slice(fixedBody.length);
-  const scrollableHeight = Math.max(0, bodyHeight - fixedBody.length);
-  const maxOffset = Math.max(0, scrollableBody.length - scrollableHeight);
-  scrollOffset = Math.max(0, Math.min(scrollOffset, maxOffset));
-  const viewport = [
-    ...fixedBody,
-    ...scrollableBody.slice(scrollOffset, scrollOffset + scrollableHeight),
-  ];
+  const controls = activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · h/l section · / search · q";
+  const footerMessage = statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
+  const footer = [rule(width), `${C.dim}${fitAnsi(footerMessage, width)}${C.reset}`];
+  const fixedCount = state.repoRoot ? 3 : 0;
+  const bodyHeight = Math.max(1, height - header.length - footer.length);
+  const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
+  const scrollable = body.slice(fixed.length);
+  const visibleHeight = Math.max(0, bodyHeight - fixed.length);
+  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, scrollable.length - visibleHeight)));
+  const viewport = [...fixed, ...scrollable.slice(scrollOffset, scrollOffset + visibleHeight)];
   while (viewport.length < bodyHeight) viewport.push("");
-  hitTargets = [];
-  hitTargets.push(
-    { row: primaryRow, x1: 1, x2: primaryWidth, label: "Show Changes", action: () => { mainTab = "changes"; fileSearchActive = false; scrollOffset = 0; statusMessage = "Changes"; } },
-    { row: primaryRow, x1: primaryWidth + 1, x2: width, label: "Show Files", action: () => { mainTab = "files"; diffSearchActive = false; scrollOffset = 0; statusMessage = "Files"; } },
-  );
+  hitTargets = [
+    { row: 5, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
+    { row: 5, x1: half + 1, x2: width, label: "Files", action: () => { mainTab = "files"; activeSearch = ""; scrollOffset = 0; } },
+  ];
   viewport.forEach((entry, index) => {
     if (typeof entry === "string") return;
     const row = header.length + index + 1;
-    if (Array.isArray(entry.targets)) {
-      for (const target of entry.targets) {
-        hitTargets.push({ row, ...target });
-      }
-    }
-    if (!entry.onClick) return;
-    hitTargets.push({
-      row,
-      x1: 1,
-      x2: width,
-      label: entry.label,
-      action: entry.onClick,
-      doubleAction: entry.onDoubleClick,
-    });
+    if (entry.targets) entry.targets.forEach((target) => hitTargets.push({ row, ...target }));
+    if (entry.onClick) hitTargets.push({ row, x1: 1, x2: width, label: entry.label, action: entry.onClick, doubleAction: entry.onDoubleClick });
   });
-  return [...header, ...viewport, ...footer]
-    .map((line) => padAnsi(lineText(line), width))
-    .join("\n");
+  return [...header, ...viewport, ...footer].map((line) => padAnsi(textOf(line), width)).join("\n");
 }
+function draw() { process.stdout.write(snapshotMode ? `${renderFrame()}\n` : `${ESC}2J${ESC}H${renderFrame()}`); }
 
-function draw() {
-  const frame = renderFrame();
-  process.stdout.write(snapshotMode ? `${frame}\n` : `${ESC}2J${ESC}H${frame}`);
+async function currentPaneId() {
+  if (process.env.HERDR_PANE_ID) return process.env.HERDR_PANE_ID;
+  try {
+    const result = await runCommand(process.env.HERDR_BIN_PATH || "herdr", ["pane", "current", "--current"], { cwd: focusedCwd });
+    return JSON.parse(result.stdout)?.result?.pane?.pane_id || "";
+  } catch { return ""; }
 }
-
-function refresh(announce = false) {
-  state = demoMode ? getDemoState(contextCwd) : getLiveState(contextCwd);
-  scrollOffset = 0;
-  if (announce) statusMessage = "Git state refreshed";
+function paneStateFile(workspaceId) {
+  const directory = path.join(os.homedir(), ".cache", "herdr-gitrail", "panes");
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return path.join(directory, `${workspaceId.replace(/[^A-Za-z0-9._-]/g, "_")}.preview`);
+}
+async function openPreview(file) {
+  const herdr = process.env.HERDR_BIN_PATH || "herdr";
+  const workspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
+  const selfPaneId = await currentPaneId();
+  if (workspaceId) {
+    const stateFile = paneStateFile(workspaceId);
+    try {
+      const stalePaneId = fs.readFileSync(stateFile, "utf8").trim();
+      if (stalePaneId && stalePaneId !== selfPaneId) await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd });
+    } catch {}
+  }
+  const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({ status: file.status, oldPath: file.oldPath, binary: file.binary })).toString("base64url");
+  const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "overlay",
+    "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
+  try {
+    const result = await runCommand(herdr, openArgs, { cwd: focusedCwd });
+    const payload = JSON.parse(result.stdout);
+    const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
+    if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
+    statusMessage = `Preview opened · ${descriptorLabel(file.descriptor)}`;
+  } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
 }
-
-function cleanup() {
+async function toggleCommit(commit) {
+  if (expandedCommits.has(commit.hash)) { expandedCommits.delete(commit.hash); draw(); return; }
+  expandedCommits.add(commit.hash);
+  draw();
+  if (!commitFiles.has(commit.hash)) {
+    try { commitFiles.set(commit.hash, await getCommitFiles(state.repoRoot, commit.hash, state.config.limits.maxDiffBytes)); }
+    catch (error) { commitFiles.set(commit.hash, []); statusMessage = `Commit files failed: ${error.message}`; }
+  }
+  draw();
+}
+async function refreshState(announce = false) {
+  if (refreshRunning) { refreshQueued = true; return; }
+  refreshRunning = true;
+  const generation = ++refreshGeneration;
+  draw();
+  try {
+    const next = await getRepositoryState(providerCwd);
+    if (generation === refreshGeneration) {
+      if (demoMode) next.repository = "gitrail-fixture";
+      state = next;
+      if (announce) statusMessage = "Git state refreshed";
+      else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
+    }
+  } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
+  finally {
+    refreshRunning = false;
+    draw();
+    if (refreshQueued) { refreshQueued = false; void refreshState(false); }
+  }
+}
+function startInvalidation() {
+  if (demoMode || !state.repoRoot) return;
+  const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
+  for (const target of [state.repoRoot, path.join(state.repoRoot, ".git")]) {
+    try { watchers.push(fs.watch(target, { recursive: process.platform === "darwin" }, debounce)); } catch {}
+  }
+  refreshTimer = setInterval(() => void refreshState(false), state.config.refresh.pollIntervalMs);
+  refreshTimer.unref();
+}
+async function cleanup() {
+  clearInterval(refreshTimer); clearTimeout(watchTimer);
+  watchers.forEach((watcher) => watcher.close()); watchers = [];
+  if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; await removeFixtureRepository(root); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
-
-function quit() {
-  cleanup();
-  process.exit(0);
-}
+async function quit() { await cleanup(); process.exit(0); }
 
 if (snapshotMode) {
   draw();
+  await cleanup();
   process.exit(0);
 }
-
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
-process.stdout.on("error", () => {});
-process.on("SIGTERM", quit);
-process.on("SIGINT", quit);
-process.on("exit", cleanup);
-process.stdout.on("resize", draw);
-
 process.stdin.setEncoding("utf8");
 process.stdin.setRawMode?.(true);
 process.stdin.resume();
 process.stdin.on("data", (key) => {
   if (!key) return;
   const mousePattern = /\u001b\[<(\d+);(\d+);(\d+)([Mm])/g;
-  let mouseMatch;
-  let handledMouse = false;
-  while ((mouseMatch = mousePattern.exec(key)) !== null) {
-    handledMouse = true;
-    const button = Number.parseInt(mouseMatch[1], 10);
-    const column = Number.parseInt(mouseMatch[2], 10);
-    const row = Number.parseInt(mouseMatch[3], 10);
-    const phase = mouseMatch[4];
-    if (button === 64 && phase === "M") {
-      scrollOffset = Math.max(0, scrollOffset - 3);
-    } else if (button === 65 && phase === "M") {
-      scrollOffset += 3;
-    } else if (button === 0 && phase === "M") {
-      const target = hitTargets.find((hit) => hit.row === row && column >= hit.x1 && column <= hit.x2);
+  let match;
+  let mouse = false;
+  while ((match = mousePattern.exec(key))) {
+    mouse = true;
+    const button = Number(match[1]); const column = Number(match[2]); const row = Number(match[3]); const phase = match[4];
+    if (button === 64 && phase === "M") scrollOffset = Math.max(0, scrollOffset - 3);
+    if (button === 65 && phase === "M") scrollOffset += 3;
+    if (button === 0 && phase === "M") {
+      const target = hitTargets.find((item) => item.row === row && column >= item.x1 && column <= item.x2);
       if (target) {
         const now = Date.now();
-        const isDoubleClick = Boolean(target.doubleAction) && lastClick.label === target.label && now - lastClick.at <= 450;
-        if (isDoubleClick) {
-          target.doubleAction();
-          lastClick = { label: "", at: 0 };
-        } else {
-          target.action();
-          lastClick = { label: target.label, at: now };
-        }
-      } else {
-        lastClick = { label: "", at: 0 };
+        if (target.doubleAction && lastClick.label === target.label && now - lastClick.at <= 450) { void target.doubleAction(); lastClick = { label: "", at: 0 }; }
+        else { target.action(); lastClick = { label: target.label, at: now }; }
       }
     }
   }
-  if (handledMouse) {
-    draw();
-    return;
-  }
-  if (key === "\u0003") return quit();
-  const activeSearch = fileSearchActive ? "files" : diffSearchActive ? "diffs" : "";
+  if (mouse) { draw(); return; }
+  if (key === "\u0003" || (!activeSearch && (key === "q" || key === "\u001b"))) { void quit(); return; }
   if (activeSearch) {
     let query = activeSearch === "files" ? fileSearchQuery : diffSearchQuery;
-    if (key === "\u001b") {
-      if (activeSearch === "files") fileSearchActive = false;
-      else diffSearchActive = false;
-      statusMessage = query.trim() ? `Search: ${query.trim()}` : activeSearch === "files" ? "Files" : "Diffs";
-    } else if (key === "\r" || key === "\n") {
-      if (activeSearch === "files") fileSearchActive = false;
-      else diffSearchActive = false;
-      statusMessage = query.trim() ? `Search: ${query.trim()}` : activeSearch === "files" ? "Files" : "Diffs";
-    } else if (key === "\u007f" || key === "\b") {
-      query = [...query].slice(0, -1).join("");
-      scrollOffset = 0;
-    } else if (key === "\u0015") {
-      query = "";
-      scrollOffset = 0;
-    } else {
-      const textInput = key
-        .replaceAll("\u001b[200~", "")
-        .replaceAll("\u001b[201~", "")
-        .replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "");
-      for (const character of textInput) {
-        if (character >= " " && character !== "\u007f") query += character;
-      }
-      scrollOffset = 0;
-    }
-    if (activeSearch === "files") fileSearchQuery = query;
-    else diffSearchQuery = query;
-    draw();
-    return;
+    if (key === "\u001b" || key === "\r" || key === "\n") activeSearch = "";
+    else if (key === "\u007f" || key === "\b") query = [...query].slice(0, -1).join("");
+    else if (key === "\u0015") query = "";
+    else query += key.replaceAll("\u001b[200~", "").replaceAll("\u001b[201~", "").replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
+    if (activeSearch === "files") fileSearchQuery = query; else if (activeSearch === "changes") diffSearchQuery = query;
+    scrollOffset = 0; draw(); return;
   }
-  if (key === "q" || key === "\u001b") return quit();
-  if (key === "\t") {
-    mainTab = mainTab === "changes" ? "files" : "changes";
-    fileSearchActive = false;
-    diffSearchActive = false;
-    scrollOffset = 0;
-  } else if (key === "/") {
-    fileSearchActive = mainTab === "files";
-    diffSearchActive = mainTab === "changes";
-    scrollOffset = 0;
-    statusMessage = mainTab === "files" ? "Type to search files" : "Type to search changed files";
-  } else if (key === "j" || key === "\u001b[B") {
-    selectedSection = Math.min(sectionIds.length - 1, selectedSection + 1);
-    scrollOffset++;
-  } else if (key === "k" || key === "\u001b[A") {
-    selectedSection = Math.max(0, selectedSection - 1);
-    scrollOffset--;
-  } else if (key === " ") {
-    const id = sectionIds[selectedSection];
-    expanded[id] = !expanded[id];
-  } else if (key === "g") {
-    toggleViewMode(Math.max(20, forcedWidth || process.stdout.columns || 52));
-  } else if (key === "r") {
-    return refresh(true);
+  if (key === "\t") { mainTab = mainTab === "changes" ? "files" : "changes"; scrollOffset = 0; }
+  else if (key === "/") activeSearch = mainTab;
+  else if (key === "j" || key === "\u001b[B") {
+    const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
+    const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + 1))];
+    if (next) selectFile(next);
+    scrollOffset += 1;
   }
+  else if (key === "k" || key === "\u001b[A") {
+    const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
+    const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - 1)];
+    if (next) selectFile(next);
+    scrollOffset = Math.max(0, scrollOffset - 1);
+  }
+  else if (key === "\r" || key === "\n" || key === "o") {
+    const selected = keyboardFiles.find((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
+    if (selected) void openPreview(selected);
+  }
+  else if (key === "l" || key === "\u001b[C") selectedSection = Math.min(sectionIds.length - 1, selectedSection + 1);
+  else if (key === "h" || key === "\u001b[D") selectedSection = Math.max(0, selectedSection - 1);
+  else if (key === "J") scrollOffset += 3;
+  else if (key === "K") scrollOffset = Math.max(0, scrollOffset - 3);
+  else if (key === " ") expanded[sectionIds[selectedSection]] = !expanded[sectionIds[selectedSection]];
+  else if (key === "g") toggleViewMode(Math.max(24, process.stdout.columns || 52));
+  else if (key === "r") { void refreshState(true); return; }
   draw();
 });
-
+process.on("SIGTERM", () => void quit());
+process.on("SIGINT", () => void quit());
+process.stdout.on("resize", draw);
 draw();
-setInterval(() => {
-  if (!demoMode) refresh(false);
-}, 2_500);
+startInvalidation();
