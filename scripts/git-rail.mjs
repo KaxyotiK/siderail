@@ -242,14 +242,16 @@ function search(files, rawQuery) {
 }
 function searchCommits(commits, rawQuery) {
   const query = rawQuery.trim().toLocaleLowerCase();
-  if (!query) return commits;
-  return commits.filter((commit) => {
+  if (!query) return commits.map((commit) => ({ ...commit, summaryMatch: false, matchingPaths: [] }));
+  return commits.flatMap((commit) => {
     const summary = [commit.hash, commit.shortHash, commit.message, commit.author, commit.age, compactAge(commit.age)]
       .filter(Boolean)
       .join("\n")
       .toLocaleLowerCase();
-    if (summary.includes(query)) return true;
-    return (commitFiles.get(commit.hash) || []).some((file) => file.path.toLocaleLowerCase().includes(query));
+    const matchingPaths = (state.commitPathIndex?.get(commit.hash) || [])
+      .filter((filePath) => filePath.toLocaleLowerCase().includes(query));
+    const summaryMatch = summary.includes(query);
+    return summaryMatch || matchingPaths.length ? [{ ...commit, summaryMatch, matchingPaths }] : [];
   });
 }
 function toolbar(width) {
@@ -277,7 +279,10 @@ function renderChanges(width) {
     { id: "staged", label: "Staged", files: search(state.staged || [], query) },
     { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
   ];
-  const matchCount = sections.reduce((sum, item) => sum + (item.files?.length ?? item.commits?.length ?? 0), 0);
+  const matchCount = sections.reduce((sum, item) => {
+    if (item.files) return sum + item.files.length;
+    return sum + item.commits.reduce((commitSum, commit) => commitSum + (commit.summaryMatch ? 1 : 0) + commit.matchingPaths.length, 0);
+  }, 0);
   const resultCount = `${matchCount} result${matchCount === 1 ? "" : "s"}`;
   const lines = [
     interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changes & commits…", query ? resultCount : "", width), () => { activeSearch = "changes"; }, "Search changes and commits"),
@@ -296,12 +301,18 @@ function renderChanges(width) {
     }
     const paged = page(section.commits, `commits:${query}`);
     for (const commit of paged.visible) {
-      const open = expandedCommits.has(commit.hash);
+      const open = query ? commit.matchingPaths.length > 0 : expandedCommits.has(commit.hash);
       const age = compactAge(commit.age);
       const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
       lines.push(interactive(`${prefix}${truncate(commit.message, Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
       if (!open) continue;
-      if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
+      if (query) {
+        const loaded = commitFiles.get(commit.hash);
+        const matchingFiles = loaded
+          ? search(loaded, query)
+          : commit.matchingPaths.map((filePath) => ({ path: filePath, status: "modified", additions: 0, deletions: 0, descriptor: { kind: "commit", commitHash: commit.hash } }));
+        lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`));
+      } else if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
     lines.push(...showMoreRow(`commits:${query}`, paged.remaining));

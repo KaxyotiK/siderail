@@ -46,6 +46,16 @@ test("Changes search includes commit history summaries", async () => {
   assert.doesNotMatch(plain, /No changes or commits match/);
 });
 
+test("commit-history search filters expanded commit children", async () => {
+  const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "preview.md", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+  const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(plain, /2 results/);
+  assert.match(plain, /Against main  1/);
+  assert.match(plain, /Commits  1/);
+  assert.match(plain, /preview\.md/);
+  assert.doesNotMatch(plain, /rail\.mjs|status\.mjs/);
+});
+
 test("large repositories expose an explicit reachable continuation", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

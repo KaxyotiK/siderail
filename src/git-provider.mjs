@@ -149,17 +149,26 @@ async function trackingState(repoRoot) {
 }
 
 async function commitState(repoRoot, baseRef) {
-  if (!baseRef || baseRef === "HEAD") return { commits: [], totalCommits: 0 };
+  if (!baseRef || baseRef === "HEAD") return { commits: [], totalCommits: 0, commitPathIndex: new Map() };
   const range = `${baseRef}..HEAD`;
-  const [log, countText] = await Promise.all([
+  const [log, countText, pathLog] = await Promise.all([
     gitText(repoRoot, ["log", "-z", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%ar", range]),
     gitText(repoRoot, ["rev-list", "--count", range]),
+    gitText(repoRoot, ["log", "-z", "--format=%x1e%H", "--name-only", range]),
   ]);
   const commits = log.split("\0").filter(Boolean).map((record) => {
     const [hash, shortHash, message, author, age] = record.replace(/^\n+/, "").split("\x1f");
     return { hash, shortHash, message, author, age };
   });
-  return { commits, totalCommits: Number.parseInt(countText.trim(), 10) || 0 };
+  const commitPathIndex = new Map();
+  for (const block of pathLog.split("\x1e").slice(1)) {
+    const tokens = block.split("\0");
+    const hash = tokens.shift()?.trim();
+    if (!hash) continue;
+    if (tokens[0]?.startsWith("\n")) tokens[0] = tokens[0].slice(1);
+    commitPathIndex.set(hash, tokens.filter(Boolean));
+  }
+  return { commits, totalCommits: Number.parseInt(countText.trim(), 10) || 0, commitPathIndex };
 }
 
 export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 * 1024 * 1024) {
