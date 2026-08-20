@@ -22,24 +22,37 @@ async function gitOutput(repoRoot, args, maxOutputBytes, allowExitCodes = [0]) {
   return (await runGit(repoRoot, args, { maxOutputBytes, allowExitCodes })).stdout;
 }
 
-export function diffArguments(descriptor, filePath) {
+function pathspecs(filePath, metadata = {}) {
+  return metadata.oldPath && metadata.oldPath !== filePath ? [metadata.oldPath, filePath] : [filePath];
+}
+
+export function diffArguments(descriptor, filePath, metadata = {}) {
   const common = ["--no-ext-diff", "--color=always", "--find-renames", "--find-copies-harder"];
-  if (descriptor.kind === "workspace") return ["diff", ...common, descriptor.mergeBase || descriptor.baseRef, "--", filePath];
-  if (descriptor.kind === "against") return ["diff", ...common, `${descriptor.baseRef}...HEAD`, "--", filePath];
-  if (descriptor.kind === "commit") return ["show", "--format=", ...common, descriptor.commitHash, "--", filePath];
-  if (descriptor.kind === "staged") return ["diff", ...common, "--cached", "--", filePath];
-  if (descriptor.kind === "unstaged") return ["diff", ...common, "--", filePath];
+  const paths = pathspecs(filePath, metadata);
+  if (descriptor.kind === "workspace") return ["diff", ...common, descriptor.mergeBase || descriptor.baseRef, "--", ...paths];
+  if (descriptor.kind === "against") return ["diff", ...common, `${descriptor.baseRef}...HEAD`, "--", ...paths];
+  if (descriptor.kind === "commit" && descriptor.parentHash) return ["diff", ...common, descriptor.parentHash, descriptor.commitHash, "--", ...paths];
+  if (descriptor.kind === "commit" && descriptor.parentHash === "") return ["show", "--root", "--format=", ...common, descriptor.commitHash, "--", ...paths];
+  if (descriptor.kind === "staged") return ["diff", ...common, "--cached", "--", ...paths];
+  if (descriptor.kind === "unstaged") return ["diff", ...common, "--", ...paths];
   return null;
 }
 
-export async function loadDiff({ repoRoot, filePath, descriptor, maxOutputBytes }) {
+async function commitDescriptor(repoRoot, descriptor, maxOutputBytes) {
+  if (descriptor.kind !== "commit" || Object.hasOwn(descriptor, "parentHash")) return descriptor;
+  const parents = (await gitOutput(repoRoot, ["rev-list", "--parents", "-n", "1", descriptor.commitHash], maxOutputBytes)).trim().split(/\s+/);
+  return { ...descriptor, parentHash: parents[1] || "", comparison: "first-parent" };
+}
+
+export async function loadDiff({ repoRoot, filePath, descriptor, metadata = {}, maxOutputBytes }) {
   if (descriptor.kind === "clean") return { text: "No change exists for this file.", revision: "worktree (clean)" };
   if (descriptor.kind === "untracked") {
     await safeWorktreePath(repoRoot, filePath);
     const text = await gitOutput(repoRoot, ["diff", "--no-index", "--color=always", "--", "/dev/null", filePath], maxOutputBytes, [0, 1]);
     return { text: text || "The untracked file is empty.", revision: "untracked worktree file" };
   }
-  const args = diffArguments(descriptor, filePath);
+  descriptor = await commitDescriptor(repoRoot, descriptor, maxOutputBytes);
+  const args = diffArguments(descriptor, filePath, metadata);
   if (!args) throw new Error(`Unsupported diff descriptor: ${descriptor.kind}`);
   const text = await gitOutput(repoRoot, args, maxOutputBytes);
   return { text: text || `No ${descriptor.kind} change exists for this path.`, revision: descriptorLabel(descriptor) };
@@ -48,7 +61,9 @@ export async function loadDiff({ repoRoot, filePath, descriptor, maxOutputBytes 
 function descriptorLabel(descriptor) {
   if (descriptor.kind === "workspace") return `${descriptor.baseRef} merge base vs worktree`;
   if (descriptor.kind === "against") return `${descriptor.baseRef}...HEAD`;
-  if (descriptor.kind === "commit") return descriptor.commitHash;
+  if (descriptor.kind === "commit") return descriptor.parentHash
+    ? `${descriptor.parentHash.slice(0, 8)} → ${descriptor.commitHash.slice(0, 8)} (first parent)`
+    : `empty tree → ${descriptor.commitHash.slice(0, 8)}`;
   if (descriptor.kind === "staged") return "index vs HEAD";
   if (descriptor.kind === "unstaged") return "worktree vs index";
   return descriptor.kind;
@@ -62,7 +77,8 @@ async function readBounded(filePath, maxBytes) {
     const buffer = Buffer.alloc(stat.size);
     await handle.read(buffer, 0, stat.size, 0);
     if (buffer.subarray(0, Math.min(8_192, buffer.length)).includes(0)) throw new Error("Binary file — textual preview unavailable");
-    return buffer.toString("utf8");
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(buffer); }
+    catch { throw new Error("File is not valid UTF-8 — textual preview unavailable"); }
   } finally {
     await handle.close();
   }
@@ -73,22 +89,58 @@ async function blob(repoRoot, revision, filePath, maxBytes) {
   return gitOutput(repoRoot, ["show", spec], maxBytes);
 }
 
-export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, maxFileBytes }) {
-  try {
+async function submoduleText(repoRoot, revision, filePath, maxBytes) {
+  let objectId;
+  if (revision === "worktree") {
     const absolute = await safeWorktreePath(repoRoot, filePath);
-    return { text: await readBounded(absolute, maxFileBytes), revision: "worktree" };
-  } catch (worktreeError) {
-    if (!/ENOENT|no such file|unavailable/i.test(`${worktreeError.code || ""} ${worktreeError.message}`) && metadata.status !== "deleted") throw worktreeError;
+    objectId = (await gitOutput(absolute, ["rev-parse", "HEAD"], maxBytes)).trim();
+  } else if (revision === "index") {
+    objectId = (await gitOutput(repoRoot, ["rev-parse", `:${filePath}`], maxBytes)).trim();
+  } else {
+    objectId = (await gitOutput(repoRoot, ["rev-parse", `${revision}:${filePath}`], maxBytes)).trim();
   }
+  return `Submodule commit ${objectId}\n`;
+}
+
+export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, maxFileBytes }) {
   const oldPath = metadata.oldPath || filePath;
+  const raw = async (revision, rawPath, label) => ({
+    text: metadata.submodule
+      ? await submoduleText(repoRoot, revision, rawPath, maxFileBytes)
+      : revision === "worktree"
+        ? await readBounded(await safeWorktreePath(repoRoot, rawPath), maxFileBytes)
+        : await blob(repoRoot, revision === "index" ? "" : revision, rawPath, maxFileBytes),
+    revision: label,
+  });
   if (descriptor.kind === "commit") {
-    try { return { text: await blob(repoRoot, descriptor.commitHash, filePath, maxFileBytes), revision: `${descriptor.commitHash}:${filePath}` }; }
-    catch { return { text: await blob(repoRoot, `${descriptor.commitHash}^`, oldPath, maxFileBytes), revision: `${descriptor.commitHash}^:${oldPath}` }; }
+    descriptor = await commitDescriptor(repoRoot, descriptor, maxFileBytes);
+    try { return await raw(descriptor.commitHash, filePath, `${descriptor.commitHash}:${filePath}`); }
+    catch (error) {
+      if (!descriptor.parentHash) throw error;
+      return raw(descriptor.parentHash, oldPath, `${descriptor.parentHash}:${oldPath}`);
+    }
   }
-  if (descriptor.kind === "against") return { text: await blob(repoRoot, descriptor.baseRef, oldPath, maxFileBytes), revision: `${descriptor.baseRef}:${oldPath}` };
-  if (descriptor.kind === "workspace") return { text: await blob(repoRoot, descriptor.mergeBase || descriptor.baseRef, oldPath, maxFileBytes), revision: `${descriptor.baseRef}:${oldPath}` };
-  if (descriptor.kind === "unstaged") return { text: await blob(repoRoot, "", oldPath, maxFileBytes), revision: `index:${oldPath}` };
-  return { text: await blob(repoRoot, "HEAD", oldPath, maxFileBytes), revision: `HEAD:${oldPath}` };
+  if (descriptor.kind === "against") {
+    try { return await raw("HEAD", filePath, `HEAD:${filePath}`); }
+    catch { return raw(descriptor.baseRef, oldPath, `${descriptor.baseRef}:${oldPath}`); }
+  }
+  if (descriptor.kind === "staged") {
+    try { return await raw("index", filePath, `index:${filePath}`); }
+    catch { return raw("HEAD", oldPath, `HEAD:${oldPath}`); }
+  }
+  if (descriptor.kind === "workspace" || descriptor.kind === "unstaged" || descriptor.kind === "untracked" || descriptor.kind === "clean") {
+    try { return await raw("worktree", filePath, "worktree"); }
+    catch (error) {
+      if (metadata.status !== "deleted") throw error;
+      if (descriptor.kind === "workspace") {
+        const revision = descriptor.mergeBase || descriptor.baseRef;
+        return raw(revision, oldPath, `${revision}:${oldPath}`);
+      }
+      if (descriptor.kind === "unstaged") return raw("index", oldPath, `index:${oldPath}`);
+      return raw("HEAD", oldPath, `HEAD:${oldPath}`);
+    }
+  }
+  throw new Error(`Unsupported raw descriptor: ${descriptor.kind}`);
 }
 
 export { safeWorktreePath };

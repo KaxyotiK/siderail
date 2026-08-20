@@ -1,6 +1,44 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseNameStatusZ, parseNumstatZ, parsePorcelainV2Z } from "../src/git-parsers.mjs";
+import {
+  parseCommitLogZ,
+  parseCommitPathsRawLogZ,
+  parseNameStatusZ,
+  parseNumstatZ,
+  parsePorcelainV2Z,
+} from "../src/git-parsers.mjs";
+
+test("commit machine formats preserve control characters and unambiguous paths", () => {
+  const hash = "a".repeat(40);
+  const nextHash = "b".repeat(40);
+  const commits = parseCommitLogZ([
+    hash, "aaaaaaa", "subject\x1fwith\x1erecord controls\nand a newline", "Author\x1fName", "now", "",
+  ].join("\0"));
+  assert.deepEqual(commits, [{
+    hash,
+    shortHash: "aaaaaaa",
+    message: "subject\x1fwith\x1erecord controls\nand a newline",
+    author: "Author\x1fName",
+    age: "now",
+  }]);
+
+  const hashShapedPath = "c".repeat(40);
+  const raw = [
+    hash,
+    "\n:100644 100644 1111111 2222222 M",
+    hashShapedPath,
+    ":100644 100644 1111111 2222222 M",
+    "line\nbreak\tü.txt",
+    nextHash,
+    "\n:000000 100644 0000000 3333333 A",
+    "new.txt",
+    "",
+  ].join("\0");
+  assert.deepEqual(parseCommitPathsRawLogZ(raw), new Map([
+    [hash, [hashShapedPath, "line\nbreak\tü.txt"]],
+    [nextHash, ["new.txt"]],
+  ]));
+});
 
 test("porcelain v2 parser preserves spaces, tabs, unicode, renames, and conflicts", () => {
   const output = [

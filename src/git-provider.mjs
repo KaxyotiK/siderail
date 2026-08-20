@@ -4,6 +4,8 @@ import { loadConfig } from "./config.mjs";
 import {
   mergeStats,
   mergeMetadata,
+  parseCommitLogZ,
+  parseCommitPathsRawLogZ,
   parseLsFilesStageZ,
   parseNameStatusZ,
   parseNumstatZ,
@@ -88,20 +90,38 @@ async function workspaceState(repoRoot, baseRef) {
 
 async function countUntracked(repoRoot, filePath, maxBytes) {
   try {
-    const absolute = await fs.realpath(path.join(repoRoot, filePath));
     const root = await fs.realpath(repoRoot);
-    if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
-    const handle = await fs.open(absolute, "r");
-    try {
-      const stat = await handle.stat();
-      if (stat.size > maxBytes) return { additions: 0, binary: false, oversized: true };
-      const buffer = Buffer.alloc(stat.size);
-      await handle.read(buffer, 0, stat.size, 0);
-      const binary = buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0);
-      return { additions: binary ? 0 : buffer.toString("utf8").split("\n").length, binary };
-    } finally {
-      await handle.close();
+    const lexical = path.resolve(root, filePath);
+    if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
+    const lexicalStat = await fs.lstat(lexical);
+    let buffer;
+    if (lexicalStat.isSymbolicLink()) {
+      buffer = await fs.readlink(lexical, { encoding: "buffer" });
+      if (buffer.length > maxBytes) return { additions: 0, binary: false, oversized: true };
+    } else {
+      const absolute = await fs.realpath(lexical);
+      if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
+      const handle = await fs.open(absolute, "r");
+      try {
+        const stat = await handle.stat();
+        if (stat.size > maxBytes) return { additions: 0, binary: false, oversized: true };
+        buffer = Buffer.alloc(stat.size);
+        let offset = 0;
+        while (offset < buffer.length) {
+          const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
+          if (!bytesRead) break;
+          offset += bytesRead;
+        }
+        buffer = buffer.subarray(0, offset);
+      } finally {
+        await handle.close();
+      }
     }
+    const binary = buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0);
+    const additions = buffer.length === 0
+      ? 0
+      : buffer.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0) + (buffer.at(-1) === 0x0a ? 0 : 1);
+    return { additions: binary ? 0 : additions, binary };
   } catch {
     return { additions: 0, binary: false };
   }
@@ -166,34 +186,27 @@ async function commitState(repoRoot, baseRef) {
   if (!baseRef || baseRef === "HEAD") return { commits: [], totalCommits: 0, commitPathIndex: new Map() };
   const range = `${baseRef}..HEAD`;
   const [log, countText, pathLog] = await Promise.all([
-    gitText(repoRoot, ["log", "-z", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%ar", range]),
-    gitText(repoRoot, ["rev-list", "--count", range]),
-    gitText(repoRoot, ["log", "-z", "--format=%x1e%H", "--name-only", range]),
+    gitText(repoRoot, ["log", "--first-parent", "-z", "--format=%H%x00%h%x00%s%x00%an%x00%ar", range]),
+    gitText(repoRoot, ["rev-list", "--first-parent", "--count", range]),
+    gitText(repoRoot, ["log", "--first-parent", "-z", "--format=%H", "--raw", "--no-abbrev", "--no-renames", range]),
   ]);
-  const commits = log.split("\0").filter(Boolean).map((record) => {
-    const [hash, shortHash, message, author, age] = record.replace(/^\n+/, "").split("\x1f");
-    return { hash, shortHash, message, author, age };
-  });
-  const commitPathIndex = new Map();
-  for (const block of pathLog.split("\x1e").slice(1)) {
-    const tokens = block.split("\0");
-    const hash = tokens.shift()?.trim();
-    if (!hash) continue;
-    if (tokens[0]?.startsWith("\n")) tokens[0] = tokens[0].slice(1);
-    commitPathIndex.set(hash, tokens.filter(Boolean));
-  }
+  const commits = parseCommitLogZ(log);
+  const commitPathIndex = parseCommitPathsRawLogZ(pathLog);
   return { commits, totalCommits: Number.parseInt(countText.trim(), 10) || 0, commitPathIndex };
 }
 
 export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 * 1024 * 1024) {
+  const parentLine = (await gitText(repoRoot, ["rev-list", "--parents", "-n", "1", commitHash], { maxOutputBytes })).trim();
+  const parentHash = parentLine.split(/\s+/)[1] || "";
+  const comparison = parentHash ? ["diff", parentHash, commitHash] : ["show", "--root", "--format=", commitHash];
   const [names, stats, raw] = await Promise.all([
-    gitText(repoRoot, ["show", "--format=", "--name-status", "-z", "--find-renames", "--find-copies-harder", commitHash], { maxOutputBytes }),
-    gitText(repoRoot, ["show", "--format=", "--numstat", "-z", "--find-renames", "--find-copies-harder", commitHash], { maxOutputBytes }),
-    gitText(repoRoot, ["show", "--format=", "--raw", "-z", "--abbrev=40", "--find-renames", "--find-copies-harder", commitHash], { maxOutputBytes }),
+    gitText(repoRoot, [...comparison, "--name-status", "-z", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
+    gitText(repoRoot, [...comparison, "--numstat", "-z", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
+    gitText(repoRoot, [...comparison, "--raw", "-z", "--abbrev=40", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
   ]);
   return withDescriptor(
     mergeMetadata(mergeStats(parseNameStatusZ(names), parseNumstatZ(stats)), parseRawDiffZ(raw)),
-    { kind: "commit", commitHash },
+    { kind: "commit", commitHash, parentHash, comparison: "first-parent" },
   );
 }
 

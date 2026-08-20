@@ -14,6 +14,42 @@ export function statusName(code) {
   return "modified";
 }
 
+export function parseCommitLogZ(output) {
+  const fields = splitNul(output);
+  const commits = [];
+  for (let index = 0; index + 4 < fields.length; index += 5) {
+    const [hash, shortHash, message, author, age] = fields.slice(index, index + 5);
+    if (hash) commits.push({ hash, shortHash, message, author, age });
+  }
+  return commits;
+}
+
+export function parseCommitPathsRawLogZ(output) {
+  const tokens = splitNul(output);
+  const pathsByCommit = new Map();
+  let currentPaths;
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index].replace(/^\n/, "");
+    if (/^[0-9a-f]{40}$/i.test(token)) {
+      currentPaths = [];
+      pathsByCommit.set(token, currentPaths);
+      index += 1;
+      continue;
+    }
+    if (!currentPaths || !token.startsWith(":")) {
+      index += 1;
+      continue;
+    }
+    const statusToken = token.slice(1).split(" ").at(-1) || "";
+    const pathCount = statusToken[0] === "R" || statusToken[0] === "C" ? 2 : 1;
+    for (let offset = 1; offset <= pathCount && index + offset < tokens.length; offset += 1) {
+      currentPaths.push(tokens[index + offset]);
+    }
+    index += pathCount + 1;
+  }
+  return pathsByCommit;
+}
+
 export function parsePorcelainV2Z(output) {
   const tokens = splitNul(output);
   const entries = [];
