@@ -64,7 +64,7 @@ The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then
 starts in the selected descriptor's exact diff, or Raw for a clean file. Use
 `1` and `2` select Diff and Raw. Configured filename and extension matches add
-ordered actions beginning at `3`; the default is `3 View Markdown` through Glow
+actions with explicit key bindings; the default is `3 View Markdown` through Glow
 for `.md`, `.mdx`, and `.markdown` files. `/` searches the current content and `n`/`N` moves through
 matches. `e` opens the configured editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
@@ -108,8 +108,9 @@ trusted local configuration because it may choose executables.
 
 `version` identifies the configuration format, not the GitRail release. It lets
 GitRail reject a future incompatible format instead of interpreting changed
-fields as commands. Backward-compatible additions such as `order` remain on
-version 1.
+fields as commands. Backward-compatible additions remain on version 1. Viewer
+`order` is still accepted for legacy automatic bindings, while new configuration
+should use explicit `key` values.
 
 Editor integration is optional. Configure a terminal editor such as Neovim:
 
@@ -137,9 +138,10 @@ basename, a filename suffix such as `.pdf`, or `*`. Every matching rule is shown
 so `*` can provide a global action alongside a file-specific action. Each
 pattern accepts one rule or an array of rules, so multiple global or
 file-specific actions can coexist. Each rule can configure its action `label`, executable `client`, `args`, launch
-`mode`, numeric `order`, and optional `autoOpen`. Lower order values appear
-first; ties prefer the more specific pattern. The first seven enabled matches
-receive keys `3` through `9`. If no enabled rule matches, the preview omits
+`mode`, single-letter-or-digit `key`, and optional `autoOpen`. File-specific
+rules win if two matching actions claim the same key. Preview navigation keys
+are reserved and rejected by validation. Version-1 rules without `key` retain
+legacy automatic numeric assignment. If no enabled rule matches, the preview omits
 viewer actions. The built-in Markdown defaults use Glow:
 
 ```json
@@ -151,7 +153,7 @@ viewer actions. The built-in Markdown defaults use Glow:
       "client": "glow",
       "args": ["--tui", "--style", "dark"],
       "mode": "terminal",
-      "order": 100,
+      "key": "3",
       "autoOpen": false
     }
   }
@@ -165,8 +167,8 @@ For example, two global actions can share the wildcard pattern:
   "version": 1,
   "viewers": {
     "*": [
-      { "label": "Open", "client": "system", "mode": "external", "order": 10 },
-      { "label": "Open in Code", "client": "code", "mode": "external", "order": 20 }
+      { "label": "Open", "client": "system", "mode": "external", "key": "o" },
+      { "label": "Open in Code", "client": "code", "mode": "external", "key": "9" }
     ]
   }
 }

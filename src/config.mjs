@@ -3,13 +3,15 @@ import os from "node:os";
 import path from "node:path";
 
 export const CONFIG_VERSION = 1;
+const RESERVED_VIEWER_KEYS = new Set(["1", "2", "e", "q", "j", "k", "g", "G", "n", "N"]);
+const LEGACY_VIEWER_KEYS = ["3", "4", "5", "6", "7", "8", "9", "0"];
 export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", order: 100, autoOpen: false },
-    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", order: 100, autoOpen: false },
-    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", order: 100, autoOpen: false },
+    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
+    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
+    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
   limits: { maxFileBytes: 4 * 1024 * 1024, maxDiffBytes: 8 * 1024 * 1024 },
@@ -55,7 +57,7 @@ function validateKeys(value, label, allowed, errors) {
 
 function validateLaunch(value, label, errors, { viewer = false } = {}) {
   if (!isObject(value)) return errors.push(`${label} must be an object`);
-  validateKeys(value, label, new Set(["client", "args", "mode", ...(viewer ? ["label", "order", "autoOpen"] : [])]), errors);
+  validateKeys(value, label, new Set(["client", "args", "mode", ...(viewer ? ["label", "key", "order", "autoOpen"] : [])]), errors);
   if (typeof value.client !== "string" || !value.client.trim()) errors.push(`${label}.client must be a non-empty string`);
   if (value.args !== undefined && (!Array.isArray(value.args) || value.args.some((arg) => typeof arg !== "string"))) {
     errors.push(`${label}.args must be an array of strings`);
@@ -65,6 +67,9 @@ function validateLaunch(value, label, errors, { viewer = false } = {}) {
   }
   if (viewer && value.label !== undefined && (typeof value.label !== "string" || !value.label.trim())) {
     errors.push(`${label}.label must be a non-empty string`);
+  }
+  if (viewer && value.key !== undefined && (typeof value.key !== "string" || !/^[A-Za-z0-9]$/.test(value.key) || RESERVED_VIEWER_KEYS.has(value.key))) {
+    errors.push(`${label}.key must be one unreserved letter or digit`);
   }
   if (viewer && value.order !== undefined && (!Number.isInteger(value.order) || value.order < -10_000 || value.order > 10_000)) {
     errors.push(`${label}.order must be an integer from -10000 to 10000`);
@@ -189,6 +194,24 @@ export function resolveViewers(config, filePath) {
 
 export function resolveViewer(config, filePath) {
   return resolveViewers(config, filePath)[0] || null;
+}
+
+export function resolveViewerActions(config, filePath) {
+  const viewers = resolveViewers(config, filePath).filter((viewer) => clientMode(viewer) !== "disabled");
+  const winners = new Map();
+  for (const viewer of viewers) {
+    if (!viewer.key || RESERVED_VIEWER_KEYS.has(viewer.key)) continue;
+    const current = winners.get(viewer.key);
+    if (!current || viewer.pattern.length > current.pattern.length) winners.set(viewer.key, viewer);
+  }
+  const used = new Set([...RESERVED_VIEWER_KEYS, ...winners.keys()]);
+  return viewers.flatMap((viewer) => {
+    if (viewer.key) return winners.get(viewer.key) === viewer ? [{ key: viewer.key, viewer }] : [];
+    const key = LEGACY_VIEWER_KEYS.find((candidate) => !used.has(candidate));
+    if (!key) return [];
+    used.add(key);
+    return [{ key, viewer }];
+  });
 }
 
 export function clientMode(config) {
