@@ -303,4 +303,14 @@ test("submodule gitlinks remain first-class canonical metadata", async (t) => {
   });
   assert.equal(raw.text, `Submodule commit ${second}\n`);
   assert.equal(raw.revision, "HEAD:deps/sample");
+  await runGit(root, ["submodule", "deinit", "-f", "deps/sample"]);
+  const uninitializedRaw = await loadRaw({
+    repoRoot: root,
+    filePath: submodule.path,
+    descriptor: state.workspaceDescriptor,
+    metadata: submodule,
+    maxFileBytes: 1024 * 1024,
+  });
+  assert.equal(uninitializedRaw.text, `Submodule commit ${second}\n`);
+  assert.equal(uninitializedRaw.revision, "index:deps/sample");
 });

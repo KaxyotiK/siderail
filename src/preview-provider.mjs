@@ -93,6 +93,7 @@ async function submoduleText(repoRoot, revision, filePath, maxBytes) {
   let objectId;
   if (revision === "worktree") {
     const absolute = await safeWorktreePath(repoRoot, filePath);
+    await fs.lstat(path.join(absolute, ".git"));
     objectId = (await gitOutput(absolute, ["rev-parse", "HEAD"], maxBytes)).trim();
   } else if (revision === "index") {
     objectId = (await gitOutput(repoRoot, ["rev-parse", `:${filePath}`], maxBytes)).trim();
@@ -131,6 +132,10 @@ export async function loadRaw({ repoRoot, filePath, descriptor, metadata = {}, m
   if (descriptor.kind === "workspace" || descriptor.kind === "unstaged" || descriptor.kind === "untracked" || descriptor.kind === "clean") {
     try { return await raw("worktree", filePath, "worktree"); }
     catch (error) {
+      if (metadata.submodule) {
+        try { return await raw("index", filePath, `index:${filePath}`); }
+        catch { return raw("HEAD", oldPath, `HEAD:${oldPath}`); }
+      }
       if (metadata.status !== "deleted") throw error;
       if (descriptor.kind === "workspace") {
         const revision = descriptor.mergeBase || descriptor.baseRef;

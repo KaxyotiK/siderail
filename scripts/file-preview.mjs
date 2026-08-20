@@ -6,6 +6,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { clientMode, loadConfig, resolveViewer } from "../src/config.mjs";
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, safeWorktreePath } from "../src/preview-provider.mjs";
+import { commitComparisonSource, previewInitialMode, sanitizeTerminalText } from "../src/terminal-ui.mjs";
 
 const ESC = "\u001b[";
 const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
@@ -23,7 +24,7 @@ const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
 const { config, errors: configErrors } = loadConfig(repoRoot);
 const viewer = resolveViewer(config, filePath);
 const markdownEligible = /\.(md|mdx|markdown)$/i.test(filePath);
-let activeMode = descriptor.kind === "clean" ? "raw" : "diff";
+let activeMode = previewInitialMode(descriptor, metadata);
 let scrollOffset = 0;
 let statusMessage = configErrors[0] || "Read-only preview";
 let revisionLabel = "";
@@ -40,6 +41,7 @@ let renderTimer;
 function decode(name, fallback) {
   try { return JSON.parse(Buffer.from(process.env[name] || "", "base64url").toString("utf8")); } catch { return fallback; }
 }
+function safe(value) { return sanitizeTerminalText(value); }
 function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
 function visibleLength(value) { return [...stripAnsi(value)].length; }
 function truncate(value, width) {
@@ -48,15 +50,16 @@ function truncate(value, width) {
 }
 function fit(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
 function descriptorLabel() {
-  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef}`;
-  if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
-  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
-  return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
+  if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;
+  if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)}`;
+  if (descriptor.kind === "commit") return `Commit ${safe(descriptor.commitHash).slice(0, 8)}`;
+  const kind = safe(descriptor.kind || "file");
+  return kind[0].toUpperCase() + kind.slice(1);
 }
 function comparisonLabel() {
-  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef} · merge base → worktree`;
-  if (descriptor.kind === "against") return `Against ${descriptor.baseRef} · merge base → HEAD`;
-  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)} · parent → commit`;
+  if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)} · merge base → worktree`;
+  if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)} · merge base → HEAD`;
+  if (descriptor.kind === "commit") return `Commit ${safe(descriptor.commitHash).slice(0, 8)} · ${commitComparisonSource(descriptor)} → commit`;
   if (descriptor.kind === "staged") return "Staged · HEAD → index";
   if (descriptor.kind === "unstaged") return "Unstaged · index → worktree";
   if (descriptor.kind === "untracked") return "Untracked · new file";
@@ -64,8 +67,8 @@ function comparisonLabel() {
 }
 function diffLines(value) {
   const rows = parseUnifiedDiff(value);
-  const largestLine = rows.reduce((largest, row) => Math.max(largest, row.oldLine || 0, row.newLine || 0), 0);
-  const gutterWidth = Math.max(2, String(largestLine).length);
+  const oldLabel = (row) => row.oldLines ? row.oldLines.map((line) => line ?? "·").join(",") : row.oldLine;
+  const gutterWidth = Math.max(2, ...rows.map((row) => String(oldLabel(row) ?? "").length), ...rows.map((row) => String(row.newLine ?? "").length));
   const number = (value) => value === null || value === undefined ? " ".repeat(gutterWidth) : String(value).padStart(gutterWidth);
   return rows.map((row) => {
     if (row.kind === "hunk") return `${C.blue}${" ".repeat(gutterWidth * 2 + 3)}  ${row.text}${C.reset}`;
@@ -73,7 +76,7 @@ function diffLines(value) {
     if (row.kind === "note") return `${C.dim}${" ".repeat(gutterWidth * 2 + 3)}  ${row.text}${C.reset}`;
     const marker = row.kind === "added" ? "+" : row.kind === "deleted" ? "−" : " ";
     const color = row.kind === "added" ? C.green : row.kind === "deleted" ? C.red : "";
-    return `${C.dim}${number(row.oldLine)} ${number(row.newLine)} │${C.reset} ${color}${marker} ${row.text}${C.reset}`;
+    return `${C.dim}${number(oldLabel(row))} ${number(row.newLine)} │${C.reset} ${color}${marker} ${safe(row.text)}${C.reset}`;
   });
 }
 function matches() {
@@ -89,7 +92,7 @@ function matchLabel() {
 }
 function moveMatch(direction) {
   const found = matches();
-  if (!found.length) { currentMatch = -1; statusMessage = `No matches for “${searchQuery}”`; return; }
+  if (!found.length) { currentMatch = -1; statusMessage = `No matches for “${safe(searchQuery)}”`; return; }
   const index = found.indexOf(currentMatch);
   currentMatch = found[(index + direction + found.length) % found.length];
   scrollOffset = currentMatch;
@@ -104,18 +107,18 @@ async function loadMode(mode) {
   render();
   try {
     const result = mode === "diff"
-      ? await loadDiff({ repoRoot, filePath, descriptor, maxOutputBytes: config.limits.maxDiffBytes })
+      ? await loadDiff({ repoRoot, filePath, descriptor, metadata, maxOutputBytes: config.limits.maxDiffBytes })
       : await loadRaw({ repoRoot, filePath, descriptor, metadata, maxFileBytes: config.limits.maxFileBytes });
     if (generation !== loadGeneration) return;
-    revisionLabel = result.revision;
+    revisionLabel = safe(result.revision);
     content = mode === "diff"
       ? diffLines(result.text)
-      : result.text.replace(/\n$/, "").split("\n").map((line, index) => `${C.dim}${String(index + 1).padStart(5)}${C.reset}  ${line}`);
+      : result.text.replace(/\n$/, "").split("\n").map((line, index) => `${C.dim}${String(index + 1).padStart(5)}${C.reset}  ${safe(line)}`);
     scrollOffset = 0;
     statusMessage = mode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel}`;
   } catch (error) {
     if (generation !== loadGeneration) return;
-    content = [`${C.red}${error.message}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`];
+    content = [`${C.red}${safe(error.message)}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`];
     statusMessage = error.kind === "oversized" ? "Preview is larger than the configured safety limit" : "Preview failed";
   } finally {
     if (generation === loadGeneration) { loading = false; render(); }
@@ -138,18 +141,18 @@ function launch(configValue, sourcePath, label) {
   const executable = configValue.client === "system" ? (process.platform === "darwin" ? "open" : "xdg-open") : configValue.client;
   if (mode === "external") {
     const child = spawn(executable, [...configValue.args, sourcePath], { detached: true, stdio: "ignore", shell: false });
-    child.on("error", (error) => { statusMessage = `${label} failed: ${error.message}`; render(); });
+    child.on("error", (error) => { statusMessage = `${label} failed: ${safe(error.message)}`; render(); });
     child.on("close", (status) => {
       if (status !== 0) { statusMessage = `${label} exited with status ${status}`; render(); }
     });
     child.unref();
-    statusMessage = `Opened with ${path.basename(configValue.client)}`;
+    statusMessage = `Opened with ${safe(path.basename(configValue.client))}`;
     return;
   }
   suspend();
   const result = spawnSync(executable, [...configValue.args, sourcePath], { stdio: "inherit", shell: false });
   resume();
-  statusMessage = result.error ? `${label} failed: ${result.error.message}` : result.status === 0 ? `Returned from ${path.basename(configValue.client)}` : `${label} exited with status ${result.status}`;
+  statusMessage = result.error ? `${label} failed: ${safe(result.error.message)}` : result.status === 0 ? `Returned from ${safe(path.basename(configValue.client))}` : `${label} exited with status ${result.status}`;
 }
 async function sourceForLaunch(copyForDemo = false) {
   const source = await safeWorktreePath(repoRoot, filePath);
@@ -164,7 +167,7 @@ async function sourceForLaunch(copyForDemo = false) {
 async function launchViewer() {
   if (!markdownEligible) { statusMessage = "Markdown is only available for Markdown files"; render(); return; }
   try { launch(viewer || config.viewers[".md"], await sourceForLaunch(false), "Markdown viewer"); }
-  catch (error) { statusMessage = `Markdown source unavailable: ${error.message}`; }
+  catch (error) { statusMessage = `Markdown source unavailable: ${safe(error.message)}`; }
   render();
 }
 async function launchEditor() {
@@ -172,7 +175,7 @@ async function launchEditor() {
     const source = await sourceForLaunch(true);
     launch(config.editor, source, "Editor");
     if (temporarySource) statusMessage += " · temporary demo copy";
-  } catch (error) { statusMessage = `File unavailable: ${error.message}`; }
+  } catch (error) { statusMessage = `File unavailable: ${safe(error.message)}`; }
   render();
 }
 function renderTabs(width) {
@@ -187,7 +190,7 @@ function renderTabs(width) {
     hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(text) - 1, action: () => void loadMode(mode) });
     column += visibleLength(text);
   }
-  const editorLabel = ` e Open ${clientMode(config.editor) === "terminal" ? "in" : "with"} ${path.basename(config.editor.client)} `;
+  const editorLabel = ` e Open ${clientMode(config.editor) === "terminal" ? "in" : "with"} ${safe(path.basename(config.editor.client))} `;
   if (column + visibleLength(editorLabel) <= width) {
     line += `${C.dim}${editorLabel}${C.reset}`;
     hitTargets.push({ row: 4, x1: column, x2: column + visibleLength(editorLabel) - 1, action: () => void launchEditor() });
@@ -197,17 +200,17 @@ function renderTabs(width) {
 function render() {
   const width = Math.max(24, process.stdout.columns || 90);
   const height = Math.max(14, process.stdout.rows || 36);
-  const search = searchActive ? `⌕ ${searchQuery}▏  ${matchLabel()}` : loading ? `${descriptorLabel()} · loading` : activeMode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel || "ready"}`;
+  const search = searchActive ? `⌕ ${safe(searchQuery)}▏  ${matchLabel()}` : loading ? `${descriptorLabel()} · loading` : activeMode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel || "ready"}`;
   const header = [
     `${C.gold}${C.bold}◆ HERDR GITRAIL PREVIEW${C.reset}  ${C.dim}read-only${C.reset}`,
-    fit(`${C.bold}${filePath || "No file selected"}${C.reset}`, width),
+    fit(`${C.bold}${safe(filePath) || "No file selected"}${C.reset}`, width),
     fit(`${C.dim}${search}${C.reset}`, width),
     renderTabs(width),
     `${C.faint}${"─".repeat(width)}${C.reset}`,
   ];
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
-    `${C.dim}${fit(statusMessage, width)}${C.reset}`,
+    `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
     `${C.dim}${fit("1/2/3 view · / search · n/N match · e open · j/k · q close", width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
@@ -272,7 +275,7 @@ process.stdin.on("data", (key) => {
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
 process.on("exit", cleanup);
-process.stdout.on("resize", render);
+process.stdout.on("resize", scheduleRender);
 render();
 void loadMode(activeMode).then(() => {
   if (viewer?.autoOpen) void launchViewer();

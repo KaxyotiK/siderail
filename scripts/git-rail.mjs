@@ -6,6 +6,7 @@ import { createFixtureRepository, removeFixtureRepository } from "../src/fixture
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
+import { previewTabName, sanitizeTerminalText, startupFailureState } from "../src/terminal-ui.mjs";
 import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
@@ -36,6 +37,7 @@ function stringArg(name) {
   const index = process.argv.indexOf(name);
   return index < 0 ? "" : String(process.argv[index + 1] || "");
 }
+function safe(value) { return sanitizeTerminalText(value); }
 function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
 function visibleLength(value) { return [...stripAnsi(value)].length; }
 function truncate(value, width) {
@@ -49,9 +51,10 @@ function padAnsi(value, width) {
   return `${fitted}${" ".repeat(Math.max(0, width - visibleLength(fitted)))}`;
 }
 function compactPath(value, width) {
-  if ([...value].length <= width) return value;
-  const parts = value.split("/").filter(Boolean);
-  if (parts.length < 2) return truncate(value, width);
+  const clean = safe(value);
+  if ([...clean].length <= width) return clean;
+  const parts = clean.split("/").filter(Boolean);
+  if (parts.length < 2) return truncate(clean, width);
   const candidate = `${parts[0]}/…/${parts.at(-1)}`;
   return [...candidate].length <= width ? candidate : `…/${truncate(parts.at(-1), Math.max(1, width - 2))}`;
 }
@@ -63,7 +66,9 @@ const context = parseContext();
 const focusedCwd = context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 const providerCwd = fixtureRoot || focusedCwd;
-let state = await getRepositoryState(providerCwd);
+let state;
+try { state = await getRepositoryState(providerCwd); }
+catch (error) { state = startupFailureState(providerCwd, error); }
 if (demoMode) state.repository = "gitrail-fixture";
 let mainTab = cliArgs.has("--files") ? "files" : "changes";
 let viewModePreference = "auto";
@@ -83,6 +88,7 @@ let refreshVisible = false;
 let refreshQueued = false;
 let refreshTimer;
 let watchTimer;
+let renderTimer;
 let watchers = [];
 const expanded = { against: false, commits: false, staged: true, unstaged: true };
 const sectionIds = ["against", "commits", "staged", "unstaged"];
@@ -127,7 +133,8 @@ function tab(label, active, width) {
 function searchField(query, active, placeholder, count, width) {
   const countText = count ? `${C.dim}${count}${C.reset}` : "";
   const fieldWidth = Math.max(8, width - visibleLength(countText) - (countText ? 1 : 0));
-  const value = active ? `${query}▏` : query || placeholder;
+  const cleanQuery = safe(query);
+  const value = active ? `${cleanQuery}▏` : cleanQuery || placeholder;
   const tone = active ? C.gold : query ? C.bold : C.dim;
   return `${C.selected}${tone}${padAnsi(` ⌕ ${truncate(value, Math.max(1, fieldWidth - 4))}`, fieldWidth)}${C.reset}${countText ? ` ${countText}` : ""}`;
 }
@@ -174,17 +181,18 @@ function selectFile(file) {
   statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
-  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef}`;
-  if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
-  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
-  return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
+  if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;
+  if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)}`;
+  if (descriptor.kind === "commit") return `Commit ${safe(descriptor.commitHash).slice(0, 8)}`;
+  const kind = safe(descriptor.kind || "file");
+  return kind[0].toUpperCase() + kind.slice(1);
 }
 function fileRow(file, width, prefix = " ") {
   keyboardFiles.push(file);
   const stats = statsLabel(file);
   const suffix = stats;
   const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
-  const body = `${prefix}${statusGlyph(file)} ${truncate(path.basename(file.path), available)}`;
+  const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
   const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
   const identity = selectionKey(state.repoRoot, file);
   return interactive(
@@ -202,9 +210,9 @@ function renderTree(files, width, scope) {
     const guides = treeGuides(row.depth, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
     const open = !collapsed.has(row.path);
-    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${row.name}/${C.reset}`, width), () => {
+    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
       if (open) collapsed.add(row.path); else collapsed.delete(row.path);
-      statusMessage = `${open ? "Collapsed" : "Expanded"} ${row.path}`;
+      statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
     }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`);
   });
   return [...rows, ...showMoreRow(scope, paged.remaining)];
@@ -276,7 +284,7 @@ function sectionHeader(id, label, count, index, width, forced = false) {
 function renderChanges(width) {
   const query = diffSearchQuery.trim();
   const sections = [
-    { id: "against", label: `Against ${width < 36 ? String(state.baseLabel).split("/").at(-1) : state.baseLabel}`, files: search(state.againstBase || [], query) },
+    { id: "against", label: `Against ${safe(width < 36 ? String(state.baseLabel).split("/").at(-1) : state.baseLabel)}`, files: search(state.againstBase || [], query) },
     { id: "commits", label: "Commits", commits: searchCommits(state.commits || [], query) },
     { id: "staged", label: "Staged", files: search(state.staged || [], query) },
     { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
@@ -290,7 +298,7 @@ function renderChanges(width) {
     interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changes & commits…", query ? resultCount : "", width), () => { activeSearch = "changes"; }, "Search changes and commits"),
     toolbar(width), rule(width),
   ];
-  if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(diffSearchQuery, Math.max(4, width - 31))}”${C.reset}`];
+  if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(safe(diffSearchQuery), Math.max(4, width - 31))}”${C.reset}`];
   sections.forEach((section, index) => {
     const count = section.files?.length ?? (query ? section.commits.length : state.totalCommits);
     if (!count) return;
@@ -304,9 +312,9 @@ function renderChanges(width) {
     const paged = page(section.commits, `commits:${query}`);
     for (const commit of paged.visible) {
       const open = query ? commit.matchingPaths.length > 0 : expandedCommits.has(commit.hash);
-      const age = compactAge(commit.age);
-      const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
-      lines.push(interactive(`${prefix}${truncate(commit.message, Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
+      const age = safe(compactAge(commit.age));
+      const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${safe(commit.shortHash)}${C.reset} `;
+      lines.push(interactive(`${prefix}${truncate(safe(commit.message), Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`));
       if (!open) continue;
       if (query) {
         const loaded = commitFiles.get(commit.hash);
@@ -331,19 +339,19 @@ function renderFiles(width) {
     interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
     toolbar(width), rule(width),
   ];
-  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(query, width - 19)}”` : "Repository has no files"}${C.reset}`];
+  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : "Repository has no files"}${C.reset}`];
   return [...lines, ...renderFilesList(files, width, `files:${query}`)];
 }
 function renderBody(width) {
   keyboardFiles = [];
-  if (state.error && !state.repoRoot) return ["", `${C.red}${state.error}${C.reset}`, `${C.dim}${truncate(state.cwd, width)}${C.reset}`, "", "Focus a Git worktree and press r."];
+  if (state.error && !state.repoRoot) return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Focus a Git worktree and press r."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function renderHeader(width) {
   const half = Math.floor(width / 2);
   return { half, lines: [
-    ` ${C.bold}${truncate(state.repository || "repository", width - 1)}${C.reset}`,
-    `  ${C.fog}⑂ ${truncate(state.branch || "—", width - 4)}${C.reset}`,
+    ` ${C.bold}${truncate(safe(state.repository || "repository"), width - 1)}${C.reset}`,
+    `  ${C.fog}⑂ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
     rule(width),
     `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
   ] };
@@ -355,7 +363,7 @@ function renderFrame() {
   const body = renderBody(width);
   const controls = activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · h/l section · / search · q";
   const footerMessage = statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
-  const footer = [rule(width), `${C.dim}${fitAnsi(footerMessage, width)}${C.reset}`];
+  const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
   const fixedCount = state.repoRoot ? 3 : 0;
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
@@ -376,7 +384,16 @@ function renderFrame() {
   });
   return [...header, ...viewport, ...footer].map((line) => padAnsi(textOf(line), width)).join("\n");
 }
-function draw() { process.stdout.write(snapshotMode ? `${renderFrame()}\n` : `${ESC}2J${ESC}H${renderFrame()}`); }
+function draw() {
+  const frame = renderFrame();
+  if (snapshotMode) { process.stdout.write(`${frame}\n`); return; }
+  const painted = frame.split("\n").map((line) => `${ESC}2K${line}`).join("\r\n");
+  process.stdout.write(`${ESC}?2026h${ESC}H${painted}${ESC}?2026l`);
+}
+function scheduleDraw() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => { renderTimer = undefined; draw(); }, 16);
+}
 
 async function currentPaneId() {
   if (process.env.HERDR_PANE_ID) return process.env.HERDR_PANE_ID;
@@ -410,8 +427,13 @@ async function openPreview(file) {
     const result = await runCommand(herdr, openArgs, { cwd: focusedCwd });
     const payload = JSON.parse(result.stdout);
     const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
+    const tabId = payload?.result?.plugin_pane?.pane?.tab_id || payload?.result?.pane?.tab_id || payload?.result?.tab_id || "";
     if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
     statusMessage = `Preview opened · ${descriptorLabel(file.descriptor)}`;
+    if (tabId) {
+      try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: focusedCwd }); }
+      catch (error) { statusMessage += ` · tab name unavailable: ${safe(error.message)}`; }
+    }
   } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
 }
@@ -440,7 +462,9 @@ async function refreshState(announce = false) {
     const next = await getRepositoryState(providerCwd);
     if (generation === refreshGeneration) {
       if (demoMode) next.repository = "gitrail-fixture";
+      const previousInterval = state.config?.refresh?.pollIntervalMs;
       state = next;
+      if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) statusMessage = "Git state refreshed";
       else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
     }
@@ -463,11 +487,15 @@ function startInvalidation() {
     }));
   } catch {}
   try { watchers.push(fs.watch(path.join(state.repoRoot, ".git"), { recursive: process.platform === "darwin" }, debounce)); } catch {}
+  resetRefreshTimer();
+}
+function resetRefreshTimer() {
+  clearInterval(refreshTimer);
   refreshTimer = setInterval(() => void refreshState(false), state.config.refresh.pollIntervalMs);
   refreshTimer.unref();
 }
 async function cleanup() {
-  clearInterval(refreshTimer); clearTimeout(watchTimer);
+  clearInterval(refreshTimer); clearTimeout(watchTimer); clearTimeout(renderTimer);
   watchers.forEach((watcher) => watcher.close()); watchers = [];
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; await removeFixtureRepository(root); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
@@ -502,7 +530,7 @@ process.stdin.on("data", (key) => {
       }
     }
   }
-  if (mouse) { draw(); return; }
+  if (mouse) { scheduleDraw(); return; }
   if (key === "\u0003" || (!activeSearch && (key === "q" || key === "\u001b"))) { void quit(); return; }
   if (activeSearch) {
     let query = activeSearch === "files" ? fileSearchQuery : diffSearchQuery;
@@ -511,21 +539,23 @@ process.stdin.on("data", (key) => {
     else if (key === "\u0015") query = "";
     else query += key.replaceAll("\u001b[200~", "").replaceAll("\u001b[201~", "").replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
     if (activeSearch === "files") fileSearchQuery = query; else if (activeSearch === "changes") diffSearchQuery = query;
-    scrollOffset = 0; draw(); return;
+    scrollOffset = 0; scheduleDraw(); return;
   }
   if (key === "\t") { mainTab = mainTab === "changes" ? "files" : "changes"; scrollOffset = 0; }
   else if (key === "/") activeSearch = mainTab;
-  else if (key === "j" || key === "\u001b[B") {
+  else if (/^(?:j|\u001b\[B)+$/.test(key)) {
+    const steps = key.match(/j|\u001b\[B/g)?.length || 1;
     const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + 1))];
+    const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + steps))];
     if (next) selectFile(next);
-    scrollOffset += 1;
+    scrollOffset += steps;
   }
-  else if (key === "k" || key === "\u001b[A") {
+  else if (/^(?:k|\u001b\[A)+$/.test(key)) {
+    const steps = key.match(/k|\u001b\[A/g)?.length || 1;
     const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - 1)];
+    const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - steps)];
     if (next) selectFile(next);
-    scrollOffset = Math.max(0, scrollOffset - 1);
+    scrollOffset = Math.max(0, scrollOffset - steps);
   }
   else if (key === "\r" || key === "\n" || key === "o") {
     const selected = keyboardFiles.find((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
@@ -538,10 +568,10 @@ process.stdin.on("data", (key) => {
   else if (key === " ") expanded[sectionIds[selectedSection]] = !expanded[sectionIds[selectedSection]];
   else if (key === "g") toggleViewMode(Math.max(24, process.stdout.columns || 52));
   else if (key === "r") { void refreshState(true); return; }
-  draw();
+  scheduleDraw();
 });
 process.on("SIGTERM", () => void quit());
 process.on("SIGINT", () => void quit());
-process.stdout.on("resize", draw);
+process.stdout.on("resize", scheduleDraw);
 draw();
 startInvalidation();
