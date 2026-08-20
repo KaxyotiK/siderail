@@ -26,3 +26,18 @@ test("Files view combines base-branch diffs with grey unchanged files", () => {
   assert.deepEqual(byPath.get("clean.txt").descriptor, descriptor);
   assert.deepEqual(byPath.get("new.txt").descriptor, { kind: "untracked" });
 });
+
+test("canonical clean files preserve tracked mode metadata", () => {
+  const files = buildPathIndex({
+    tracked: [
+      { path: "link", mode: "120000", symlink: true },
+      { path: "module", mode: "160000", submodule: true },
+      { path: "tool", mode: "100755", executable: true },
+    ],
+  });
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  assert.equal(byPath.get("link").symlink, true);
+  assert.equal(byPath.get("module").submodule, true);
+  assert.equal(byPath.get("tool").executable, true);
+  assert.ok(files.every((file) => file.clean));
+});

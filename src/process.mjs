@@ -16,6 +16,7 @@ export function runCommand(command, args = [], options = {}) {
     timeoutMs = 8_000,
     maxOutputBytes = 16 * 1024 * 1024,
     allowExitCodes = [0],
+    stdoutEncoding = "utf8",
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -23,6 +24,7 @@ export function runCommand(command, args = [], options = {}) {
     const child = spawn(command, args, {
       cwd,
       env: env ? { ...process.env, ...env } : process.env,
+      detached: process.platform !== "win32",
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -30,8 +32,7 @@ export function runCommand(command, args = [], options = {}) {
     const stderr = [];
     let outputBytes = 0;
     let settled = false;
-    let timedOut = false;
-    let oversized = false;
+    let timer;
 
     const finish = (callback) => {
       if (settled) return;
@@ -39,11 +40,40 @@ export function runCommand(command, args = [], options = {}) {
       clearTimeout(timer);
       callback();
     };
+    const resultSoFar = (exitCode = null, signal = null) => {
+      const stdoutBuffer = Buffer.concat(stdout);
+      return {
+        command,
+        args,
+        exitCode,
+        signal,
+        stdout: stdoutEncoding === null ? stdoutBuffer : stdoutBuffer.toString(stdoutEncoding),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        durationMs: Date.now() - startedAt,
+      };
+    };
+    const terminate = (kind, message) => {
+      if (settled) return;
+      const signalTree = (signal) => {
+        try {
+          if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+          else child.kill(signal);
+        } catch { try { child.kill(signal); } catch {} }
+      };
+      signalTree("SIGTERM");
+      child.stdout.destroy();
+      child.stderr.destroy();
+      setTimeout(() => signalTree("SIGKILL"), 250).unref();
+      finish(() => {
+        const result = resultSoFar();
+        debugLog(command, { durationMs: result.durationMs, exitCode: null, signal: "SIGTERM", outcome: kind });
+        reject(new ProcessError(message, { kind, ...result }));
+      });
+    };
     const capture = (target) => (chunk) => {
       outputBytes += chunk.length;
       if (outputBytes > maxOutputBytes) {
-        oversized = true;
-        child.kill("SIGTERM");
+        terminate("oversized", `${command} output exceeded ${maxOutputBytes} bytes`);
         return;
       }
       target.push(chunk);
@@ -55,21 +85,9 @@ export function runCommand(command, args = [], options = {}) {
       { kind: cause.code === "ENOENT" ? "missing-executable" : "spawn", command, args, cause },
     ))));
     child.on("close", (exitCode, signal) => finish(() => {
-      const result = {
-        command,
-        args,
-        exitCode,
-        signal,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        durationMs: Date.now() - startedAt,
-      };
-      debugLog(command, { durationMs: result.durationMs, exitCode, signal, outcome: timedOut ? "timeout" : oversized ? "oversized" : allowExitCodes.includes(exitCode) ? "ok" : "error" });
-      if (timedOut) {
-        reject(new ProcessError(`${command} timed out after ${timeoutMs}ms`, { kind: "timeout", ...result }));
-      } else if (oversized) {
-        reject(new ProcessError(`${command} output exceeded ${maxOutputBytes} bytes`, { kind: "oversized", ...result }));
-      } else if (!allowExitCodes.includes(exitCode)) {
+      const result = resultSoFar(exitCode, signal);
+      debugLog(command, { durationMs: result.durationMs, exitCode, signal, outcome: allowExitCodes.includes(exitCode) ? "ok" : "error" });
+      if (!allowExitCodes.includes(exitCode)) {
         reject(new ProcessError(
           result.stderr.trim() || `${command} exited with status ${exitCode}`,
           { kind: "exit", ...result },
@@ -79,11 +97,7 @@ export function runCommand(command, args = [], options = {}) {
       }
     }));
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 250).unref();
-    }, timeoutMs);
+    timer = setTimeout(() => terminate("timeout", `${command} timed out after ${timeoutMs}ms`), timeoutMs);
     timer.unref();
   });
 }

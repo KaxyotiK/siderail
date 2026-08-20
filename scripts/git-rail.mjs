@@ -6,10 +6,23 @@ import { createFixtureRepository, removeFixtureRepository } from "../src/fixture
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
+import {
+  compactTerminalPath,
+  commitExpansionState,
+  createLatestSerialQueue,
+  fitAnsiTerminalColumns,
+  padAnsiTerminalColumns,
+  previewTabName,
+  revealScrollOffset,
+  sanitizeTerminalText,
+  terminalColumns,
+  truncateTerminalColumns,
+  validPollInterval,
+  startupFailureState,
+} from "../src/terminal-ui.mjs";
 import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
-const ANSI_RE = /\u001b\[[0-9;?]*[A-Za-z]/g;
 const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
 const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
 const C = {
@@ -36,25 +49,12 @@ function stringArg(name) {
   const index = process.argv.indexOf(name);
   return index < 0 ? "" : String(process.argv[index + 1] || "");
 }
-function stripAnsi(value) { return String(value ?? "").replace(ANSI_RE, ""); }
-function visibleLength(value) { return [...stripAnsi(value)].length; }
-function truncate(value, width) {
-  const chars = [...String(value ?? "")];
-  if (chars.length <= width) return chars.join("");
-  return width > 1 ? `${chars.slice(0, width - 1).join("")}…` : "…";
-}
-function fitAnsi(value, width) { return visibleLength(value) <= width ? value : truncate(stripAnsi(value), width); }
-function padAnsi(value, width) {
-  const fitted = fitAnsi(value, width);
-  return `${fitted}${" ".repeat(Math.max(0, width - visibleLength(fitted)))}`;
-}
-function compactPath(value, width) {
-  if ([...value].length <= width) return value;
-  const parts = value.split("/").filter(Boolean);
-  if (parts.length < 2) return truncate(value, width);
-  const candidate = `${parts[0]}/…/${parts.at(-1)}`;
-  return [...candidate].length <= width ? candidate : `…/${truncate(parts.at(-1), Math.max(1, width - 2))}`;
-}
+function safe(value) { return sanitizeTerminalText(value); }
+function visibleLength(value) { return terminalColumns(value); }
+function truncate(value, width) { return truncateTerminalColumns(value, width); }
+function fitAnsi(value, width) { return fitAnsiTerminalColumns(value, width); }
+function padAnsi(value, width) { return padAnsiTerminalColumns(value, width); }
+function compactPath(value, width) { return compactTerminalPath(value, width); }
 function parseContext() {
   try { return JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || "{}"); } catch { return {}; }
 }
@@ -63,13 +63,16 @@ const context = parseContext();
 const focusedCwd = context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 const providerCwd = fixtureRoot || focusedCwd;
-let state = await getRepositoryState(providerCwd);
+let state;
+try { state = await getRepositoryState(providerCwd); }
+catch (error) { state = startupFailureState(providerCwd, error); }
 if (demoMode) state.repository = "gitrail-fixture";
 let mainTab = cliArgs.has("--files") ? "files" : "changes";
 let viewModePreference = "auto";
 let selectedSection = 0;
 let scrollOffset = 0;
 let selectedIdentity = "";
+let revealSelected = false;
 let keyboardFiles = [];
 let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
@@ -83,7 +86,9 @@ let refreshVisible = false;
 let refreshQueued = false;
 let refreshTimer;
 let watchTimer;
+let renderTimer;
 let watchers = [];
+let invalidationRepoRoot = "";
 const expanded = { against: false, commits: false, staged: true, unstaged: true };
 const sectionIds = ["against", "commits", "staged", "unstaged"];
 const collapsedGroups = new Set();
@@ -114,6 +119,7 @@ function statusGlyph(file) {
 }
 function statsLabel(file) {
   if ((file.status || displayState(file).status) === "clean") return "";
+  if (file.statsUnavailable) return `${C.dim}?${C.reset}`;
   if (file.binary) return `${C.purple}binary${C.reset}`;
   const additions = file.additions > 0 ? `${C.leaf}+${file.additions}${C.reset}` : "";
   const deletions = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
@@ -127,7 +133,8 @@ function tab(label, active, width) {
 function searchField(query, active, placeholder, count, width) {
   const countText = count ? `${C.dim}${count}${C.reset}` : "";
   const fieldWidth = Math.max(8, width - visibleLength(countText) - (countText ? 1 : 0));
-  const value = active ? `${query}▏` : query || placeholder;
+  const cleanQuery = safe(query);
+  const value = active ? `${cleanQuery}▏` : cleanQuery || placeholder;
   const tone = active ? C.gold : query ? C.bold : C.dim;
   return `${C.selected}${tone}${padAnsi(` ⌕ ${truncate(value, Math.max(1, fieldWidth - 4))}`, fieldWidth)}${C.reset}${countText ? ` ${countText}` : ""}`;
 }
@@ -171,28 +178,34 @@ function buildTree(files, collapsed) {
 }
 function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot, file);
-  statusMessage = `${descriptorLabel(file.descriptor)} · ${file.path}`;
+  revealSelected = true;
+  statusMessage = file.statsUnavailable
+    ? `${descriptorLabel(file.descriptor)} · ${file.path} · ? stats unavailable (inspection budget)`
+    : `${descriptorLabel(file.descriptor)} · ${file.path}`;
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
-  if (descriptor.kind === "workspace") return `Against ${descriptor.baseRef}`;
-  if (descriptor.kind === "against") return `Against ${descriptor.baseRef}`;
-  if (descriptor.kind === "commit") return `Commit ${descriptor.commitHash.slice(0, 8)}`;
-  return descriptor.kind[0].toUpperCase() + descriptor.kind.slice(1);
+  if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;
+  if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)}`;
+  if (descriptor.kind === "commit") return `Commit ${safe(descriptor.commitHash).slice(0, 8)}`;
+  const kind = safe(descriptor.kind || "file");
+  return kind[0].toUpperCase() + kind.slice(1);
 }
 function fileRow(file, width, prefix = " ") {
   keyboardFiles.push(file);
   const stats = statsLabel(file);
   const suffix = stats;
   const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
-  const body = `${prefix}${statusGlyph(file)} ${truncate(path.basename(file.path), available)}`;
+  const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
   const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
   const identity = selectionKey(state.repoRoot, file);
-  return interactive(
+  const row = interactive(
     identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
     () => selectFile(file),
     `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
-    () => openPreview(file),
+    () => void requestPreview(file),
   );
+  row.fileIdentity = identity;
+  return row;
 }
 function renderTree(files, width, scope) {
   if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
@@ -202,9 +215,9 @@ function renderTree(files, width, scope) {
     const guides = treeGuides(row.depth, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
     const open = !collapsed.has(row.path);
-    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${row.name}/${C.reset}`, width), () => {
+    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
       if (open) collapsed.add(row.path); else collapsed.delete(row.path);
-      statusMessage = `${open ? "Collapsed" : "Expanded"} ${row.path}`;
+      statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
     }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`);
   });
   return [...rows, ...showMoreRow(scope, paged.remaining)];
@@ -276,7 +289,7 @@ function sectionHeader(id, label, count, index, width, forced = false) {
 function renderChanges(width) {
   const query = diffSearchQuery.trim();
   const sections = [
-    { id: "against", label: `Against ${width < 36 ? String(state.baseLabel).split("/").at(-1) : state.baseLabel}`, files: search(state.againstBase || [], query) },
+    { id: "against", label: `Against ${safe(width < 36 ? String(state.baseLabel).split("/").at(-1) : state.baseLabel)}`, files: search(state.againstBase || [], query) },
     { id: "commits", label: "Commits", commits: searchCommits(state.commits || [], query) },
     { id: "staged", label: "Staged", files: search(state.staged || [], query) },
     { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
@@ -290,9 +303,13 @@ function renderChanges(width) {
     interactive(searchField(diffSearchQuery, activeSearch === "changes", "Search changes & commits…", query ? resultCount : "", width), () => { activeSearch = "changes"; }, "Search changes and commits"),
     toolbar(width), rule(width),
   ];
-  if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(diffSearchQuery, Math.max(4, width - 31))}”${C.reset}`];
+  if (state.historyTruncated) lines.push(` ${C.dim}Commit history: newest ${state.commits.length} of ${state.totalCommits}${C.reset}`);
+  if (query && state.historyPathsAvailable === false) lines.push(` ${C.dim}Commit path search unavailable; searching summaries only${C.reset}`);
+  if (query && !matchCount) return [...lines, ` ${C.dim}No changes or commits match “${truncate(safe(diffSearchQuery), Math.max(4, width - 31))}”${C.reset}`];
   sections.forEach((section, index) => {
-    const count = section.files?.length ?? (query ? section.commits.length : state.totalCommits);
+    const count = section.files?.length ?? (query
+      ? section.commits.length
+      : state.historyTruncated ? `${state.commits.length}/${state.totalCommits}` : state.totalCommits);
     if (!count) return;
     const forced = Boolean(query);
     lines.push(sectionHeader(section.id, section.label, count, index, width, forced));
@@ -303,17 +320,20 @@ function renderChanges(width) {
     }
     const paged = page(section.commits, `commits:${query}`);
     for (const commit of paged.visible) {
-      const open = query ? commit.matchingPaths.length > 0 : expandedCommits.has(commit.hash);
-      const age = compactAge(commit.age);
-      const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${commit.shortHash}${C.reset} `;
-      lines.push(interactive(`${prefix}${truncate(commit.message, Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${commit.shortHash}`));
+      const manuallyOpen = expandedCommits.has(commit.hash);
+      const expansion = commitExpansionState(query, commit.matchingPaths, manuallyOpen, commitFiles.has(commit.hash));
+      const open = expansion.open;
+      const age = safe(compactAge(commit.age));
+      const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${safe(commit.shortHash)}${C.reset} `;
+      lines.push(interactive(`${prefix}${truncate(safe(commit.message), Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`, () => void toggleCommit(commit), `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`));
       if (!open) continue;
       if (query) {
         const loaded = commitFiles.get(commit.hash);
         const matchingFiles = loaded
-          ? search(loaded, query)
+          ? expansion.showAllFiles ? loaded : search(loaded, query)
           : commit.matchingPaths.map((filePath) => ({ path: filePath, status: "modified", additions: 0, deletions: 0, descriptor: { kind: "commit", commitHash: commit.hash } }));
-        lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`));
+        if (expansion.loading) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
+        else lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`));
       } else if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
@@ -331,19 +351,19 @@ function renderFiles(width) {
     interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
     toolbar(width), rule(width),
   ];
-  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(query, width - 19)}”` : "Repository has no files"}${C.reset}`];
+  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : "Repository has no files"}${C.reset}`];
   return [...lines, ...renderFilesList(files, width, `files:${query}`)];
 }
 function renderBody(width) {
   keyboardFiles = [];
-  if (state.error && !state.repoRoot) return ["", `${C.red}${state.error}${C.reset}`, `${C.dim}${truncate(state.cwd, width)}${C.reset}`, "", "Focus a Git worktree and press r."];
+  if (state.error && !state.repoRoot) return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Focus a Git worktree and press r."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function renderHeader(width) {
   const half = Math.floor(width / 2);
   return { half, lines: [
-    ` ${C.bold}${truncate(state.repository || "repository", width - 1)}${C.reset}`,
-    `  ${C.fog}⑂ ${truncate(state.branch || "—", width - 4)}${C.reset}`,
+    ` ${C.bold}${truncate(safe(state.repository || "repository"), width - 1)}${C.reset}`,
+    `  ${C.fog}⑂ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
     rule(width),
     `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
   ] };
@@ -355,12 +375,17 @@ function renderFrame() {
   const body = renderBody(width);
   const controls = activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · h/l section · / search · q";
   const footerMessage = statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
-  const footer = [rule(width), `${C.dim}${fitAnsi(footerMessage, width)}${C.reset}`];
+  const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
   const fixedCount = state.repoRoot ? 3 : 0;
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
   const scrollable = body.slice(fixed.length);
   const visibleHeight = Math.max(0, bodyHeight - fixed.length);
+  if (revealSelected) {
+    const selectedRow = scrollable.findIndex((entry) => typeof entry !== "string" && entry.fileIdentity === selectedIdentity);
+    scrollOffset = revealScrollOffset(selectedRow, scrollOffset, visibleHeight, scrollable.length);
+    revealSelected = false;
+  }
   scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, scrollable.length - visibleHeight)));
   const viewport = [...fixed, ...scrollable.slice(scrollOffset, scrollOffset + visibleHeight)];
   while (viewport.length < bodyHeight) viewport.push("");
@@ -376,7 +401,16 @@ function renderFrame() {
   });
   return [...header, ...viewport, ...footer].map((line) => padAnsi(textOf(line), width)).join("\n");
 }
-function draw() { process.stdout.write(snapshotMode ? `${renderFrame()}\n` : `${ESC}2J${ESC}H${renderFrame()}`); }
+function draw() {
+  const frame = renderFrame();
+  if (snapshotMode) { process.stdout.write(`${frame}\n`); return; }
+  const painted = frame.split("\n").map((line) => `${ESC}2K${line}`).join("\r\n");
+  process.stdout.write(`${ESC}?2026h${ESC}H${painted}${ESC}?2026l`);
+}
+function scheduleDraw() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => { renderTimer = undefined; draw(); }, 16);
+}
 
 async function currentPaneId() {
   if (process.env.HERDR_PANE_ID) return process.env.HERDR_PANE_ID;
@@ -391,18 +425,42 @@ function paneStateFile(workspaceId) {
   return path.join(directory, `${workspaceId.replace(/[^A-Za-z0-9._-]/g, "_")}.preview`);
 }
 async function openPreview(file) {
+  if (file.descriptor?.kind === "commit" && !Object.hasOwn(file.descriptor, "parentHash")) {
+    try {
+      let details = commitFiles.get(file.descriptor.commitHash);
+      if (!details) {
+        details = await getCommitFiles(state.repoRoot, file.descriptor.commitHash, state.config.limits.maxDiffBytes);
+        commitFiles.set(file.descriptor.commitHash, details);
+      }
+      file = details.find((candidate) => candidate.path === file.path)
+        || details.find((candidate) => candidate.oldPath === file.path)
+        || file;
+    } catch (error) {
+      statusMessage = `Commit file details failed: ${error.message}`;
+      draw();
+      return;
+    }
+  }
   const herdr = process.env.HERDR_BIN_PATH || "herdr";
   const workspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
   const selfPaneId = await currentPaneId();
+  let stalePaneId = "";
   if (workspaceId) {
     const stateFile = paneStateFile(workspaceId);
     try {
-      const stalePaneId = fs.readFileSync(stateFile, "utf8").trim();
-      if (stalePaneId && stalePaneId !== selfPaneId) await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd });
+      stalePaneId = fs.readFileSync(stateFile, "utf8").trim();
     } catch {}
   }
   const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
-  const metadata = Buffer.from(JSON.stringify({ status: file.status, oldPath: file.oldPath, binary: file.binary })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({
+    status: file.status,
+    oldPath: file.oldPath,
+    binary: file.binary,
+    submodule: file.submodule,
+    symlink: file.symlink,
+    oldSubmodule: file.oldSubmodule,
+    oldSymlink: file.oldSymlink,
+  })).toString("base64url");
   const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);
@@ -410,11 +468,20 @@ async function openPreview(file) {
     const result = await runCommand(herdr, openArgs, { cwd: focusedCwd });
     const payload = JSON.parse(result.stdout);
     const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
+    const tabId = payload?.result?.plugin_pane?.pane?.tab_id || payload?.result?.pane?.tab_id || payload?.result?.tab_id || "";
     if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
+    if (paneId && stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
+      try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd }); } catch {}
+    }
     statusMessage = `Preview opened · ${descriptorLabel(file.descriptor)}`;
+    if (tabId) {
+      try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: focusedCwd }); }
+      catch (error) { statusMessage += ` · tab name unavailable: ${safe(error.message)}`; }
+    }
   } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
 }
+const requestPreview = createLatestSerialQueue(openPreview);
 async function toggleCommit(commit) {
   if (expandedCommits.has(commit.hash)) { expandedCommits.delete(commit.hash); draw(); return; }
   expandedCommits.add(commit.hash);
@@ -440,7 +507,10 @@ async function refreshState(announce = false) {
     const next = await getRepositoryState(providerCwd);
     if (generation === refreshGeneration) {
       if (demoMode) next.repository = "gitrail-fixture";
+      const previousInterval = state.config?.refresh?.pollIntervalMs;
       state = next;
+      if (state.repoRoot && state.repoRoot !== invalidationRepoRoot) startInvalidation();
+      else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) statusMessage = "Git state refreshed";
       else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
     }
@@ -455,6 +525,9 @@ async function refreshState(announce = false) {
 }
 function startInvalidation() {
   if (demoMode || !state.repoRoot) return;
+  if (invalidationRepoRoot === state.repoRoot) return;
+  stopInvalidation();
+  invalidationRepoRoot = state.repoRoot;
   const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
   try {
     watchers.push(fs.watch(state.repoRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
@@ -463,12 +536,21 @@ function startInvalidation() {
     }));
   } catch {}
   try { watchers.push(fs.watch(path.join(state.repoRoot, ".git"), { recursive: process.platform === "darwin" }, debounce)); } catch {}
-  refreshTimer = setInterval(() => void refreshState(false), state.config.refresh.pollIntervalMs);
+  resetRefreshTimer();
+}
+function resetRefreshTimer() {
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => void refreshState(false), validPollInterval(state.config?.refresh?.pollIntervalMs));
   refreshTimer.unref();
 }
-async function cleanup() {
-  clearInterval(refreshTimer); clearTimeout(watchTimer);
+function stopInvalidation() {
+  clearInterval(refreshTimer); refreshTimer = undefined;
+  clearTimeout(watchTimer); watchTimer = undefined;
   watchers.forEach((watcher) => watcher.close()); watchers = [];
+  invalidationRepoRoot = "";
+}
+async function cleanup() {
+  stopInvalidation(); clearTimeout(renderTimer);
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; await removeFixtureRepository(root); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
@@ -502,7 +584,7 @@ process.stdin.on("data", (key) => {
       }
     }
   }
-  if (mouse) { draw(); return; }
+  if (mouse) { scheduleDraw(); return; }
   if (key === "\u0003" || (!activeSearch && (key === "q" || key === "\u001b"))) { void quit(); return; }
   if (activeSearch) {
     let query = activeSearch === "files" ? fileSearchQuery : diffSearchQuery;
@@ -511,25 +593,25 @@ process.stdin.on("data", (key) => {
     else if (key === "\u0015") query = "";
     else query += key.replaceAll("\u001b[200~", "").replaceAll("\u001b[201~", "").replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
     if (activeSearch === "files") fileSearchQuery = query; else if (activeSearch === "changes") diffSearchQuery = query;
-    scrollOffset = 0; draw(); return;
+    scrollOffset = 0; scheduleDraw(); return;
   }
   if (key === "\t") { mainTab = mainTab === "changes" ? "files" : "changes"; scrollOffset = 0; }
   else if (key === "/") activeSearch = mainTab;
-  else if (key === "j" || key === "\u001b[B") {
+  else if (/^(?:j|\u001b\[B)+$/.test(key)) {
+    const steps = key.match(/j|\u001b\[B/g)?.length || 1;
     const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + 1))];
+    const next = keyboardFiles[Math.min(keyboardFiles.length - 1, Math.max(0, index + steps))];
     if (next) selectFile(next);
-    scrollOffset += 1;
   }
-  else if (key === "k" || key === "\u001b[A") {
+  else if (/^(?:k|\u001b\[A)+$/.test(key)) {
+    const steps = key.match(/k|\u001b\[A/g)?.length || 1;
     const index = keyboardFiles.findIndex((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - 1)];
+    const next = keyboardFiles[Math.max(0, index < 0 ? 0 : index - steps)];
     if (next) selectFile(next);
-    scrollOffset = Math.max(0, scrollOffset - 1);
   }
   else if (key === "\r" || key === "\n" || key === "o") {
     const selected = keyboardFiles.find((file) => selectionKey(state.repoRoot, file) === selectedIdentity);
-    if (selected) void openPreview(selected);
+    if (selected) void requestPreview(selected);
   }
   else if (key === "l" || key === "\u001b[C") selectedSection = Math.min(sectionIds.length - 1, selectedSection + 1);
   else if (key === "h" || key === "\u001b[D") selectedSection = Math.max(0, selectedSection - 1);
@@ -538,10 +620,10 @@ process.stdin.on("data", (key) => {
   else if (key === " ") expanded[sectionIds[selectedSection]] = !expanded[sectionIds[selectedSection]];
   else if (key === "g") toggleViewMode(Math.max(24, process.stdout.columns || 52));
   else if (key === "r") { void refreshState(true); return; }
-  draw();
+  scheduleDraw();
 });
 process.on("SIGTERM", () => void quit());
 process.on("SIGINT", () => void quit());
-process.stdout.on("resize", draw);
+process.stdout.on("resize", scheduleDraw);
 draw();
 startInvalidation();

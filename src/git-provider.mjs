@@ -4,6 +4,8 @@ import { loadConfig } from "./config.mjs";
 import {
   mergeStats,
   mergeMetadata,
+  parseCommitLogZ,
+  parseCommitPathsRawLogZ,
   parseLsFilesStageZ,
   parseNameStatusZ,
   parseNumstatZ,
@@ -13,6 +15,12 @@ import {
 } from "./git-parsers.mjs";
 import { buildPathIndex } from "./model.mjs";
 import { ProcessError, runGit } from "./process.mjs";
+
+const UNTRACKED_STATS_FILE_LIMIT = 256;
+const UNTRACKED_STATS_BYTE_LIMIT = 16 * 1024 * 1024;
+const UNTRACKED_STATS_TIME_MS = 250;
+
+const HISTORY_LIMIT = 200;
 
 async function gitText(cwd, args, options = {}) {
   return (await runGit(cwd, args, options)).stdout;
@@ -86,25 +94,69 @@ async function workspaceState(repoRoot, baseRef) {
   };
 }
 
-async function countUntracked(repoRoot, filePath, maxBytes) {
+async function countUntracked(repoRoot, filePath, maxBytes, budgetBytes, deadline) {
   try {
-    const absolute = await fs.realpath(path.join(repoRoot, filePath));
     const root = await fs.realpath(repoRoot);
-    if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
+    const lexical = path.resolve(root, filePath);
+    if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false };
+    const lexicalStat = await fs.lstat(lexical);
+    const symlink = lexicalStat.isSymbolicLink();
+    if (symlink) {
+      const buffer = await fs.readlink(lexical, { encoding: "buffer" });
+      if (buffer.length > maxBytes) return { additions: 0, binary: false, oversized: true, symlink };
+      if (buffer.length > budgetBytes || Date.now() >= deadline) return { additions: 0, binary: false, symlink, statsUnavailable: true, inspectedBytes: 0 };
+      const binary = buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0);
+      const additions = buffer.length === 0 ? 0 : buffer.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0) + (buffer.at(-1) === 0x0a ? 0 : 1);
+      return { additions: binary ? 0 : additions, binary, symlink, inspectedBytes: buffer.length };
+    }
+    const absolute = await fs.realpath(lexical);
+    if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
     const handle = await fs.open(absolute, "r");
     try {
       const stat = await handle.stat();
-      if (stat.size > maxBytes) return { additions: 0, binary: false, oversized: true };
-      const buffer = Buffer.alloc(stat.size);
-      await handle.read(buffer, 0, stat.size, 0);
-      const binary = buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0);
-      return { additions: binary ? 0 : buffer.toString("utf8").split("\n").length, binary };
+      if (!stat.isFile()) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+      if (stat.size > maxBytes) return { additions: 0, binary: false, oversized: true, inspectedBytes: 0 };
+      if (stat.size > budgetBytes || Date.now() >= deadline) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+      const chunk = Buffer.alloc(Math.min(64 * 1024, Math.max(1, stat.size)));
+      let additions = 0;
+      let binary = false;
+      let offset = 0;
+      let lastByte = -1;
+      while (offset < stat.size) {
+        if (Date.now() >= deadline) return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: offset };
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - offset), offset);
+        if (!bytesRead) break;
+        const content = chunk.subarray(0, bytesRead);
+        const binarySampleLength = Math.max(0, Math.min(bytesRead, 8_192 - offset));
+        if (binarySampleLength && content.subarray(0, binarySampleLength).includes(0)) binary = true;
+        if (!binary) additions += content.reduce((count, byte) => count + (byte === 0x0a ? 1 : 0), 0);
+        offset += bytesRead;
+        lastByte = content.at(-1);
+        if (binary) break;
+      }
+      if (!binary && offset > 0 && lastByte !== 0x0a) additions += 1;
+      return { additions: binary ? 0 : additions, binary, inspectedBytes: offset };
     } finally {
       await handle.close();
     }
   } catch {
-    return { additions: 0, binary: false };
+    return { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
   }
+}
+
+function comparisonModeMetadata(oldMode, newMode) {
+  if (!oldMode || !newMode) return {};
+  return {
+    mode: newMode,
+    oldMode,
+    newMode,
+    executableChange: oldMode !== newMode && (oldMode === "100755" || newMode === "100755"),
+    executable: newMode === "100755",
+    oldSymlink: oldMode === "120000",
+    symlink: newMode === "120000",
+    oldSubmodule: oldMode === "160000",
+    submodule: newMode === "160000",
+  };
 }
 
 async function workingFiles(repoRoot, maxFileBytes) {
@@ -118,9 +170,21 @@ async function workingFiles(repoRoot, maxFileBytes) {
   const unstagedStats = parseNumstatZ(unstagedStatsOutput);
   const staged = [];
   const unstaged = [];
+  let untrackedFilesInspected = 0;
+  let untrackedBytesRemaining = UNTRACKED_STATS_BYTE_LIMIT;
+  let untrackedStatsLimited = false;
+  const untrackedDeadline = Date.now() + UNTRACKED_STATS_TIME_MS;
   for (const record of records) {
     if (record.untracked) {
-      const counted = await countUntracked(repoRoot, record.path, maxFileBytes);
+      const budgetAvailable = untrackedFilesInspected < UNTRACKED_STATS_FILE_LIMIT
+        && untrackedBytesRemaining > 0
+        && Date.now() < untrackedDeadline;
+      const counted = budgetAvailable
+        ? await countUntracked(repoRoot, record.path, maxFileBytes, untrackedBytesRemaining, untrackedDeadline)
+        : { additions: 0, binary: false, statsUnavailable: true, inspectedBytes: 0 };
+      untrackedFilesInspected += budgetAvailable ? 1 : 0;
+      untrackedBytesRemaining = Math.max(0, untrackedBytesRemaining - (counted.inspectedBytes || 0));
+      untrackedStatsLimited ||= Boolean(counted.statsUnavailable);
       unstaged.push({
         ...record,
         status: "added",
@@ -128,6 +192,8 @@ async function workingFiles(repoRoot, maxFileBytes) {
         deletions: 0,
         binary: counted.binary,
         oversized: counted.oversized,
+        statsUnavailable: counted.statsUnavailable,
+        symlink: counted.symlink,
         descriptor: { kind: "untracked" },
       });
       continue;
@@ -135,6 +201,7 @@ async function workingFiles(repoRoot, maxFileBytes) {
     if (record.indexCode && ![".", " ", "?"].includes(record.indexCode)) {
       staged.push({
         ...record,
+        ...comparisonModeMetadata(record.headMode, record.indexMode),
         status: statusName(record.indexCode),
         ...(stagedStats.get(record.path) || { additions: 0, deletions: 0, binary: false }),
         descriptor: { kind: "staged" },
@@ -143,13 +210,14 @@ async function workingFiles(repoRoot, maxFileBytes) {
     if (record.worktreeCode && ![".", " ", "?"].includes(record.worktreeCode)) {
       unstaged.push({
         ...record,
+        ...comparisonModeMetadata(record.indexMode, record.worktreeMode),
         status: statusName(record.worktreeCode),
         ...(unstagedStats.get(record.path) || { additions: 0, deletions: 0, binary: false }),
         descriptor: { kind: "unstaged" },
       });
     }
   }
-  return { staged, unstaged };
+  return { staged, unstaged, untrackedStatsLimited };
 }
 
 async function trackingState(repoRoot) {
@@ -163,37 +231,54 @@ async function trackingState(repoRoot) {
 }
 
 async function commitState(repoRoot, baseRef) {
-  if (!baseRef || baseRef === "HEAD") return { commits: [], totalCommits: 0, commitPathIndex: new Map() };
+  if (!baseRef || baseRef === "HEAD") return {
+    commits: [],
+    totalCommits: 0,
+    commitPathIndex: new Map(),
+    historyLimit: HISTORY_LIMIT,
+    historyTruncated: false,
+    historyPathsAvailable: true,
+  };
   const range = `${baseRef}..HEAD`;
-  const [log, countText, pathLog] = await Promise.all([
-    gitText(repoRoot, ["log", "-z", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%ar", range]),
-    gitText(repoRoot, ["rev-list", "--count", range]),
-    gitText(repoRoot, ["log", "-z", "--format=%x1e%H", "--name-only", range]),
+  const [log, countText] = await Promise.all([
+    gitText(repoRoot, ["log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H%x00%h%x00%s%x00%an%x00%ar", range]),
+    gitText(repoRoot, ["rev-list", "--first-parent", "--count", range]),
   ]);
-  const commits = log.split("\0").filter(Boolean).map((record) => {
-    const [hash, shortHash, message, author, age] = record.replace(/^\n+/, "").split("\x1f");
-    return { hash, shortHash, message, author, age };
-  });
-  const commitPathIndex = new Map();
-  for (const block of pathLog.split("\x1e").slice(1)) {
-    const tokens = block.split("\0");
-    const hash = tokens.shift()?.trim();
-    if (!hash) continue;
-    if (tokens[0]?.startsWith("\n")) tokens[0] = tokens[0].slice(1);
-    commitPathIndex.set(hash, tokens.filter(Boolean));
+  const commits = parseCommitLogZ(log);
+  const totalCommits = Number.parseInt(countText.trim(), 10) || 0;
+  let commitPathIndex = new Map();
+  let historyPathsAvailable = true;
+  try {
+    const pathLog = await gitText(repoRoot, [
+      "log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H",
+      "--raw", "--no-abbrev", "--no-renames", range,
+    ]);
+    commitPathIndex = parseCommitPathsRawLogZ(pathLog);
+  } catch {
+    historyPathsAvailable = false;
   }
-  return { commits, totalCommits: Number.parseInt(countText.trim(), 10) || 0, commitPathIndex };
+  return {
+    commits,
+    totalCommits,
+    commitPathIndex,
+    historyLimit: HISTORY_LIMIT,
+    historyTruncated: totalCommits > commits.length,
+    historyPathsAvailable,
+  };
 }
 
 export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 * 1024 * 1024) {
+  const parentLine = (await gitText(repoRoot, ["rev-list", "--parents", "-n", "1", commitHash], { maxOutputBytes })).trim();
+  const parentHash = parentLine.split(/\s+/)[1] || "";
+  const comparison = parentHash ? ["diff", parentHash, commitHash] : ["show", "--root", "--format=", commitHash];
   const [names, stats, raw] = await Promise.all([
-    gitText(repoRoot, ["show", "--format=", "--name-status", "-z", "--find-renames", "--find-copies-harder", commitHash], { maxOutputBytes }),
-    gitText(repoRoot, ["show", "--format=", "--numstat", "-z", "--find-renames", "--find-copies-harder", commitHash], { maxOutputBytes }),
-    gitText(repoRoot, ["show", "--format=", "--raw", "-z", "--abbrev=40", "--find-renames", "--find-copies-harder", commitHash], { maxOutputBytes }),
+    gitText(repoRoot, [...comparison, "--name-status", "-z", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
+    gitText(repoRoot, [...comparison, "--numstat", "-z", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
+    gitText(repoRoot, [...comparison, "--raw", "-z", "--abbrev=40", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
   ]);
   return withDescriptor(
     mergeMetadata(mergeStats(parseNameStatusZ(names), parseNumstatZ(stats)), parseRawDiffZ(raw)),
-    { kind: "commit", commitHash },
+    { kind: "commit", commitHash, parentHash, comparison: "first-parent" },
   );
 }
 
@@ -240,6 +325,7 @@ export async function getRepositoryState(cwd, options = {}) {
     ...workspace,
     staged: working.staged,
     unstaged: working.unstaged,
+    untrackedStatsLimited: working.untrackedStatsLimited,
     tracked: trackedData.paths,
     tracking,
     ...commitData,
@@ -254,8 +340,19 @@ export async function getRepositoryState(cwd, options = {}) {
     executable: entry.mode === "100755",
   }]));
   for (const list of [state.againstBase, state.workspaceChanges, state.staged, state.unstaged]) {
-    for (const file of list) Object.assign(file, trackedMetadata.get(file.path) || {});
+    for (const file of list) {
+      const tracked = trackedMetadata.get(file.path);
+      if (!tracked) continue;
+      for (const [key, value] of Object.entries(tracked)) {
+        if (!Object.hasOwn(file, key)) file[key] = value;
+      }
+    }
   }
-  state.files = buildPathIndex(state);
+  state.files = buildPathIndex({
+    ...state,
+    tracked: trackedData.entries
+      .filter((entry) => entry.stage === 0)
+      .map((entry) => ({ path: entry.path, ...trackedMetadata.get(entry.path) })),
+  });
   return state;
 }

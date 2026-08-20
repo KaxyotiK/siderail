@@ -33,3 +33,10 @@ The safety limit is intentional. Increase `limits.maxFileBytes` or
 Press `r`. GitRail watches the worktree and `.git` directory with debounce and
 also uses the configured recovery poll. Refresh keeps the previous usable state
 when an operation fails.
+
+## Files are all shown as changed
+
+The Files tab compares the current worktree with the merge base of the selected
+base ref and `HEAD`. A branch that adds or edits every repository file therefore
+has no neutral rows. Grey rows appear only for paths identical to that merge
+base. Fetch the remote and press `r` if the base ref itself is stale.

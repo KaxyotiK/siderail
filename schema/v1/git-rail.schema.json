@@ -7,7 +7,7 @@
   "properties": {
     "$schema": { "type": "string" },
     "version": { "const": 1 },
-    "baseRef": { "type": "string", "minLength": 1 },
+    "baseRef": { "type": "string", "pattern": "\\S" },
     "editor": { "$ref": "#/$defs/launch" },
     "viewers": {
       "type": "object",
@@ -35,7 +35,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "client": { "type": "string", "minLength": 1 },
+        "client": { "type": "string", "pattern": "\\S" },
         "args": { "type": "array", "items": { "type": "string" } },
         "mode": { "enum": ["auto", "terminal", "external"] }
       },
@@ -45,7 +45,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "client": { "type": "string", "minLength": 1 },
+        "client": { "type": "string", "pattern": "\\S" },
         "args": { "type": "array", "items": { "type": "string" } },
         "mode": { "enum": ["auto", "terminal", "external"] },
         "autoOpen": { "type": "boolean" }

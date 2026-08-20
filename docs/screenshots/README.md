@@ -9,23 +9,13 @@ Generate the standard 52-column capture with:
 npm run snapshot
 ```
 
-The live Herdr dogfood pass for `production-ready` used an 84-column split and
-showed the following structure:
+The fixture intentionally uses a feature branch and includes Against-base,
+commit, staged, unstaged, untracked text, and binary states. Do not hand-edit
+captured totals or diff statistics: regenerate them from the fixture so the
+documentation cannot drift from the provider.
 
-```text
- gitrail-fixture
-  ⑂ feature/sidebar
- ────────────────────────────────────────────────────
-  CHANGES                   FILES
-  ⌕ Search changed files…
-  ≣ Folders   ↻ Refresh
- ────────────────────────────────────────────────────
- ▏› Against main  2
-  › Commits  1
-  ⌄ Staged  1
-   └─ ⊡ status.mjs                 +2 −1 Staged
-  ⌄ Unstaged  3
-   └─ ◆ binary.dat              binary Untracked
-   └─ ⊞ production ready.md        +4 Untracked
-   └─ ⊡ status.mjs               +2 −1 Unstaged
-```
+For live review, capture both Changes and Files. Files should contain the same
+branch diff as Against-base plus neutral grey rows for paths unchanged from the
+merge base. Opening a row should create or replace the dedicated preview tab.
+Its label should be the selected basename, sanitized and capped at 32 terminal
+columns.

@@ -14,6 +14,42 @@ export function statusName(code) {
   return "modified";
 }
 
+export function parseCommitLogZ(output) {
+  const fields = splitNul(output);
+  const commits = [];
+  for (let index = 0; index + 4 < fields.length; index += 5) {
+    const [hash, shortHash, message, author, age] = fields.slice(index, index + 5);
+    if (hash) commits.push({ hash, shortHash, message, author, age });
+  }
+  return commits;
+}
+
+export function parseCommitPathsRawLogZ(output) {
+  const tokens = splitNul(output);
+  const pathsByCommit = new Map();
+  let currentPaths;
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index].replace(/^\n/, "");
+    if (/^[0-9a-f]{40}$/i.test(token)) {
+      currentPaths = [];
+      pathsByCommit.set(token, currentPaths);
+      index += 1;
+      continue;
+    }
+    if (!currentPaths || !token.startsWith(":")) {
+      index += 1;
+      continue;
+    }
+    const statusToken = token.slice(1).split(" ").at(-1) || "";
+    const pathCount = statusToken[0] === "R" || statusToken[0] === "C" ? 2 : 1;
+    for (let offset = 1; offset <= pathCount && index + offset < tokens.length; offset += 1) {
+      currentPaths.push(tokens[index + offset]);
+    }
+    index += pathCount + 1;
+  }
+  return pathsByCommit;
+}
+
 export function parsePorcelainV2Z(output) {
   const tokens = splitNul(output);
   const entries = [];
@@ -45,6 +81,9 @@ export function parsePorcelainV2Z(output) {
         indexCode: xy[0],
         worktreeCode: xy[1],
         submodule: fields[2] !== "N...",
+        headMode: fields[3],
+        indexMode: fields[4],
+        worktreeMode: fields[5],
         score: fields[8],
       });
     } else if (kind === "u" && fields.length >= 11) {
@@ -134,13 +173,17 @@ export function parseRawDiffZ(output) {
     } else filePath = tokens[index++] || "";
     if (!filePath) continue;
     metadata.set(filePath, {
+      mode: newMode,
       oldMode,
       newMode,
       oldObjectId,
       newObjectId,
       executableChange: oldMode !== newMode && (oldMode === "100755" || newMode === "100755"),
-      symlink: oldMode === "120000" || newMode === "120000",
-      submodule: oldMode === "160000" || newMode === "160000",
+      executable: newMode === "100755",
+      oldSymlink: oldMode === "120000",
+      symlink: newMode === "120000",
+      oldSubmodule: oldMode === "160000",
+      submodule: newMode === "160000",
       ...(oldPath ? { oldPath } : {}),
     });
   }

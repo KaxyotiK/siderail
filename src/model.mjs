@@ -22,7 +22,16 @@ export function buildPathIndex({ tracked = [], againstBase = [], staged = [], un
     }
     return byPath.get(filePath);
   };
-  for (const filePath of tracked) ensure(filePath);
+  for (const trackedFile of tracked) {
+    const filePath = typeof trackedFile === "string" ? trackedFile : trackedFile.path;
+    const entry = ensure(filePath);
+    if (typeof trackedFile === "object") {
+      entry.submodule ||= Boolean(trackedFile.submodule);
+      entry.symlink ||= Boolean(trackedFile.symlink);
+      entry.executable ||= Boolean(trackedFile.executable);
+      entry.mode ||= trackedFile.mode;
+    }
+  }
   for (const [scope, files] of [["against", againstBase], ["staged", staged], ["unstaged", unstaged]]) {
     for (const file of files) {
       const entry = ensure(file.path);

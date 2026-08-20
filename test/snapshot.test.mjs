@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+import { terminalColumns } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
 
 const exec = promisify(execFile);
@@ -68,4 +69,14 @@ test("large repositories expose an explicit reachable continuation", async (t) =
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /Unstaged  250/);
   assert.match(plain, /Show 100 more\s+\(150 remaining\)/);
+});
+
+test("sidebar rows stay within terminal width for wide filenames", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-wide-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, `${"界".repeat(20)}.txt`), "wide\n");
+  const script = path.resolve("scripts/git-rail.mjs");
+  const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "25", "--height", "28"], { cwd: root });
+  assert.ok(stdout.trimEnd().split("\n").every((line) => terminalColumns(line) <= 25));
 });
