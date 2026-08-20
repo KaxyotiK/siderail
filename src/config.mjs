@@ -9,9 +9,10 @@ export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
-    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
-    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
+    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    "*": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
   limits: { maxFileBytes: 4 * 1024 * 1024, maxDiffBytes: 8 * 1024 * 1024 },

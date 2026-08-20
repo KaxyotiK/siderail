@@ -25,7 +25,7 @@ preview pane; external clients open outside Herdr. Set `mode` explicitly when
 automatic detection is unsuitable. Viewer actions appear only when the selected
 filename matches enabled rules and use their configured `key` bindings.
 The `*` rule matches every filename. No viewer auto-opens unless its rule sets
-`autoOpen: true`.
+`autoOpen: true`; the installed Markdown rules enable it for Glow by default.
 
 ## Binary or oversized preview
 

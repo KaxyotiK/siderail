@@ -12,8 +12,9 @@ Staged, Unstaged, Untracked, and clean-file previews cannot be confused.
 - macOS or Linux
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
-editor configuration when provided. Glow is the default viewer for `.md`,
-`.mdx`, and `.markdown` files, but remains an optional executable.
+editor configuration when provided. The installed defaults auto-open `.md`,
+`.mdx`, and `.markdown` files in Glow, so install `glow` for that integration or
+override the Markdown rules. Diff and Raw remain available without Glow.
 
 ## Install and launch
 
@@ -63,10 +64,11 @@ files use a neutral grey icon and have no diff statistics.
 The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then
 starts in the selected descriptor's exact diff, or Raw for a clean file. Use
-`1` and `2` select Diff and Raw. Configured filename and extension matches add
-actions with explicit key bindings; the default is `3 View Markdown` through Glow
-for `.md`, `.mdx`, and `.markdown` files. `/` searches the current content and `n`/`N` moves through
-matches. `e` opens the configured editor; historical,
+`1` and `2` to select Diff and Raw. Configured filename and extension matches
+add actions with explicit key bindings. Installed defaults provide `o Open` for
+every file and `3 View Markdown` through Glow for `.md`, `.mdx`, and `.markdown`
+files; Markdown launches Glow automatically. `/` searches the current content
+and `n`/`N` moves through matches. `e` opens the configured editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
 the exact Raw revision. Binary and oversized content produce bounded,
 actionable errors. A `?` statistic means the aggregate untracked-inspection
@@ -154,7 +156,7 @@ viewer actions. The built-in Markdown defaults use Glow:
       "args": ["--tui", "--style", "dark"],
       "mode": "terminal",
       "key": "3",
-      "autoOpen": false
+      "autoOpen": true
     }
   }
 }

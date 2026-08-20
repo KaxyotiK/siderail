@@ -9,7 +9,7 @@
       "args": ["--tui", "--style", "dark"],
       "mode": "terminal",
       "key": "3",
-      "autoOpen": false
+      "autoOpen": true
     },
     ".pdf": {
       "label": "Open PDF",
@@ -21,7 +21,7 @@
     },
     "*": [
       {
-        "label": "Open File",
+        "label": "Open",
         "client": "system",
         "args": [],
         "mode": "external",
