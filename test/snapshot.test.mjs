@@ -36,7 +36,7 @@ for (const width of [25, 100]) {
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
     assert.match(plain, /⊞ preview\.md/);
-    assert.match(plain, /□ README\.md/);
+    assert.match(plain, /⊠ README\.md/);
   });
 }
 
@@ -95,7 +95,7 @@ test("clean Changes view states that the worktree is clean", async (t) => {
   assert.match(plain, /No changes against main · working tree clean/);
 });
 
-test("non-repository Files stays browsable with neutral file-type icons", async (t) => {
+test("non-repository Files stays browsable with one neutral file icon", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-filesystem-snapshot-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.mkdir(path.join(root, "src"));
@@ -106,9 +106,9 @@ test("non-repository Files stays browsable with neutral file-type icons", async 
   const isolatedEnvironment = { ...process.env, HERDR_BIN_PATH: path.join(root, "missing-herdr") };
   const files = await exec(process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });
   const filesPlain = files.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-  assert.match(filesPlain, /λ index\.mjs/);
-  assert.match(filesPlain, /≡ README\.md/);
-  assert.match(filesPlain, /◇ settings\.toml/);
+  assert.match(filesPlain, /⊠ index\.mjs/);
+  assert.match(filesPlain, /⊠ README\.md/);
+  assert.match(filesPlain, /⊠ settings\.toml/);
   assert.doesNotMatch(filesPlain, /Enter a Git worktree/);
 
   const changes = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });

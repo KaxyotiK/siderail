@@ -22,7 +22,7 @@ it is not a future implementation plan.
   worktree with `merge-base(base, HEAD)`, reuses that branch-diff metadata for
   changed rows, and renders unchanged paths with a neutral icon and no stats.
 - Outside Git, Files remains available through a bounded directory scan with
-  neutral type-specific glyphs; Changes clearly remains unavailable. Directory
+  one neutral no-diff icon; Changes clearly remains unavailable. Directory
   symlinks are not followed and `.git` internals are excluded.
 - Folders sort before repository-root files in Tree and Folders layouts. Narrow
   rails retain filenames and compact ages before secondary metadata.

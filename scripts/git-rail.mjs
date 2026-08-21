@@ -22,7 +22,7 @@ import {
   validPollInterval,
   startupFailureState,
 } from "../src/terminal-ui.mjs";
-import { compactAge, compareFolderGroups, neutralFileGlyph } from "../src/tui-format.mjs";
+import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
 const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
@@ -146,10 +146,7 @@ function toggleViewMode(width) {
 }
 function statusGlyph(file) {
   const status = file.status || displayState(file).status;
-  if (status === "clean") {
-    const glyph = file.descriptor?.kind === "filesystem" ? neutralFileGlyph(file) : "□";
-    return `${C.fog}${glyph}${C.reset}`;
-  }
+  if (status === "clean") return `${C.fog}⊠${C.reset}`;
   if (file.binary) return `${C.purple}◆${C.reset}`;
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
   if (status === "deleted") return `${C.red}⊟${C.reset}`;
