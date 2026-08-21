@@ -32,7 +32,7 @@ Herdr rather than GitRail's repository configuration. For example:
 
 ```toml
 [[keys.command]]
-key = "prefix+alt+g"
+key = "ctrl+g"
 type = "plugin_action"
 command = "local.git-rail.toggle-git-rail"
 description = "toggle GitRail sidebar"
