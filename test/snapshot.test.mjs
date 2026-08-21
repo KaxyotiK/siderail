@@ -113,8 +113,9 @@ test("non-repository Files stays browsable with one neutral file icon", async (t
 
   const changes = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });
   const changesPlain = changes.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-  assert.match(changesPlain, /No Git repository/);
-  assert.match(changesPlain, /Changes requires Git · Files remains available/);
+  assert.match(changesPlain, /Changes unavailable outside Git/);
+  assert.match(changesPlain, /Press Tab to browse files/);
+  assert.doesNotMatch(changesPlain, /focused Herdr pane/);
 });
 
 test("keyboard can expand a commit-summary search result", async (t) => {
