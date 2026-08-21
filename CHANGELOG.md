@@ -39,5 +39,5 @@ intentional configuration changes documented here.
   34-column development layout while preserving later manual resizing.
 - Add a verified current-tab sidebar toggle action and bind it through Herdr's
   configurable key map.
-- Keep Files available outside Git with bounded directory scanning and neutral
-  type-specific glyphs while leaving Changes explicitly Git-only.
+- Keep Files available outside Git with bounded directory scanning and one
+  neutral no-diff icon while leaving Changes explicitly Git-only.

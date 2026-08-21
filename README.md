@@ -32,7 +32,7 @@ Herdr rather than GitRail's repository configuration. For example:
 
 ```toml
 [[keys.command]]
-key = "prefix+alt+g"
+key = "ctrl+g"
 type = "plugin_action"
 command = "local.git-rail.toggle-git-rail"
 description = "toggle GitRail sidebar"
@@ -75,11 +75,10 @@ refer to unreachable content.
 
 Files contains every tracked and untracked worktree path. Files changed since
 the merge base use the same status and statistics as Against-base; unchanged
-files use neutral grey type glyphs and have no diff statistics. Outside a Git
+files use one neutral grey icon and have no diff statistics. Outside a Git
 worktree, Files scans the current directory without following directory
 symlinks or entering `.git`, applies file/depth/time safety bounds, and keeps
-documents, code, configuration, images, archives, executables, and symlinks
-visually distinct. Changes remains Git-only.
+every no-diff file visually neutral. Changes remains Git-only.
 
 The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then

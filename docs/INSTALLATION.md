@@ -15,7 +15,7 @@ run `herdr config check` and restart or reload Herdr's configuration:
 
 ```toml
 [[keys.command]]
-key = "prefix+alt+g"
+key = "ctrl+g"
 type = "plugin_action"
 command = "local.git-rail.toggle-git-rail"
 description = "toggle GitRail sidebar"
