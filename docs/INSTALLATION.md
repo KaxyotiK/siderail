@@ -10,6 +10,13 @@ herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
 ```
 
+The action opens GitRail immediately in the current tab. After linking, GitRail
+also opens without taking focus in Git-backed workspaces and tabs created later
+and reconciles existing Git tabs the next time the Herdr server starts.
+Set `herdr.autoOpen` to `false` in GitRail configuration to opt out; the manual
+action remains available. `herdr.sidebarWidth` controls the initial rail width
+in terminal columns and defaults to 34.
+
 Install [Glow](https://github.com/charmbracelet/glow) to use the installed
 Markdown default. GitRail automatically launches Glow for `.md`, `.mdx`, and
 `.markdown` previews. Diff and Raw do not require Glow, and the viewer rule can

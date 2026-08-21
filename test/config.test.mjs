@@ -10,6 +10,15 @@ test("live pane owns the single product title", async () => {
   assert.match(manifest, /title = "HERDER GITRAIL"/);
 });
 
+test("Herdr opens GitRail for restored and newly created tabs", async () => {
+  const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
+  assert.match(manifest, /\[\[startup\]\][\s\S]*?auto-open-herdr-tabs\.mjs/);
+  assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.created"[\s\S]*?auto-open-herdr-tabs\.mjs/);
+  assert.match(manifest, /\[\[events\]\]\s*on = "tab\.created"[\s\S]*?auto-open-herdr-tabs\.mjs/);
+  assert.match(manifest, /\[\[events\]\]\s*on = "tab\.closed"[\s\S]*?auto-open-herdr-tabs\.mjs/);
+  assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.closed"[\s\S]*?auto-open-herdr-tabs\.mjs/);
+});
+
 test("file previews open in a dedicated Herdr tab", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
@@ -51,12 +60,13 @@ test("manual refresh confirmation is transient", async () => {
 
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig(DEFAULT_CONFIG), []);
-  assert.deepEqual(validateConfig({ version: 1, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
+  assert.deepEqual(validateConfig({ version: 1, herdr: { autoOpen: false, sidebarWidth: 34 }, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
   assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);
 });
 
 test("published schema exposes labels only on viewer rules", async () => {
   const schema = JSON.parse(await fs.readFile("schema/v1/git-rail.schema.json", "utf8"));
+  assert.equal(schema.properties.herdr.properties.sidebarWidth.default, 34);
   assert.equal(schema.$defs.launch.properties.label, undefined);
   assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
   assert.equal(schema.$defs.viewer.properties.order.deprecated, true);
@@ -68,6 +78,9 @@ test("published schema exposes labels only on viewer rules", async () => {
 
 test("configuration requires a version and rejects nested unknown keys", () => {
   assert.match(validateConfig({})[0], /version must be 1/);
+  assert.ok(validateConfig({ version: 1, herdr: { autoOpen: "yes", typo: true } }).includes("herdr.autoOpen must be boolean"));
+  assert.ok(validateConfig({ version: 1, herdr: { autoOpen: "yes", typo: true } }).includes("unknown herdr key: typo"));
+  assert.ok(validateConfig({ version: 1, herdr: { sidebarWidth: 19 } }).includes("herdr.sidebarWidth must be an integer from 20 to 200"));
   assert.ok(validateConfig({ version: 1, editor: { client: "vim", autoOpen: true } }).includes("unknown editor key: autoOpen"));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "View Markdown", client: "glow", key: "3", autoOpen: false } } }).length === 0);
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", typo: true } } }).includes('unknown viewers[".md"] key: typo'));
@@ -137,7 +150,7 @@ test("viewer executable preflight detects commands without invoking them", async
 });
 
 test("configuration rejects mistyped structured values", () => {
-  for (const [key, value] of [["editor", []], ["viewers", []], ["refresh", "fast"], ["limits", null]]) {
+  for (const [key, value] of [["herdr", []], ["editor", []], ["viewers", []], ["refresh", "fast"], ["limits", null]]) {
     assert.ok(validateConfig({ version: 1, [key]: value }).includes(`${key} must be an object`));
   }
 });

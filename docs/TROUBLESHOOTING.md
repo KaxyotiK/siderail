@@ -2,8 +2,29 @@
 
 ## No Git repository
 
-Focus a Herdr pane whose current directory is inside the intended worktree, then
-press `r`. GitRail is deliberately scoped to one focused worktree.
+Change a content pane in that Herdr tab into the intended worktree. GitRail
+follows the tab's focused content pane on refresh and on its recovery poll;
+press `r` to request an immediate refresh. Tabs are resolved independently.
+
+## GitRail did not open automatically
+
+Automatic opening runs for each Git-backed tab when Herdr starts or emits
+`workspace.created` or `tab.created`. Confirm the plugin is enabled and that
+`herdr.autoOpen` is not `false` in the user or repository configuration. A
+newly linked plugin does not receive Herdr's one-shot startup hook until the next
+server start; use **Open GitRail** for an existing tab in the meantime. GitRail
+file-preview tabs are intentionally excluded.
+
+GitRail adopts an existing rail instead of opening a duplicate. If an earlier
+process was interrupted during pane creation, the next attempt automatically
+recovers its orphaned lock.
+
+## GitRail opened at the wrong width
+
+Set `herdr.sidebarWidth` to an integer from 20 to 200. GitRail applies this only
+when creating the pane, so later manual resizing is preserved. On narrow layouts
+the initial rail is capped at half of the available split; on unusually wide
+layouts Herdr's minimum split ratio may keep it wider than the requested value.
 
 ## Base ref is wrong or missing
 
@@ -45,9 +66,10 @@ Use a configured external Open/viewer action for those files.
 
 ## State appears stale
 
-Press `r`. GitRail watches the worktree and `.git` directory with debounce and
-also uses the configured recovery poll. Refresh keeps the previous usable state
-when an operation fails.
+Press `r`. GitRail watches the worktree and `.git` directory with debounce,
+tracks directory changes in the rail's own Herdr tab, and also uses the
+configured recovery poll. Refresh keeps the previous usable state when an
+operation fails.
 
 ## Files are all shown as changed
 

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
+import { resolveHerdrTabCwd } from "../src/herdr-context.mjs";
 import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
 import {
@@ -61,12 +62,30 @@ function parseContext() {
 }
 
 const context = parseContext();
-const focusedCwd = context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
+const initialCwd = process.env.GIT_RAIL_REPO_ROOT || context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
+let sourcePaneId = process.env.GIT_RAIL_SOURCE_PANE_ID || context.focused_pane_id || "";
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
-const providerCwd = fixtureRoot || focusedCwd;
+let currentProviderCwd = initialCwd;
+let currentWorkspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
+async function liveProviderCwd() {
+  if (demoMode) return fixtureRoot;
+  const resolved = await resolveHerdrTabCwd({
+    run: runCommand,
+    herdr: process.env.HERDR_BIN_PATH || "herdr",
+    workspaceId: currentWorkspaceId,
+    railPaneId: process.env.HERDR_PANE_ID || "",
+    sourcePaneId,
+    fallbackCwd: currentProviderCwd,
+  });
+  sourcePaneId = resolved.sourcePaneId;
+  currentWorkspaceId = resolved.workspaceId || currentWorkspaceId;
+  currentProviderCwd = resolved.cwd || currentProviderCwd;
+  return currentProviderCwd;
+}
+currentProviderCwd = fixtureRoot || await liveProviderCwd();
 let state;
-try { state = await getRepositoryState(providerCwd); }
-catch (error) { state = startupFailureState(providerCwd, error); }
+try { state = await getRepositoryState(currentProviderCwd); }
+catch (error) { state = startupFailureState(currentProviderCwd, error); }
 if (demoMode) state.repository = "gitrail-fixture";
 let mainTab = cliArgs.has("--files") ? "files" : "changes";
 let viewModePreference = "auto";
@@ -406,7 +425,7 @@ function renderFiles(width) {
 }
 function renderBody(width) {
   keyboardItems = [];
-  if (state.error && !state.repoRoot) return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Focus a Git worktree and press r."];
+  if (state.error && !state.repoRoot) return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Enter a Git worktree; GitRail follows this tab."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function renderHeader(width) {
@@ -465,7 +484,7 @@ function scheduleDraw() {
 async function currentPaneId() {
   if (process.env.HERDR_PANE_ID) return process.env.HERDR_PANE_ID;
   try {
-    const result = await runCommand(process.env.HERDR_BIN_PATH || "herdr", ["pane", "current", "--current"], { cwd: focusedCwd });
+    const result = await runCommand(process.env.HERDR_BIN_PATH || "herdr", ["pane", "current", "--current"], { cwd: currentProviderCwd });
     return JSON.parse(result.stdout)?.result?.pane?.pane_id || "";
   } catch { return ""; }
 }
@@ -492,7 +511,7 @@ async function openPreview(file) {
     }
   }
   const herdr = process.env.HERDR_BIN_PATH || "herdr";
-  const workspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
+  const workspaceId = currentWorkspaceId;
   const selfPaneId = await currentPaneId();
   let stalePaneId = "";
   if (workspaceId) {
@@ -515,17 +534,17 @@ async function openPreview(file) {
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);
   try {
-    const result = await runCommand(herdr, openArgs, { cwd: focusedCwd });
+    const result = await runCommand(herdr, openArgs, { cwd: currentProviderCwd });
     const payload = JSON.parse(result.stdout);
     const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
     const tabId = payload?.result?.plugin_pane?.pane?.tab_id || payload?.result?.pane?.tab_id || payload?.result?.tab_id || "";
     if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
     if (paneId && stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
-      try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: focusedCwd }); } catch {}
+      try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: currentProviderCwd }); } catch {}
     }
     let previewStatus = `Preview opened · ${descriptorLabel(file.descriptor)}`;
     if (tabId) {
-      try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: focusedCwd }); }
+      try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: currentProviderCwd }); }
       catch (error) { previewStatus += ` · tab name unavailable: ${safe(error.message)}`; }
     }
     showTransientStatus(previewStatus);
@@ -555,12 +574,22 @@ async function refreshState(announce = false) {
     }, 150);
   }
   try {
+    const providerCwd = fixtureRoot || await liveProviderCwd();
+    const previousRepoRoot = state.repoRoot;
     const next = await getRepositoryState(providerCwd);
     if (generation === refreshGeneration) {
       if (demoMode) next.repository = "gitrail-fixture";
       const previousInterval = state.config?.refresh?.pollIntervalMs;
       state = next;
-      if (state.repoRoot && state.repoRoot !== invalidationRepoRoot) startInvalidation();
+      if (previousRepoRoot !== next.repoRoot) {
+        selectedIdentity = "";
+        scrollOffset = 0;
+        commitFiles.clear();
+        expandedCommits.clear();
+        collapsedGroups.clear();
+        collapsedFolders.clear();
+      }
+      if (state.repoRoot !== invalidationRepoRoot) startInvalidation();
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) showTransientStatus("Git state refreshed");
       else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
@@ -575,18 +604,20 @@ async function refreshState(announce = false) {
   }
 }
 function startInvalidation() {
-  if (demoMode || !state.repoRoot) return;
-  if (invalidationRepoRoot === state.repoRoot) return;
+  if (demoMode) return;
+  if (invalidationRepoRoot === state.repoRoot && refreshTimer) return;
   stopInvalidation();
-  invalidationRepoRoot = state.repoRoot;
+  invalidationRepoRoot = state.repoRoot || "";
   const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
-  try {
-    watchers.push(fs.watch(state.repoRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
-      if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
-      debounce();
-    }));
-  } catch {}
-  try { watchers.push(fs.watch(path.join(state.repoRoot, ".git"), { recursive: process.platform === "darwin" }, debounce)); } catch {}
+  if (state.repoRoot) {
+    try {
+      watchers.push(fs.watch(state.repoRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
+        if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
+        debounce();
+      }));
+    } catch {}
+    try { watchers.push(fs.watch(path.join(state.repoRoot, ".git"), { recursive: process.platform === "darwin" }, debounce)); } catch {}
+  }
   resetRefreshTimer();
 }
 function resetRefreshTimer() {

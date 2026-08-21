@@ -8,6 +8,14 @@
     "$schema": { "type": "string" },
     "version": { "const": 1 },
     "baseRef": { "type": "string", "pattern": "\\S" },
+    "herdr": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "autoOpen": { "type": "boolean", "default": true },
+        "sidebarWidth": { "type": "integer", "minimum": 20, "maximum": 200, "default": 34 }
+      }
+    },
     "editor": { "$ref": "#/$defs/launch" },
     "viewers": {
       "type": "object",
