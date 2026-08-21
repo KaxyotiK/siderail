@@ -15,6 +15,8 @@ test("Herdr opens GitRail for restored and newly created tabs", async () => {
   assert.match(manifest, /\[\[startup\]\][\s\S]*?auto-open-herdr-tabs\.mjs/);
   assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.created"[\s\S]*?auto-open-herdr-tabs\.mjs/);
   assert.match(manifest, /\[\[events\]\]\s*on = "tab\.created"[\s\S]*?auto-open-herdr-tabs\.mjs/);
+  assert.match(manifest, /\[\[events\]\]\s*on = "tab\.closed"[\s\S]*?auto-open-herdr-tabs\.mjs/);
+  assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.closed"[\s\S]*?auto-open-herdr-tabs\.mjs/);
 });
 
 test("file previews open in a dedicated Herdr tab", async () => {

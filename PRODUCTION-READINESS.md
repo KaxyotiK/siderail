@@ -90,6 +90,12 @@ default and can be disabled globally or per repository with `herdr.autoOpen`;
 non-Git tabs and GitRail's own file-preview tabs are ignored.
 New rails apply `herdr.sidebarWidth` once at creation without taking focus;
 subsequent manual resizing remains owned by Herdr.
+Reconciliation adopts current panes, replaces legacy-branded panes, removes
+duplicates, repairs middle-of-layout rails, recovers orphaned locks, and cleans
+per-tab state when tabs or workspaces close.
+Each running rail resolves the focused content directory from its own tab on
+refresh, so repository and branch headers follow directory changes without
+sharing state across tabs.
 
 Filesystem events and a recovery poll feed a debounced refresh. Refresh retains
 the last usable state and preserves selection, expansion, layout, search, and

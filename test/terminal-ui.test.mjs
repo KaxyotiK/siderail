@@ -136,10 +136,11 @@ test("sidebar snapshots cannot emit OSC52 from repository and filename data", as
   assert.match(stdout, /�\.txt/);
 });
 
-test("startup recovery installs invalidation only after a repository appears", async () => {
+test("recovery polling follows repository transitions in either direction", async () => {
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
-  assert.match(rail, /state\.repoRoot && state\.repoRoot !== invalidationRepoRoot\) startInvalidation\(\)/);
-  assert.match(rail, /if \(invalidationRepoRoot === state\.repoRoot\) return;/);
+  assert.match(rail, /if \(state\.repoRoot !== invalidationRepoRoot\) startInvalidation\(\)/);
+  assert.match(rail, /if \(invalidationRepoRoot === state\.repoRoot && refreshTimer\) return;/);
+  assert.match(rail, /currentProviderCwd = fixtureRoot \|\| await liveProviderCwd\(\)/);
   assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
 });
 

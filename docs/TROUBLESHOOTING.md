@@ -2,8 +2,9 @@
 
 ## No Git repository
 
-Focus a Herdr pane whose current directory is inside the intended worktree, then
-press `r`. GitRail is deliberately scoped to one focused worktree.
+Change a content pane in that Herdr tab into the intended worktree. GitRail
+follows the tab's focused content pane on refresh and on its recovery poll;
+press `r` to request an immediate refresh. Tabs are resolved independently.
 
 ## GitRail did not open automatically
 
@@ -13,6 +14,10 @@ Automatic opening runs for each Git-backed tab when Herdr starts or emits
 newly linked plugin does not receive Herdr's one-shot startup hook until the next
 server start; use **Open GitRail** for an existing tab in the meantime. GitRail
 file-preview tabs are intentionally excluded.
+
+GitRail adopts an existing rail instead of opening a duplicate. If an earlier
+process was interrupted during pane creation, the next attempt automatically
+recovers its orphaned lock.
 
 ## GitRail opened at the wrong width
 
@@ -61,9 +66,10 @@ Use a configured external Open/viewer action for those files.
 
 ## State appears stale
 
-Press `r`. GitRail watches the worktree and `.git` directory with debounce and
-also uses the configured recovery poll. Refresh keeps the previous usable state
-when an operation fails.
+Press `r`. GitRail watches the worktree and `.git` directory with debounce,
+tracks directory changes in the rail's own Herdr tab, and also uses the
+configured recovery poll. Refresh keeps the previous usable state when an
+operation fails.
 
 ## Files are all shown as changed
 

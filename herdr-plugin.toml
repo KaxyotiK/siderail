@@ -16,6 +16,14 @@ command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
 on = "tab.created"
 command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
 
+[[events]]
+on = "tab.closed"
+command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+
+[[events]]
+on = "workspace.closed"
+command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+
 [[actions]]
 id = "open-git-rail"
 title = "Open GitRail"

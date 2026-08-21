@@ -129,6 +129,9 @@ tab when Herdr starts or a workspace or tab is created. Disable that globally in
 
 Non-Git tabs and GitRail's own file-preview tabs are ignored. Manual **Open
 GitRail** actions remain available when automatic opening is disabled.
+Once open, each rail follows the focused content pane in its own tab. Changing
+that pane's directory updates the repository name and branch on refresh or the
+recovery poll, including transitions into and out of Git worktrees.
 
 New rails open at the configured terminal-column width. The installed default
 matches the 34-column development rail; narrower layouts cap the rail at half

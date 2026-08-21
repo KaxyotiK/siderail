@@ -31,6 +31,9 @@ intentional configuration changes documented here.
   transient preview-open feedback.
 - Auto-open one unfocused GitRail pane per Git-backed Herdr tab at startup and
   workspace or tab creation, with a global or per-repository `herdr.autoOpen`
-  opt-out and duplicate-open protection.
+  opt-out, stale-lock recovery, state migration, right-edge placement,
+  duplicate-open protection, and close-event cleanup.
+- Follow each Herdr tab's focused content directory independently so repository
+  and branch headers update when entering, leaving, or switching worktrees.
 - Configure the initial rail width with `herdr.sidebarWidth`, defaulting to the
   34-column development layout while preserving later manual resizing.
