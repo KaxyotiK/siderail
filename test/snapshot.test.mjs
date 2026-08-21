@@ -36,7 +36,7 @@ for (const width of [25, 100]) {
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
     assert.match(plain, /⊞ preview\.md/);
-    assert.match(plain, /≡ README\.md/);
+    assert.match(plain, /□ README\.md/);
   });
 }
 
