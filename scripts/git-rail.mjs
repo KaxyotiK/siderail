@@ -426,7 +426,7 @@ function renderFiles(width) {
 }
 function renderBody(width) {
   keyboardItems = [];
-  if (state.error && !state.repoRoot && mainTab === "changes") return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Changes requires Git · Files remains available."];
+  if (state.error && !state.repoRoot && mainTab === "changes") return ["", `${C.fog}Changes unavailable outside Git${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Press Tab to browse files."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function renderHeader(width) {
