@@ -146,7 +146,7 @@ function toggleViewMode(width) {
 }
 function statusGlyph(file) {
   const status = file.status || displayState(file).status;
-  if (status === "clean") return `${C.fog}⊠${C.reset}`;
+  if (status === "clean") return `${C.fog}${file.descriptor?.kind === "filesystem" ? "⊠" : "□"}${C.reset}`;
   if (file.binary) return `${C.purple}◆${C.reset}`;
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
   if (status === "deleted") return `${C.red}⊟${C.reset}`;
