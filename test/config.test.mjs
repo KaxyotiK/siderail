@@ -19,6 +19,11 @@ test("Herdr opens GitRail for restored and newly created tabs", async () => {
   assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.closed"[\s\S]*?auto-open-herdr-tabs\.mjs/);
 });
 
+test("Herdr exposes a current-tab GitRail toggle action", async () => {
+  const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
+  assert.match(manifest, /id = "toggle-git-rail"[\s\S]*?open-herdr-panel\.sh", "git-tui", "toggle"/);
+});
+
 test("file previews open in a dedicated Herdr tab", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");

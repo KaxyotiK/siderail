@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -705,6 +706,12 @@ export async function openHerdrPanel({
     }
     for (const pane of tabPanes.filter((candidate) => hasLabel(candidate, identity.legacy))) {
       if (await verifiedOwnedRail(run, herdr, pane, state, entrypoint)) legacyRails.push(pane);
+    }
+    if (openMode === "toggle" && currentRails.length + legacyRails.length > 0) {
+      for (const pane of [...currentRails, ...legacyRails]) await closeOwnedPane(run, herdr, pane.pane_id);
+      await fs.rm(statePath, { force: true });
+      await removeLegacyPaneState({ workspaceId, entrypoint, environment });
+      return { paneId: "", closed: true };
     }
     const ownedPaneIds = new Set([...currentRails, ...legacyRails].map((pane) => pane.pane_id));
     let keptRail = currentRails.find((pane) => pane.pane_id === state?.paneId) || currentRails[0] || null;

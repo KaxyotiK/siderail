@@ -1,7 +1,7 @@
 {
   "name": "herdr-gitrail",
   "version": "0.1.0",
-  "description": "A compact, read-only Git sidebar for Herdr",
+  "description": "A compact, read-only Files and Git sidebar for Herdr",
   "type": "module",
   "private": true,
   "engines": {

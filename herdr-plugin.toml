@@ -2,7 +2,7 @@ id = "local.git-rail"
 name = "Herdr GitRail"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
-description = "A trustworthy, read-only Git sidebar for one repository and branch"
+description = "A trustworthy, read-only Files and Git sidebar for each Herdr tab"
 platforms = ["macos", "linux"]
 
 [[startup]]
@@ -31,6 +31,12 @@ contexts = ["workspace"]
 command = ["bash", "scripts/open-herdr-panel.sh", "git-tui"]
 
 [[actions]]
+id = "toggle-git-rail"
+title = "Toggle GitRail"
+contexts = ["workspace"]
+command = ["bash", "scripts/open-herdr-panel.sh", "git-tui", "toggle"]
+
+[[actions]]
 id = "open-git-rail-mockup"
 title = "Open GitRail Demo"
 contexts = ["workspace"]
@@ -39,7 +45,7 @@ command = ["bash", "scripts/open-herdr-panel.sh", "git-mockup"]
 [[panes]]
 id = "git-tui"
 title = "HERDER GITRAIL"
-description = "Read-only Git inspection for the focused repository"
+description = "Read-only Files and Git inspection for the focused directory"
 placement = "overlay"
 command = ["node", "scripts/git-rail.mjs"]
 

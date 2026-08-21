@@ -21,6 +21,9 @@ const UNTRACKED_STATS_BYTE_LIMIT = 16 * 1024 * 1024;
 const UNTRACKED_STATS_TIME_MS = 250;
 
 const HISTORY_LIMIT = 200;
+const DIRECTORY_FILE_LIMIT = 2_000;
+const DIRECTORY_DEPTH_LIMIT = 16;
+const DIRECTORY_SCAN_TIME_MS = 250;
 
 async function gitText(cwd, args, options = {}) {
   return (await runGit(cwd, args, options)).stdout;
@@ -34,6 +37,56 @@ async function resolveRepository(cwd) {
     if (error instanceof ProcessError && error.kind === "missing-executable") throw error;
     return "";
   }
+}
+
+export async function scanDirectory(root, {
+  fileLimit = DIRECTORY_FILE_LIMIT,
+  depthLimit = DIRECTORY_DEPTH_LIMIT,
+  timeLimitMs = DIRECTORY_SCAN_TIME_MS,
+  now = Date.now,
+} = {}) {
+  const directoryRoot = await fs.realpath(root);
+  const deadline = now() + timeLimitMs;
+  const entries = [];
+  const queue = [{ absolute: directoryRoot, parts: [], depth: 0 }];
+  let truncated = false;
+
+  scan: for (let index = 0; index < queue.length; index += 1) {
+    if (now() >= deadline) { truncated = true; break; }
+    const directory = queue[index];
+    let children;
+    try {
+      children = await fs.readdir(directory.absolute, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    children.sort((left, right) => left.name.localeCompare(right.name));
+    for (const child of children) {
+      if (now() >= deadline || entries.length >= fileLimit) {
+        truncated = true;
+        break scan;
+      }
+      const parts = [...directory.parts, child.name];
+      const absolute = path.join(directory.absolute, child.name);
+      if (child.isDirectory()) {
+        if (child.name === ".git") continue;
+        if (directory.depth >= depthLimit) { truncated = true; continue; }
+        queue.push({ absolute, parts, depth: directory.depth + 1 });
+        continue;
+      }
+      if (!child.isFile() && !child.isSymbolicLink()) continue;
+      try {
+        const stat = await fs.lstat(absolute);
+        entries.push({
+          path: parts.join("/"),
+          symlink: stat.isSymbolicLink(),
+          executable: stat.isFile() && Boolean(stat.mode & 0o111),
+          mode: stat.isSymbolicLink() ? "120000" : stat.isFile() && (stat.mode & 0o111) ? "100755" : "100644",
+        });
+      } catch {}
+    }
+  }
+  return { root: directoryRoot, entries, truncated };
 }
 
 async function resolveBranch(repoRoot) {
@@ -298,14 +351,36 @@ export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 *
 export async function getRepositoryState(cwd, options = {}) {
   const repoRoot = await resolveRepository(cwd);
   if (!repoRoot) {
-    return {
-      cwd,
+    const { config, errors: configErrors } = loadConfig("", options.env || process.env);
+    const directory = await scanDirectory(cwd, options.directoryScan);
+    const workspaceDescriptor = { kind: "filesystem" };
+    const state = {
+      cwd: directory.root,
       repoRoot: "",
-      repository: path.basename(cwd),
+      repository: path.basename(directory.root),
       branch: "—",
+      baseRef: "",
+      baseLabel: "no Git repository",
+      againstBase: [],
+      workspaceChanges: [],
+      workspaceDescriptor,
+      staged: [],
+      unstaged: [],
+      commits: [],
+      totalCommits: 0,
+      commitPathIndex: new Map(),
+      historyTruncated: false,
+      historyPathsAvailable: true,
+      tracking: { hasUpstream: false, pull: 0, push: 0 },
+      directoryFilesTruncated: directory.truncated,
+      tracked: directory.entries,
+    };
+    return {
+      ...state,
+      files: buildPathIndex(state),
       error: "No Git repository in the focused Herdr pane",
-      config: loadConfig("").config,
-      configErrors: [],
+      config,
+      configErrors,
     };
   }
   const { config, errors: loadedConfigErrors } = loadConfig(repoRoot, options.env || process.env);

@@ -6,10 +6,10 @@ import { ProcessError, runGit } from "./process.mjs";
 async function safeWorktreePath(repoRoot, relativePath) {
   const root = await fs.realpath(repoRoot);
   const lexical = path.resolve(root, relativePath);
-  if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to read a path outside the repository");
+  if (lexical !== root && !lexical.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to read a path outside the selected root");
   try {
     const resolved = await fs.realpath(lexical);
-    if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to follow a symlink outside the repository");
+    if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to follow a symlink outside the selected root");
     return resolved;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -20,7 +20,7 @@ async function safeWorktreePath(repoRoot, relativePath) {
       if (entryError.code !== "ENOENT") throw entryError;
     }
     const parent = await fs.realpath(path.dirname(lexical));
-    if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to resolve a path through a symlink outside the repository");
+    if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to resolve a path through a symlink outside the selected root");
     return lexical;
   }
 }
@@ -65,6 +65,7 @@ async function commitDescriptor(repoRoot, descriptor, maxOutputBytes) {
 }
 
 export async function loadDiff({ repoRoot, filePath, descriptor, metadata = {}, maxOutputBytes }) {
+  if (descriptor.kind === "filesystem") return { text: "No Git change exists for this file.", revision: "filesystem file" };
   if (descriptor.kind === "clean") return { text: "No change exists for this file.", revision: "worktree (clean)" };
   if (descriptor.kind === "untracked") {
     await safeUntrackedPath(repoRoot, filePath);
@@ -196,7 +197,7 @@ async function loadRawContent({ repoRoot, filePath, descriptor, metadata = {}, m
       return raw("HEAD", oldPath, `HEAD:${oldPath}`, previousMetadata(metadata));
     }
   }
-  if (descriptor.kind === "workspace" || descriptor.kind === "unstaged" || descriptor.kind === "untracked" || descriptor.kind === "clean") {
+  if (descriptor.kind === "workspace" || descriptor.kind === "unstaged" || descriptor.kind === "untracked" || descriptor.kind === "clean" || descriptor.kind === "filesystem") {
     try { return await raw("worktree", filePath, "worktree"); }
     catch (error) {
       if (!isMissingContent(error)) throw error;

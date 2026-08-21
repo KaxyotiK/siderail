@@ -1,8 +1,10 @@
 # Herdr GitRail
 
-Herdr GitRail is a compact, read-only Git sidebar for one worktree and its
-current branch. Every row retains its exact Git scope, so Against-base, Commit,
-Staged, Unstaged, Untracked, and clean-file previews cannot be confused.
+Herdr GitRail is a compact, read-only sidebar for a Herdr tab's current
+directory. Inside a worktree, every row retains its exact Git scope, so
+Against-base, Commit, Staged, Unstaged, Untracked, and clean-file previews
+cannot be confused. Outside Git, Files remains a bounded filesystem browser
+while Changes clearly reports that Git state is unavailable.
 
 ## Requirements
 
@@ -22,6 +24,18 @@ shows an installation hint, and leaves Diff and Raw fully usable.
 ```bash
 herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
+```
+
+GitRail also declares `local.git-rail.toggle-git-rail`, which opens or closes
+the verified plugin-owned sidebar in the current tab. Key bindings belong to
+Herdr rather than GitRail's repository configuration. For example:
+
+```toml
+[[keys.command]]
+key = "prefix+alt+g"
+type = "plugin_action"
+command = "local.git-rail.toggle-git-rail"
+description = "toggle GitRail sidebar"
 ```
 
 Open the deterministic demo, which assembles a temporary real Git repository
@@ -61,7 +75,11 @@ refer to unreachable content.
 
 Files contains every tracked and untracked worktree path. Files changed since
 the merge base use the same status and statistics as Against-base; unchanged
-files use a neutral grey icon and have no diff statistics.
+files use neutral grey type glyphs and have no diff statistics. Outside a Git
+worktree, Files scans the current directory without following directory
+symlinks or entering `.git`, applies file/depth/time safety bounds, and keeps
+documents, code, configuration, images, archives, executables, and symlinks
+visually distinct. Changes remains Git-only.
 
 The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then

@@ -48,6 +48,7 @@ test("terminal text blocks OSC52 and every terminal control family", () => {
 test("clean Files metadata opens Raw even with a workspace descriptor", () => {
   assert.equal(previewInitialMode({ kind: "workspace", baseRef: "origin/main" }, { status: "clean" }), "raw");
   assert.equal(previewInitialMode({ kind: "workspace", baseRef: "origin/main" }, { status: "modified" }), "diff");
+  assert.equal(previewInitialMode({ kind: "filesystem" }, { status: "clean" }), "raw");
 });
 
 test("commit preview context distinguishes first-parent and root comparisons", () => {
@@ -138,8 +139,8 @@ test("sidebar snapshots cannot emit OSC52 from repository and filename data", as
 
 test("recovery polling follows repository transitions in either direction", async () => {
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
-  assert.match(rail, /if \(state\.repoRoot !== invalidationRepoRoot\) startInvalidation\(\)/);
-  assert.match(rail, /if \(invalidationRepoRoot === state\.repoRoot && refreshTimer\) return;/);
+  assert.match(rail, /if \(\(state\.repoRoot \|\| state\.cwd\) !== invalidationRepoRoot\) startInvalidation\(\)/);
+  assert.match(rail, /if \(invalidationRepoRoot === watchRoot && refreshTimer\) return;/);
   assert.match(rail, /currentProviderCwd = fixtureRoot \|\| await liveProviderCwd\(\)/);
   assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
 });

@@ -10,6 +10,21 @@ herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
 ```
 
+To bind the current-tab toggle, add this to `~/.config/herdr/config.toml`, then
+run `herdr config check` and restart or reload Herdr's configuration:
+
+```toml
+[[keys.command]]
+key = "prefix+alt+g"
+type = "plugin_action"
+command = "local.git-rail.toggle-git-rail"
+description = "toggle GitRail sidebar"
+```
+
+The key mapping is a Herdr setting; the action itself is declared by the
+GitRail plugin. It only closes a pane after verifying that the pane belongs to
+GitRail.
+
 The action opens GitRail immediately in the current tab. After linking, GitRail
 also opens without taking focus in Git-backed workspaces and tabs created later
 and reconciles existing Git tabs the next time the Herdr server starts.

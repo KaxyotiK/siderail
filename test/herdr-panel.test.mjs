@@ -169,6 +169,53 @@ test("existing current rails are adopted, deduplicated, and never reopened from 
   await assert.rejects(fs.stat(legacyState), { code: "ENOENT" });
 });
 
+test("toggle closes only the verified GitRail rail and clears its tab state", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-toggle-close-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1" });
+  await ensurePaneStateDirectory(env);
+  const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
+  await writePaneState(statePath, "w1:p3", "/repo");
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDER GITRAIL" },
+  ];
+  const mocked = mockRun({ panes, layout: { area: { x: 0, y: 0, width: 100, height: 20 }, panes: [] } });
+  const result = await openHerdrPanel({
+    entrypoint: "git-tui",
+    openMode: "toggle",
+    environment: env,
+    run: mocked.run,
+    resize: async () => {},
+    writeOutput: () => {},
+  });
+  assert.deepEqual(result, { paneId: "", closed: true });
+  assert.deepEqual(mocked.calls.filter((args) => args.join(" ").startsWith("plugin pane close")), [["plugin", "pane", "close", "w1:p3"]]);
+  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane open")), false);
+  await assert.rejects(fs.stat(statePath), { code: "ENOENT" });
+});
+
+test("toggle opens a rail when the current tab has none", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-toggle-open-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const panes = [{ workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" }];
+  const mocked = mockRun({ panes, layout: {
+    area: { x: 0, y: 0, width: 100, height: 20 },
+    focused_pane_id: "w1:p1",
+    panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 100, height: 20 } }],
+  } });
+  const result = await openHerdrPanel({
+    entrypoint: "git-tui",
+    openMode: "toggle",
+    environment: env,
+    run: mocked.run,
+    resize: async () => {},
+    writeOutput: () => {},
+  });
+  assert.equal(result.paneId, "w1:p9");
+  assert.equal(result.openMode, "toggle");
+  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane open")), true);
+});
+
 test("legacy rails are replaced at the right edge using the tab-focused source cwd", async (t) => {
   const root = await temporaryRoot(t, "gitrail-legacy-");
   const env = environment(root, { HERDR_PANE_ID: "" });

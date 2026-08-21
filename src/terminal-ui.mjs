@@ -251,7 +251,7 @@ export function startupFailureState(cwd, error) {
 }
 
 export function previewInitialMode(descriptor, metadata) {
-  return descriptor?.kind === "clean" || metadata?.status === "clean" ? "raw" : "diff";
+  return descriptor?.kind === "clean" || descriptor?.kind === "filesystem" || metadata?.status === "clean" ? "raw" : "diff";
 }
 
 export function commitComparisonSource(descriptor) {
