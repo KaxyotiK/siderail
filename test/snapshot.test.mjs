@@ -139,6 +139,66 @@ test("keyboard can expand a commit-summary search result", async (t) => {
   assert.match(plain, /rail\.mjs/);
 });
 
+test("help overlay explains keys and icons, scrolls, and returns to a highlighted selection", async (t) => {
+  const child = spawn(process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "36", "--height", "18"], {
+    cwd: process.cwd(),
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  child.stdin.write("?");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("JJJ");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("JJJ");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("q");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("j");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(plain, /HELP & LEGEND/);
+  assert.match(plain, /FILE STATES/);
+  assert.match(plain, /⊡ Modified/);
+  assert.match(plain, /⊠ Filesystem-only file/);
+  assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
+  assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏\u001b\[0m\u001b\[48;2;45;41;34m/);
+});
+
+test("Escape clears a keyboard selection before a second press closes the rail", async (t) => {
+  const child = spawn(process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "52", "--height", "24"], {
+    cwd: process.cwd(),
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  stdout = "";
+  child.stdin.write("j");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
+  stdout = "";
+  child.stdin.write("\u001b");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(child.exitCode, null);
+  assert.doesNotMatch(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
+  child.stdin.write("\u001b");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
 test("preview processes coalesced search input, advances matches, and exposes horizontal navigation", async (t) => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-home-"));
   t.after(() => fs.rm(home, { recursive: true, force: true }));

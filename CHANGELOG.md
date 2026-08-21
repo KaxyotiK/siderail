@@ -16,6 +16,9 @@ intentional configuration changes documented here.
 - Compare Files with the base-branch merge point and mark unchanged files
   neutrally.
 - Preserve stable, flicker-free scrolling and refresh state.
+- Add an in-place `?` shortcut and icon legend, stronger keyboard focus, and a
+  moving viewport-position marker for scrollable content. Escape clears the
+  current selection before closing the rail on a second press.
 - Add versioned configuration, safety limits, tests, CI, and release guidance.
 - Reject unknown or mistyped nested configuration and pin CI actions by commit.
 - Make editor integration optional and expose viewer action `3` only when the

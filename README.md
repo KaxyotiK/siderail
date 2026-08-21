@@ -64,10 +64,15 @@ signal.
   chooses a section and Space toggles it.
 - `r` refreshes without resetting selection, expansion, layout, search, or
   scroll position.
+- `?` opens an in-place shortcut and file-state legend. `?`, Escape, or `q`
+  closes the legend without closing GitRail.
+- Keyboard selection uses a gold focus rail and highlighted row. A gold marker
+  at the right edge shows the current position whenever content scrolls.
+- Escape clears the current selection; press Escape again to close GitRail.
+  `q` closes GitRail immediately.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
 - Folder expanders and **Show more** rows are currently mouse controls; commit
   expansion and file opening remain fully keyboard-accessible.
-- `q` or Escape closes the rail.
 
 Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
 Large sections expose explicit **Show more** rows, so displayed totals never

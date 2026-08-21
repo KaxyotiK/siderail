@@ -17,6 +17,7 @@ import {
   previewTabName,
   revealScrollOffset,
   sanitizeTerminalText,
+  sliceAnsiTerminalColumns,
   terminalColumns,
   truncateTerminalColumns,
   validPollInterval,
@@ -98,6 +99,8 @@ let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
 let diffSearchQuery = initialSearch;
 let activeSearch = "";
+let helpVisible = false;
+let helpScrollOffset = 0;
 let hitTargets = [];
 let lastClick = { label: "", at: 0 };
 let refreshGeneration = 0;
@@ -123,6 +126,11 @@ const pageSizes = new Map();
 function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
 function regions(text, targets) { return { text, targets }; }
 function textOf(line) { return typeof line === "string" ? line : line.text; }
+function focusedLine(line, width) {
+  const content = sliceAnsiTerminalColumns(padAnsi(fitAnsi(line, width), width), 1, Math.max(0, width - 1))
+    .replaceAll(C.reset, `${C.reset}${C.selected}`);
+  return `${C.selected}${C.gold}▏${C.reset}${C.selected}${content}${C.reset}`;
+}
 function showTransientStatus(message, durationMs = 1_500) {
   if (!statusTimer || statusMessage !== transientStatusMessage) transientRestoreStatus = statusMessage;
   clearTimeout(statusTimer);
@@ -251,7 +259,7 @@ function fileRow(file, width, prefix = " ") {
     action: () => void requestPreview(file),
   });
   const row = interactive(
-    identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
+    identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
     () => selectFile(file),
     `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
     () => void requestPreview(file),
@@ -389,7 +397,7 @@ function renderChanges(width) {
       };
       keyboardItems.push(keyboardItem);
       const row = interactive(
-        identity === selectedIdentity ? `${C.selected}${padAnsi(line, width)}${C.reset}` : fitAnsi(line, width),
+        identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
         () => { selectKeyboardItem(keyboardItem); void toggleCommit(commit); },
         `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`,
       );
@@ -429,6 +437,59 @@ function renderBody(width) {
   if (state.error && !state.repoRoot && mainTab === "changes") return ["", `${C.fog}Changes unavailable outside Git${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Press Tab to browse files."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
+function helpEntry(icon, label, color = C.fog) {
+  return `${color}${icon}${C.reset} ${label}`;
+}
+function helpRows(width) {
+  keyboardItems = [];
+  const keys = [
+    " ↑/↓ · j/k   Select row",
+    " Enter · o   Open selected",
+    " J/K         Scroll viewport",
+    " h/l · Space Select/toggle section",
+    " Tab         Changes / Files",
+    " /           Search current view",
+    " g           Tree / Folders",
+    " r           Refresh",
+    " Esc         Clear selection / close",
+    " q           Close GitRail",
+  ];
+  const states = [
+    helpEntry("⊡", "Modified", C.amber),
+    helpEntry("⊞", "Added", C.leaf),
+    helpEntry("⊟", "Deleted", C.red),
+    helpEntry("↪", "Renamed", C.blue),
+    helpEntry("⧉", "Copied", C.purple),
+    helpEntry("!", "Conflicted", C.red),
+    helpEntry("◇", "Type changed", C.blue),
+    helpEntry("◆", "Binary", C.purple),
+    helpEntry("□", "Clean Git file"),
+    helpEntry("⊠", "Filesystem-only file"),
+  ];
+  const legendRows = width >= 44
+    ? Array.from({ length: Math.ceil(states.length / 2) }, (_, index) => {
+      const left = states[index * 2];
+      const right = states[index * 2 + 1];
+      const columnWidth = Math.floor((width - 3) / 2);
+      return ` ${padAnsi(left, columnWidth)}${right ? `  ${right}` : ""}`;
+    })
+    : states.map((entry) => ` ${entry}`);
+  return [
+    ` ${C.gold}${C.bold}?  HELP & LEGEND${C.reset}`,
+    ` ${C.dim}Keyboard map and repository marks${C.reset}`,
+    rule(width),
+    ` ${C.gold}${C.bold}KEYS${C.reset}`,
+    ...keys,
+    "",
+    ` ${C.gold}${C.bold}FILE STATES${C.reset}`,
+    ...legendRows,
+    "",
+    ` ${C.gold}${C.bold}STRUCTURE & STATS${C.reset}`,
+    ` ${C.fog}› / ⌄${C.reset} Collapsed / expanded`,
+    ` ${C.leaf}+${C.reset} / ${C.red}−${C.reset} Added / removed lines`,
+    ` ${C.fog}?${C.reset} Statistics unavailable`,
+  ];
+}
 function renderHeader(width) {
   const half = Math.floor(width / 2);
   return { half, lines: [
@@ -442,24 +503,29 @@ function renderFrame() {
   const width = Math.max(24, forcedWidth || process.stdout.columns || 52);
   const height = Math.max(18, forcedHeight || process.stdout.rows || 42);
   const { half, lines: header } = renderHeader(width);
-  const body = renderBody(width);
-  const controls = activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · h/l section · / search · q";
-  const footerMessage = statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
+  const body = helpVisible ? helpRows(width) : renderBody(width);
+  const controls = helpVisible
+    ? "↑/↓ or j/k scroll · ?/Esc/q close help"
+    : activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · ? help · / search · q";
+  const footerMessage = helpVisible ? controls : statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
   const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
-  const fixedCount = mainTab === "files" ? 3 + (state.directoryFilesTruncated ? 1 : 0) : state.repoRoot ? 3 : 0;
+  const fixedCount = helpVisible ? 3 : mainTab === "files" ? 3 + (state.directoryFilesTruncated ? 1 : 0) : state.repoRoot ? 3 : 0;
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
   const scrollable = body.slice(fixed.length);
   const visibleHeight = Math.max(0, bodyHeight - fixed.length);
-  if (revealSelected) {
+  let activeScrollOffset = helpVisible ? helpScrollOffset : scrollOffset;
+  if (!helpVisible && revealSelected) {
     const selectedRow = scrollable.findIndex((entry) => typeof entry !== "string" && entry.keyboardIdentity === selectedIdentity);
-    scrollOffset = revealScrollOffset(selectedRow, scrollOffset, visibleHeight, scrollable.length);
+    activeScrollOffset = revealScrollOffset(selectedRow, activeScrollOffset, visibleHeight, scrollable.length);
     revealSelected = false;
   }
-  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, scrollable.length - visibleHeight)));
-  const viewport = [...fixed, ...scrollable.slice(scrollOffset, scrollOffset + visibleHeight)];
+  const maxScrollOffset = Math.max(0, scrollable.length - visibleHeight);
+  activeScrollOffset = Math.max(0, Math.min(activeScrollOffset, maxScrollOffset));
+  if (helpVisible) helpScrollOffset = activeScrollOffset; else scrollOffset = activeScrollOffset;
+  const viewport = [...fixed, ...scrollable.slice(activeScrollOffset, activeScrollOffset + visibleHeight)];
   while (viewport.length < bodyHeight) viewport.push("");
-  hitTargets = [
+  hitTargets = helpVisible ? [] : [
     { row: 4, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
     { row: 4, x1: half + 1, x2: width, label: "Files", action: () => { mainTab = "files"; activeSearch = ""; scrollOffset = 0; } },
   ];
@@ -469,7 +535,13 @@ function renderFrame() {
     if (entry.targets) entry.targets.forEach((target) => hitTargets.push({ row, ...target }));
     if (entry.onClick) hitTargets.push({ row, x1: 1, x2: width, label: entry.label, action: entry.onClick, doubleAction: entry.onDoubleClick });
   });
-  return [...header, ...viewport, ...footer].map((line) => padAnsi(textOf(line), width)).join("\n");
+  const frame = [...header, ...viewport, ...footer].map((line) => padAnsi(textOf(line), width));
+  if (maxScrollOffset > 0 && visibleHeight > 0) {
+    const thumbOffset = Math.round((activeScrollOffset / maxScrollOffset) * Math.max(0, visibleHeight - 1));
+    const thumbRow = header.length + fixed.length + thumbOffset;
+    frame[thumbRow] = `${sliceAnsiTerminalColumns(frame[thumbRow], 0, width - 1)}${C.gold}▐${C.reset}`;
+  }
+  return frame.join("\n");
 }
 function draw() {
   const frame = renderFrame();
@@ -655,9 +727,13 @@ function handleInput(key) {
   const match = key.match(/^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/);
   if (match) {
     const button = Number(match[1]); const column = Number(match[2]); const row = Number(match[3]); const phase = match[4];
-    if (button === 64 && phase === "M") scrollOffset = Math.max(0, scrollOffset - 3);
-    if (button === 65 && phase === "M") scrollOffset += 3;
-    if (button === 0 && phase === "M") {
+    if (button === 64 && phase === "M") {
+      if (helpVisible) helpScrollOffset = Math.max(0, helpScrollOffset - 3); else scrollOffset = Math.max(0, scrollOffset - 3);
+    }
+    if (button === 65 && phase === "M") {
+      if (helpVisible) helpScrollOffset += 3; else scrollOffset += 3;
+    }
+    if (!helpVisible && button === 0 && phase === "M") {
       const target = hitTargets.find((item) => item.row === row && column >= item.x1 && column <= item.x2);
       if (target) {
         const now = Date.now();
@@ -668,7 +744,25 @@ function handleInput(key) {
     scheduleDraw();
     return;
   }
-  if (key === "\u0003" || (!activeSearch && (key === "q" || key === "\u001b"))) { void quit(); return; }
+  if (key === "\u0003") { void quit(); return; }
+  if (helpVisible) {
+    if (key === "?" || key === "q" || key === "\u001b") helpVisible = false;
+    else if (/^(?:j|\u001b\[B)+$/.test(key)) helpScrollOffset += key.match(/j|\u001b\[B/g)?.length || 1;
+    else if (/^(?:k|\u001b\[A)+$/.test(key)) helpScrollOffset = Math.max(0, helpScrollOffset - (key.match(/k|\u001b\[A/g)?.length || 1));
+    else if (key === "J") helpScrollOffset += 3;
+    else if (key === "K") helpScrollOffset = Math.max(0, helpScrollOffset - 3);
+    scheduleDraw(); return;
+  }
+  if (!activeSearch && key === "q") { void quit(); return; }
+  if (!activeSearch && key === "\u001b") {
+    if (selectedIdentity) {
+      selectedIdentity = "";
+      revealSelected = false;
+      statusMessage = "Click a section or file";
+      scheduleDraw(); return;
+    }
+    void quit(); return;
+  }
   if (activeSearch) {
     let query = activeSearch === "files" ? fileSearchQuery : diffSearchQuery;
     const searchKind = activeSearch;
@@ -680,6 +774,7 @@ function handleInput(key) {
     scrollOffset = 0; scheduleDraw(); return;
   }
   if (key === "\t") { mainTab = mainTab === "changes" ? "files" : "changes"; scrollOffset = 0; }
+  else if (key === "?") { helpVisible = true; helpScrollOffset = 0; }
   else if (key === "/") activeSearch = mainTab;
   else if (/^(?:j|\u001b\[B)+$/.test(key)) {
     const steps = key.match(/j|\u001b\[B/g)?.length || 1;
