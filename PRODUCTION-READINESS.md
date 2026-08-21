@@ -6,7 +6,8 @@ it is not a future implementation plan.
 
 ## Current product behavior
 
-- The plugin is a read-only Git inspector scoped to the focused Herdr worktree.
+- The plugin is a read-only Files and Git inspector scoped to the focused Herdr
+  tab directory.
 - Changes separates Against-base, commit, staged, unstaged, and untracked state.
   Each row carries an exact descriptor so the preview cannot silently switch Git
   scope.
@@ -20,6 +21,9 @@ it is not a future implementation plan.
 - Files contains tracked and untracked worktree paths. It compares the current
   worktree with `merge-base(base, HEAD)`, reuses that branch-diff metadata for
   changed rows, and renders unchanged paths with a neutral icon and no stats.
+- Outside Git, Files remains available through a bounded directory scan with
+  neutral type-specific glyphs; Changes clearly remains unavailable. Directory
+  symlinks are not followed and `.git` internals are excluded.
 - Folders sort before repository-root files in Tree and Folders layouts. Narrow
   rails retain filenames and compact ages before secondary metadata.
 - A selected file opens in a dedicated Herdr preview tab labeled with its
@@ -96,6 +100,8 @@ per-tab state when tabs or workspaces close.
 Each running rail resolves the focused content directory from its own tab on
 refresh, so repository and branch headers follow directory changes without
 sharing state across tabs.
+The `toggle-git-rail` plugin action opens or closes only a process-verified,
+plugin-owned rail in the current tab; its shortcut is configured in Herdr.
 
 Filesystem events and a recovery poll feed a debounced refresh. Refresh retains
 the last usable state and preserves selection, expansion, layout, search, and

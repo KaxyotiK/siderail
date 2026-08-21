@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
-import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
+import { getCommitFiles, getRepositoryState, scanDirectory } from "../src/git-provider.mjs";
 import { diffArguments, loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand, runGit } from "../src/process.mjs";
 
@@ -32,6 +32,46 @@ test("read-only refresh does not rewrite the Git index", async (t) => {
   await getRepositoryState(root);
   const after = await fs.stat(indexPath, { bigint: true });
   assert.equal(after.mtimeNs, before.mtimeNs);
+});
+
+test("non-repository directories provide a bounded filesystem Files state", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-directory-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, "docs"));
+  await fs.mkdir(path.join(root, ".git"));
+  await fs.writeFile(path.join(root, "README.md"), "# Directory\n");
+  await fs.writeFile(path.join(root, "docs", "guide.txt"), "guide\n");
+  await fs.writeFile(path.join(root, ".git", "private"), "not a repository\n");
+  await fs.symlink("README.md", path.join(root, "current"));
+
+  const state = await getRepositoryState(root);
+  assert.equal(state.repoRoot, "");
+  assert.equal(state.branch, "—");
+  assert.equal(state.workspaceDescriptor.kind, "filesystem");
+  assert.deepEqual(state.files.map((file) => file.path), ["current", "docs/guide.txt", "README.md"]);
+  assert.equal(state.files.find((file) => file.path === "current").symlink, true);
+  assert.match(state.error, /No Git repository/);
+
+  const raw = await loadRaw({
+    repoRoot: root,
+    filePath: "docs/guide.txt",
+    descriptor: { kind: "filesystem" },
+    metadata: { status: "clean" },
+    maxFileBytes: 1024,
+  });
+  assert.equal(raw.text, "guide\n");
+  assert.equal(raw.revision, "worktree");
+  const diff = await loadDiff({
+    repoRoot: root,
+    filePath: "docs/guide.txt",
+    descriptor: { kind: "filesystem" },
+    maxOutputBytes: 1024,
+  });
+  assert.equal(diff.text, "No Git change exists for this file.");
+
+  const limited = await scanDirectory(root, { fileLimit: 1, timeLimitMs: 10_000 });
+  assert.equal(limited.entries.length, 1);
+  assert.equal(limited.truncated, true);
 });
 
 test("configured bases must resolve to commits and never silently fall back", async (t) => {

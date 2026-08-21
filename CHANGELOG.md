@@ -37,3 +37,7 @@ intentional configuration changes documented here.
   and branch headers update when entering, leaving, or switching worktrees.
 - Configure the initial rail width with `herdr.sidebarWidth`, defaulting to the
   34-column development layout while preserving later manual resizing.
+- Add a verified current-tab sidebar toggle action and bind it through Herdr's
+  configurable key map.
+- Keep Files available outside Git with bounded directory scanning and neutral
+  type-specific glyphs while leaving Changes explicitly Git-only.

@@ -22,7 +22,7 @@ import {
   validPollInterval,
   startupFailureState,
 } from "../src/terminal-ui.mjs";
-import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
+import { compactAge, compareFolderGroups, neutralFileGlyph } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
 const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
@@ -146,7 +146,7 @@ function toggleViewMode(width) {
 }
 function statusGlyph(file) {
   const status = file.status || displayState(file).status;
-  if (status === "clean") return `${C.fog}□${C.reset}`;
+  if (status === "clean") return `${C.fog}${neutralFileGlyph(file)}${C.reset}`;
   if (file.binary) return `${C.purple}◆${C.reset}`;
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
   if (status === "deleted") return `${C.red}⊟${C.reset}`;
@@ -216,7 +216,7 @@ function buildTree(files, collapsed) {
   return rows;
 }
 function selectFile(file) {
-  selectedIdentity = selectionKey(state.repoRoot, file);
+  selectedIdentity = selectionKey(state.repoRoot || state.cwd, file);
   revealSelected = true;
   statusMessage = file.statsUnavailable
     ? `${descriptorLabel(file.descriptor)} · ${file.path} · ? stats unavailable (inspection budget)`
@@ -243,7 +243,7 @@ function fileRow(file, width, prefix = " ") {
   const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
   const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
   const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
-  const identity = selectionKey(state.repoRoot, file);
+  const identity = selectionKey(state.repoRoot || state.cwd, file);
   keyboardItems.push({
     identity,
     file,
@@ -420,12 +420,13 @@ function renderFiles(width) {
     interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
     toolbar(width), rule(width),
   ];
-  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : "Repository has no files"}${C.reset}`];
+  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : state.repoRoot ? "Repository has no files" : "Directory has no files"}${C.reset}`];
+  if (state.directoryFilesTruncated) lines.push(` ${C.dim}Showing the first ${(state.files || []).length.toLocaleString("en-US")} files · scan limit reached${C.reset}`);
   return [...lines, ...renderFilesList(files, width, `files:${query}`)];
 }
 function renderBody(width) {
   keyboardItems = [];
-  if (state.error && !state.repoRoot) return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Enter a Git worktree; GitRail follows this tab."];
+  if (state.error && !state.repoRoot && mainTab === "changes") return ["", `${C.red}${safe(state.error)}${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Changes requires Git · Files remains available."];
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function renderHeader(width) {
@@ -445,7 +446,7 @@ function renderFrame() {
   const controls = activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · h/l section · / search · q";
   const footerMessage = statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
   const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
-  const fixedCount = state.repoRoot ? 3 : 0;
+  const fixedCount = mainTab === "files" ? 3 + (state.directoryFilesTruncated ? 1 : 0) : state.repoRoot ? 3 : 0;
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
   const scrollable = body.slice(fixed.length);
@@ -531,7 +532,7 @@ async function openPreview(file) {
     oldSymlink: file.oldSymlink,
   })).toString("base64url");
   const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
-    "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
+    "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot || state.cwd}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);
   try {
     const result = await runCommand(herdr, openArgs, { cwd: currentProviderCwd });
@@ -576,12 +577,13 @@ async function refreshState(announce = false) {
   try {
     const providerCwd = fixtureRoot || await liveProviderCwd();
     const previousRepoRoot = state.repoRoot;
+    const previousCwd = state.cwd;
     const next = await getRepositoryState(providerCwd);
     if (generation === refreshGeneration) {
       if (demoMode) next.repository = "gitrail-fixture";
       const previousInterval = state.config?.refresh?.pollIntervalMs;
       state = next;
-      if (previousRepoRoot !== next.repoRoot) {
+      if (previousRepoRoot !== next.repoRoot || previousCwd !== next.cwd) {
         selectedIdentity = "";
         scrollOffset = 0;
         commitFiles.clear();
@@ -589,7 +591,7 @@ async function refreshState(announce = false) {
         collapsedGroups.clear();
         collapsedFolders.clear();
       }
-      if (state.repoRoot !== invalidationRepoRoot) startInvalidation();
+      if ((state.repoRoot || state.cwd) !== invalidationRepoRoot) startInvalidation();
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) showTransientStatus("Git state refreshed");
       else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
@@ -605,13 +607,14 @@ async function refreshState(announce = false) {
 }
 function startInvalidation() {
   if (demoMode) return;
-  if (invalidationRepoRoot === state.repoRoot && refreshTimer) return;
+  const watchRoot = state.repoRoot || state.cwd;
+  if (invalidationRepoRoot === watchRoot && refreshTimer) return;
   stopInvalidation();
-  invalidationRepoRoot = state.repoRoot || "";
+  invalidationRepoRoot = watchRoot || "";
   const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
-  if (state.repoRoot) {
+  if (watchRoot) {
     try {
-      watchers.push(fs.watch(state.repoRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
+      watchers.push(fs.watch(watchRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
         if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
         debounce();
       }));

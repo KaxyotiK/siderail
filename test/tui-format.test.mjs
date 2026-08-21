@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
+import { compactAge, compareFolderGroups, neutralFileGlyph } from "../src/tui-format.mjs";
 
 test("compact commit ages preserve value and unit", () => {
   assert.equal(compactAge("just now"), "now");
@@ -15,4 +15,15 @@ test("compact commit ages preserve value and unit", () => {
 test("root files sort after every folder group", () => {
   const groups = [["", []], ["src", []], ["docs", []], [".github/workflows", []]];
   assert.deepEqual(groups.sort(compareFolderGroups).map(([folder]) => folder), [".github/workflows", "docs", "src", ""]);
+});
+
+test("neutral files use distinct one-column glyphs by type", () => {
+  assert.equal(neutralFileGlyph({ path: "README.md" }), "≡");
+  assert.equal(neutralFileGlyph({ path: "src/index.mjs" }), "λ");
+  assert.equal(neutralFileGlyph({ path: "config.toml" }), "◇");
+  assert.equal(neutralFileGlyph({ path: "logo.png" }), "▧");
+  assert.equal(neutralFileGlyph({ path: "release.tgz" }), "▣");
+  assert.equal(neutralFileGlyph({ path: "run", executable: true }), "▶");
+  assert.equal(neutralFileGlyph({ path: "current", symlink: true }), "↗");
+  assert.equal(neutralFileGlyph({ path: "LICENSE" }), "□");
 });

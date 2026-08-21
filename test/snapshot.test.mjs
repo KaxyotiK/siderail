@@ -36,7 +36,7 @@ for (const width of [25, 100]) {
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
     assert.match(plain, /⊞ preview\.md/);
-    assert.match(plain, /□ README\.md/);
+    assert.match(plain, /≡ README\.md/);
   });
 }
 
@@ -93,6 +93,28 @@ test("clean Changes view states that the worktree is clean", async (t) => {
   const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /No changes against main · working tree clean/);
+});
+
+test("non-repository Files stays browsable with neutral file-type icons", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-filesystem-snapshot-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, "README.md"), "# Directory\n");
+  await fs.writeFile(path.join(root, "settings.toml"), "enabled = true\n");
+  await fs.writeFile(path.join(root, "src", "index.mjs"), "export {};\n");
+  const script = path.resolve("scripts/git-rail.mjs");
+  const isolatedEnvironment = { ...process.env, HERDR_BIN_PATH: path.join(root, "missing-herdr") };
+  const files = await exec(process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });
+  const filesPlain = files.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(filesPlain, /λ index\.mjs/);
+  assert.match(filesPlain, /≡ README\.md/);
+  assert.match(filesPlain, /◇ settings\.toml/);
+  assert.doesNotMatch(filesPlain, /Enter a Git worktree/);
+
+  const changes = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });
+  const changesPlain = changes.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(changesPlain, /No Git repository/);
+  assert.match(changesPlain, /Changes requires Git · Files remains available/);
 });
 
 test("keyboard can expand a commit-summary search result", async (t) => {
