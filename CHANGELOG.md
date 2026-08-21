@@ -40,4 +40,5 @@ intentional configuration changes documented here.
 - Add a verified current-tab sidebar toggle action and bind it through Herdr's
   configurable key map.
 - Keep Files available outside Git with bounded directory scanning and one
-  neutral no-diff icon while leaving Changes explicitly Git-only.
+  filesystem-only `⊠` while retaining Git's clean `□` and leaving Changes
+  explicitly Git-only.
