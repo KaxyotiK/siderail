@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/KaxyotiK/git-rail/main/schema/v1/git-rail.schema.json",
+  "$schema": "https://raw.githubusercontent.com/KaxyotiK/herdr-gitrail/main/schema/v1/git-rail.schema.json",
   "version": 1,
   "baseRef": "origin/main",
   "herdr": {

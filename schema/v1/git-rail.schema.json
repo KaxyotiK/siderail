@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/KaxyotiK/git-rail/main/schema/v1/git-rail.schema.json",
+  "$id": "https://raw.githubusercontent.com/KaxyotiK/herdr-gitrail/main/schema/v1/git-rail.schema.json",
   "title": "Herdr GitRail configuration",
   "type": "object",
   "additionalProperties": false,

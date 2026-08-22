@@ -3,8 +3,8 @@
 ## Install from a checkout
 
 ```bash
-git clone https://github.com/KaxyotiK/git-rail.git
-cd git-rail
+git clone https://github.com/KaxyotiK/herdr-gitrail.git
+cd herdr-gitrail
 npm run check
 herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
