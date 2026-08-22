@@ -6,15 +6,19 @@ import { spawn, spawnSync } from "node:child_process";
 import { clientMode, executableAvailable, launchExecutable, loadConfig, resolveViewerActions } from "../src/config.mjs";
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
+import { runCommand } from "../src/process.mjs";
 import {
   commitComparisonSource,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
+  padAnsiTerminalColumns,
   previewInitialMode,
+  sanitizeRendererAnsi,
   sanitizeTerminalText,
   sliceAnsiTerminalColumns,
   stripTerminalAnsi,
   terminalColumns,
+  wrapAnsiTerminalLines,
 } from "../src/terminal-ui.mjs";
 
 const ESC = "\u001b[";
@@ -25,6 +29,7 @@ const C = {
   faint: `${ESC}38;2;84;84;84m`, selected: `${ESC}48;2;45;41;34m`,
 };
 const MAX_PREVIEW_LINES = 100_000;
+const MAX_WRAPPED_LINE_COLUMNS = 100_000;
 const forcedWidth = numberArg("--width");
 const forcedHeight = numberArg("--height");
 const filePath = process.env.GIT_RAIL_PREVIEW_PATH || "";
@@ -42,6 +47,12 @@ let revisionLabel = "";
 let content = [];
 let contentGutterColumns = 0;
 let maximumContentWidth = 0;
+let contentWidths = [];
+let contentGeneration = 0;
+let layoutCache;
+let pendingLayoutAnchor;
+const wrapByMode = new Map([["diff", false], ["raw", true]]);
+let activeEmbeddedAction;
 let loading = false;
 let loadGeneration = 0;
 let hitTargets = [];
@@ -53,6 +64,8 @@ let cachedMatchesQuery = null;
 let cachedMatches = [];
 let temporaryDirectory = "";
 let renderTimer;
+let embeddedResizeTimer;
+let visibleBodyRows = 1;
 
 function numberArg(name) {
   const index = process.argv.indexOf(name);
@@ -67,6 +80,57 @@ function safe(value) { return sanitizeTerminalText(value); }
 function stripAnsi(value) { return stripTerminalAnsi(value); }
 function visibleLength(value) { return terminalColumns(value); }
 function fit(value, width) { return fitAnsiTerminalColumns(value, width); }
+function terminalWidth() { return Math.max(24, forcedWidth || process.stdout.columns || 90); }
+function terminalHeight() { return Math.max(14, forcedHeight || process.stdout.rows || 36); }
+function bodyWidth() { return Math.max(1, terminalWidth() - 1); }
+function wrapping() { return wrapByMode.get(activeMode) ?? true; }
+function rememberLayoutAnchor() {
+  if (!layoutCache?.rows.length) return;
+  pendingLayoutAnchor = layoutCache.rows[Math.max(0, Math.min(scrollOffset, layoutCache.rows.length - 1))];
+}
+function invalidateLayout({ preserveAnchor = false } = {}) {
+  if (preserveAnchor) rememberLayoutAnchor();
+  layoutCache = undefined;
+}
+function setContent(lines, gutterColumns) {
+  content = lines;
+  contentGutterColumns = gutterColumns;
+  contentWidths = content.map((line) => visibleLength(line));
+  maximumContentWidth = contentWidths.reduce((maximum, lineWidth) => Math.max(maximum, lineWidth), 0);
+  contentGeneration += 1;
+  pendingLayoutAnchor = undefined;
+  layoutCache = undefined;
+}
+function visualRows() {
+  const width = bodyWidth();
+  let shouldWrap = wrapping();
+  const wrappedTextWidth = Math.max(1, width - Math.min(contentGutterColumns, Math.max(0, width - 1)));
+  const estimatedRows = shouldWrap ? contentWidths.reduce((total, lineWidth) => total
+    + Math.max(1, Math.ceil(Math.max(0, lineWidth - contentGutterColumns) / wrappedTextWidth)), 0) : content.length;
+  if (shouldWrap && (maximumContentWidth > MAX_WRAPPED_LINE_COLUMNS || estimatedRows > MAX_PREVIEW_LINES)) {
+    wrapByMode.set(activeMode, false);
+    shouldWrap = false;
+    statusMessage = `Word wrap disabled · content would exceed ${MAX_PREVIEW_LINES.toLocaleString("en-US")} visual rows`;
+  }
+  const key = `${contentGeneration}:${width}:${contentGutterColumns}:${shouldWrap}`;
+  if (layoutCache?.key === key) return layoutCache.rows;
+  const continuation = contentGutterColumns
+    ? `${C.dim}${" ".repeat(Math.max(0, contentGutterColumns - 2))}↳ ${C.reset}`
+    : "";
+  const rows = shouldWrap
+    ? wrapAnsiTerminalLines(content, width, contentGutterColumns, continuation)
+    : content.map((text, sourceRow) => ({ text, sourceRow, startColumn: 0, endColumn: visibleLength(text) }));
+  layoutCache = { key, rows };
+  if (pendingLayoutAnchor && rows.length) {
+    let anchorIndex = rows.findIndex((row) => row.sourceRow === pendingLayoutAnchor.sourceRow
+      && row.startColumn <= pendingLayoutAnchor.startColumn
+      && row.endColumn >= pendingLayoutAnchor.startColumn);
+    if (anchorIndex < 0) anchorIndex = rows.findIndex((row) => row.sourceRow === pendingLayoutAnchor.sourceRow);
+    if (anchorIndex >= 0) scrollOffset = anchorIndex;
+  }
+  pendingLayoutAnchor = undefined;
+  return rows;
+}
 function descriptorLabel() {
   if (descriptor.kind === "workspace") return `Against ${safe(descriptor.baseRef)}`;
   if (descriptor.kind === "against") return `Against ${safe(descriptor.baseRef)}`;
@@ -138,13 +202,19 @@ function moveMatch(direction) {
   const next = found[(index + direction + found.length) % found.length];
   currentMatch = next.row;
   currentMatchColumn = next.column;
-  scrollOffset = currentMatch;
-  horizontalOffset = Math.max(0, currentMatchColumn - contentGutterColumns);
+  const rows = visualRows();
+  const visualMatch = rows.findIndex((row) => row.sourceRow === currentMatch
+    && row.startColumn <= currentMatchColumn
+    && row.endColumn >= currentMatchColumn);
+  scrollOffset = visualMatch >= 0 ? visualMatch : Math.max(0, rows.findIndex((row) => row.sourceRow === currentMatch));
+  horizontalOffset = wrapping() ? 0 : Math.max(0, currentMatchColumn - contentGutterColumns);
   statusMessage = `Match ${found.findIndex((match) => match.row === currentMatch) + 1} of ${found.length}`;
 }
 async function loadMode(mode) {
   const generation = ++loadGeneration;
   activeMode = mode;
+  activeEmbeddedAction = undefined;
+  clearTimeout(embeddedResizeTimer);
   loading = true;
   statusMessage = `Loading ${mode}…`;
   render();
@@ -155,11 +225,10 @@ async function loadMode(mode) {
     if (generation !== loadGeneration) return;
     assertPreviewLineLimit(result.text);
     revisionLabel = safe(result.revision);
-    content = mode === "diff"
+    const lines = mode === "diff"
       ? diffLines(result.text)
       : result.text.replace(/\n$/, "").split("\n").map((line, index) => `${C.dim}${String(index + 1).padStart(5)}${C.reset}  ${safe(line)}`);
-    if (mode === "raw") contentGutterColumns = 7;
-    maximumContentWidth = content.reduce((maximum, line) => Math.max(maximum, visibleLength(line)), 0);
+    setContent(lines, mode === "raw" ? 7 : contentGutterColumns);
     cachedMatchesQuery = null;
     cachedMatches = [];
     scrollOffset = 0;
@@ -167,9 +236,7 @@ async function loadMode(mode) {
     statusMessage = mode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel}`;
   } catch (error) {
     if (generation !== loadGeneration) return;
-    content = [`${C.red}${safe(error.message)}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`];
-    contentGutterColumns = 0;
-    maximumContentWidth = content.reduce((maximum, line) => Math.max(maximum, visibleLength(line)), 0);
+    setContent([`${C.red}${safe(error.message)}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`], 0);
     cachedMatchesQuery = null;
     cachedMatches = [];
     statusMessage = error.kind === "oversized"
@@ -231,7 +298,55 @@ async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
   fs.chmodSync(copy, 0o600);
   return copy;
 }
-async function launchViewer(viewer) {
+function embeddedArguments(viewer, width, sourcePath) {
+  return [...(viewer.args || []).map((argument) => argument.replaceAll("{width}", String(width))), sourcePath];
+}
+async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
+  const generation = ++loadGeneration;
+  const mode = `viewer-${key}`;
+  const previousRows = visualRows();
+  const previousMaximum = Math.max(1, previousRows.length - 1);
+  const previousRatio = scrollOffset / previousMaximum;
+  activeMode = mode;
+  activeEmbeddedAction = { viewer, key };
+  if (!wrapByMode.has(mode)) wrapByMode.set(mode, true);
+  loading = true;
+  statusMessage = `Rendering ${safe(viewer.label || path.basename(viewer.client))}…`;
+  render();
+  try {
+    const sourcePath = await sourceForLaunch(false, true);
+    const executable = launchExecutable(viewer);
+    const result = await runCommand(executable, embeddedArguments(viewer, bodyWidth(), sourcePath), {
+      cwd: repoRoot,
+      timeoutMs: 15_000,
+      maxOutputBytes: Math.min(16 * 1024 * 1024, Math.max(1024 * 1024, config.limits.maxFileBytes * 2)),
+    });
+    if (generation !== loadGeneration) return;
+    assertPreviewLineLimit(result.stdout);
+    const lines = result.stdout.replace(/\n$/, "").split("\n").map((line) => sanitizeRendererAnsi(line));
+    while (lines.length && !stripAnsi(lines[0]).trim()) lines.shift();
+    while (lines.length && !stripAnsi(lines.at(-1)).trim()) lines.pop();
+    setContent(lines.length ? lines : [`${C.dim}Renderer returned no content.${C.reset}`], 0);
+    cachedMatchesQuery = null;
+    cachedMatches = [];
+    horizontalOffset = 0;
+    scrollOffset = resized ? Math.round(previousRatio * Math.max(0, visualRows().length - 1)) : 0;
+    statusMessage = `${safe(viewer.label || path.basename(viewer.client))} · ${descriptorLabel()} · ${revisionLabel || "exact revision"}`;
+  } catch (error) {
+    if (generation !== loadGeneration) return;
+    setContent([
+      `${C.red}${safe(error.message)}${C.reset}`,
+      "",
+      `${C.dim}Press 2 for wrapped Raw or update the viewer configuration.${C.reset}`,
+    ], 0);
+    scrollOffset = 0;
+    horizontalOffset = 0;
+    statusMessage = error.kind === "oversized" ? "Rendered output exceeded the safety limit" : "Markdown rendering failed";
+  } finally {
+    if (generation === loadGeneration) { loading = false; render(); }
+  }
+}
+async function launchViewer(viewer, key) {
   if (!viewer) { statusMessage = "No viewer is configured for this file"; render(); return; }
   if (!executableAvailable(viewer)) {
     const client = path.basename(viewer.client);
@@ -241,6 +356,7 @@ async function launchViewer(viewer) {
     render();
     return;
   }
+  if (clientMode(viewer) === "embedded") return loadEmbeddedViewer(viewer, key);
   const label = viewer.label || `View with ${path.basename(viewer.client)}`;
   try { launch(viewer, await sourceForLaunch(false, true), label); }
   catch (error) { statusMessage = `Viewer source unavailable: ${safe(error.message)}`; }
@@ -272,7 +388,7 @@ function renderTabs(width) {
     ...viewerActions.map(({ key, viewer }) => [
       `viewer-${key}`,
       `${key} ${safe(viewer.label || `View with ${path.basename(viewer.client)}`)}`,
-      () => void launchViewer(viewer),
+      () => void launchViewer(viewer, key),
     ]),
   ];
   const editorMode = clientMode(config.editor);
@@ -300,10 +416,13 @@ function renderTabs(width) {
   return lines;
 }
 function render() {
-  const width = Math.max(24, forcedWidth || process.stdout.columns || 90);
-  const height = Math.max(14, forcedHeight || process.stdout.rows || 36);
-  horizontalOffset = Math.max(0, Math.min(horizontalOffset, Math.max(0, maximumContentWidth - width)));
-  const horizontal = maximumContentWidth > width ? `↔ col ${horizontalOffset + 1} · ` : "";
+  const width = terminalWidth();
+  const height = terminalHeight();
+  const viewportWidth = bodyWidth();
+  const rows = visualRows();
+  if (wrapping()) horizontalOffset = 0;
+  horizontalOffset = Math.max(0, Math.min(horizontalOffset, Math.max(0, maximumContentWidth - viewportWidth)));
+  const horizontal = !wrapping() && maximumContentWidth > viewportWidth ? `↔ col ${horizontalOffset + 1} · ` : "";
   const search = searchActive ? `⌕ ${safe(searchQuery)}▏  ${matchLabel()}` : `${horizontal}${loading ? `${descriptorLabel()} · loading` : activeMode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel || "ready"}`}`;
   const header = [
     `${C.gold}${C.bold}◆ HERDR GITRAIL PREVIEW${C.reset}  ${C.dim}read-only${C.reset}`,
@@ -312,22 +431,29 @@ function render() {
     ...renderTabs(width),
     `${C.faint}${"─".repeat(width)}${C.reset}`,
   ];
-  const horizontalHelp = maximumContentWidth > width ? " · ←/→ horizontal" : "";
+  const horizontalHelp = !wrapping() && maximumContentWidth > viewportWidth ? " · ←/→ horizontal" : "";
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
-    `${C.dim}${fit(`1/2 view${horizontalHelp}${viewerActions.length ? ` · ${viewerActions.map(({ key }) => key).join("/")} actions` : ""} · / search · n/N match${clientMode(config.editor) === "disabled" ? "" : " · e open"} · j/k · q close`, width)}${C.reset}`,
+    `${C.dim}${fit(`w wrap:${wrapping() ? "on" : "off"} · j/k scroll · PgUp/PgDn${horizontalHelp} · / search · q close`, width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
-  scrollOffset = Math.max(0, Math.min(scrollOffset, Math.max(0, content.length - bodyHeight)));
-  const fixedColumns = Math.min(contentGutterColumns, Math.max(0, width - 4));
-  const body = content.slice(scrollOffset, scrollOffset + bodyHeight).map((line) => {
-    if (!fixedColumns || !horizontalOffset) return sliceAnsiTerminalColumns(line, horizontalOffset, width);
-    const gutter = sliceAnsiTerminalColumns(line, 0, fixedColumns);
-    const text = sliceAnsiTerminalColumns(line, fixedColumns + horizontalOffset, width - fixedColumns);
+  visibleBodyRows = bodyHeight;
+  const maximumScrollOffset = Math.max(0, rows.length - bodyHeight);
+  scrollOffset = Math.max(0, Math.min(scrollOffset, maximumScrollOffset));
+  const fixedColumns = Math.min(contentGutterColumns, Math.max(0, viewportWidth - 4));
+  const body = rows.slice(scrollOffset, scrollOffset + bodyHeight).map((row) => {
+    if (wrapping()) return row.text;
+    if (!fixedColumns || !horizontalOffset) return sliceAnsiTerminalColumns(row.text, horizontalOffset, viewportWidth);
+    const gutter = sliceAnsiTerminalColumns(row.text, 0, fixedColumns);
+    const text = sliceAnsiTerminalColumns(row.text, fixedColumns + horizontalOffset, viewportWidth - fixedColumns);
     return `${gutter}${text}`;
   });
   while (body.length < bodyHeight) body.push("");
+  if (maximumScrollOffset > 0) {
+    const thumbOffset = Math.round((scrollOffset / maximumScrollOffset) * Math.max(0, bodyHeight - 1));
+    body[thumbOffset] = `${padAnsiTerminalColumns(body[thumbOffset], viewportWidth)}${C.gold}▐${C.reset}`;
+  }
   const frame = [...header, ...body, ...footer]
     .map((line) => `${ESC}2K${fit(line, width)}`)
     .join("\r\n");
@@ -341,6 +467,8 @@ function scheduleRender() {
   }, 16);
 }
 function cleanup() {
+  clearTimeout(renderTimer);
+  clearTimeout(embeddedResizeTimer);
   if (temporaryDirectory) { try { fs.rmSync(temporaryDirectory, { recursive: true, force: true }); } catch {} temporaryDirectory = ""; }
   process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
@@ -374,18 +502,29 @@ function handleInput(key) {
     if (key === "1") void loadMode("diff");
     if (key === "2") void loadMode("raw");
     const viewerAction = viewerActions.find((action) => action.key === key);
-    if (viewerAction) void launchViewer(viewerAction.viewer);
+    if (viewerAction) void launchViewer(viewerAction.viewer, viewerAction.key);
     if (key === "\t") void loadMode(activeMode === "diff" ? "raw" : "diff");
     if (key === "e") void launchEditor();
     if (key === "/") searchActive = true;
     if (key === "n") moveMatch(1);
     if (key === "N") moveMatch(-1);
-    scrollOffset += (key.match(/j|\u001b\[B/g)?.length || 0);
-    scrollOffset -= (key.match(/k|\u001b\[A/g)?.length || 0);
+    if (key === "j" || key === "\u001b[B") scrollOffset += 1;
+    if (key === "k" || key === "\u001b[A") scrollOffset -= 1;
+    const pageRows = visibleBodyRows;
+    if (key === "\u001b[6~") scrollOffset += pageRows;
+    if (key === "\u001b[5~") scrollOffset -= pageRows;
+    if (key === "\u0004") scrollOffset += Math.max(1, Math.floor(pageRows / 2));
+    if (key === "\u0015") scrollOffset -= Math.max(1, Math.floor(pageRows / 2));
     if (key === "g") scrollOffset = 0;
-    if (key === "G") scrollOffset = content.length;
-    if (key === "\u001b[D") horizontalOffset = Math.max(0, horizontalOffset - 8);
-    if (key === "\u001b[C") horizontalOffset += 8;
+    if (key === "G") scrollOffset = visualRows().length;
+    if (key === "w") {
+      invalidateLayout({ preserveAnchor: true });
+      wrapByMode.set(activeMode, !wrapping());
+      if (wrapping()) horizontalOffset = 0;
+      statusMessage = wrapping() ? "Word wrap enabled" : "Word wrap disabled";
+    }
+    if (!wrapping() && key === "\u001b[D") horizontalOffset = Math.max(0, horizontalOffset - 8);
+    if (!wrapping() && key === "\u001b[C") horizontalOffset += 8;
   }
   scheduleRender();
 }
@@ -394,8 +533,18 @@ process.stdin.on("data", (key) => inputDecoder.push(key));
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
 process.on("exit", cleanup);
-process.stdout.on("resize", scheduleRender);
+process.stdout.on("resize", () => {
+  invalidateLayout({ preserveAnchor: true });
+  scheduleRender();
+  if (!activeEmbeddedAction) return;
+  clearTimeout(embeddedResizeTimer);
+  embeddedResizeTimer = setTimeout(() => void loadEmbeddedViewer(
+    activeEmbeddedAction.viewer,
+    activeEmbeddedAction.key,
+    { resized: true },
+  ), 150);
+});
 render();
 void loadMode(activeMode).then(() => {
-  for (const { viewer } of viewerActions) if (viewer.autoOpen) void launchViewer(viewer);
+  for (const { key, viewer } of viewerActions) if (viewer.autoOpen) void launchViewer(viewer, key);
 });

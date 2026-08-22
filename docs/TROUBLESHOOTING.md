@@ -50,9 +50,11 @@ filename matches enabled rules and use their configured `key` bindings.
 Patterns beginning with `.` match filename suffixes; other patterns match an
 exact basename.
 The `*` rule matches every filename. No viewer auto-opens unless its rule sets
-`autoOpen: true`; the installed Markdown rules enable it for Glow by default.
+`autoOpen: true`; the installed Markdown rules enable embedded Glow rendering
+by default. Embedded viewers return bounded, sanitized terminal output to
+GitRail, which retains control of wrapping, scrolling, searching, and resizing.
 If Glow is missing, GitRail does not attempt to spawn it repeatedly: the preview
-stays usable in Diff or Raw and reports how to disable auto-open.
+stays usable in Diff or wrapped Raw and reports how to disable auto-open.
 
 ## Binary or oversized preview
 
@@ -62,6 +64,9 @@ binary formats. The safety limit is intentional. Increase `limits.maxFileBytes` 
 `limits.maxDiffBytes` only for a trusted repository, up to 64 MiB.
 The terminal preview also rejects content above 100,000 lines before splitting
 or parsing it to prevent small, highly fragmented files from amplifying memory.
+Word wrap turns itself off when a line exceeds 100,000 terminal columns or the
+result would exceed 100,000 visual rows; horizontal navigation remains
+available for that content.
 Use a configured external Open/viewer action for those files.
 
 ## State appears stale

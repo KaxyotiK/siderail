@@ -33,10 +33,11 @@ action remains available. `herdr.sidebarWidth` controls the initial rail width
 in terminal columns and defaults to 34.
 
 Install [Glow](https://github.com/charmbracelet/glow) to use the installed
-Markdown default. GitRail automatically launches Glow for `.md`, `.mdx`, and
-`.markdown` previews. Diff and Raw do not require Glow, and the viewer rule can
-be disabled or replaced in configuration. When Glow is not on `PATH`, GitRail
-skips automatic launch and keeps the preview open with an installation hint.
+Markdown default. GitRail captures Glow's formatted output for `.md`, `.mdx`,
+and `.markdown` files and displays it inside the same scrollable preview; Glow's
+own TUI is not nested inside the pane. Diff and wrapped Raw do not require Glow,
+and the viewer rule can be disabled or replaced in configuration. When Glow is
+not on `PATH`, GitRail keeps wrapped Raw open with an installation hint.
 
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the
 checkout, run `npm run check`, relink with `herdr plugin link .`, and reopen it.

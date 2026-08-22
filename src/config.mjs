@@ -3,16 +3,16 @@ import os from "node:os";
 import path from "node:path";
 
 export const CONFIG_VERSION = 1;
-const RESERVED_VIEWER_KEYS = new Set(["1", "2", "e", "q", "j", "k", "g", "G", "n", "N"]);
+const RESERVED_VIEWER_KEYS = new Set(["1", "2", "e", "q", "j", "k", "g", "G", "n", "N", "w"]);
 const LEGACY_VIEWER_KEYS = ["3", "4", "5", "6", "7", "8", "9", "0"];
 export const DEFAULT_CONFIG = deepFreeze({
   version: CONFIG_VERSION,
   herdr: { autoOpen: true, sidebarWidth: 34 },
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
-    ".mdx": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
-    ".markdown": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+    ".md": { label: "Rendered", client: "glow", args: ["--style", "dark", "--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    ".mdx": { label: "Rendered", client: "glow", args: ["--style", "dark", "--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    ".markdown": { label: "Rendered", client: "glow", args: ["--style", "dark", "--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
     "*": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
@@ -51,6 +51,29 @@ function merge(base, override) {
   return result;
 }
 
+function migrateLegacyGlowDefaults(config) {
+  for (const [pattern, configured] of Object.entries(config.viewers || {})) {
+    const viewers = Array.isArray(configured) ? configured : [configured];
+    const migrated = viewers.map((viewer) => {
+      const formerDefault = [".md", ".mdx", ".markdown"].includes(pattern.toLowerCase())
+        && path.basename(viewer.client || "").toLowerCase() === "glow"
+        && viewer.label === "View Markdown"
+        && viewer.mode === "terminal"
+        && JSON.stringify(viewer.args || []) === JSON.stringify(["--tui", "--style", "dark"])
+        && viewer.key === "3"
+        && viewer.autoOpen === true;
+      return formerDefault ? {
+        ...viewer,
+        label: "Rendered",
+        args: ["--style", "dark", "--width", "{width}"],
+        mode: "embedded",
+      } : viewer;
+    });
+    config.viewers[pattern] = Array.isArray(configured) ? migrated : migrated[0];
+  }
+  return config;
+}
+
 function validateKeys(value, label, allowed, errors) {
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) errors.push(`unknown ${label} key: ${key}`);
@@ -64,8 +87,9 @@ function validateLaunch(value, label, errors, { viewer = false } = {}) {
   if (value.args !== undefined && (!Array.isArray(value.args) || value.args.some((arg) => typeof arg !== "string"))) {
     errors.push(`${label}.args must be an array of strings`);
   }
-  if (value.mode !== undefined && !["auto", "terminal", "external"].includes(value.mode)) {
-    errors.push(`${label}.mode must be auto, terminal, or external`);
+  const launchModes = viewer ? ["auto", "terminal", "external", "embedded"] : ["auto", "terminal", "external"];
+  if (value.mode !== undefined && !launchModes.includes(value.mode)) {
+    errors.push(`${label}.mode must be ${launchModes.slice(0, -1).join(", ")}, or ${launchModes.at(-1)}`);
   }
   if (viewer && value.label !== undefined && (typeof value.label !== "string" || !value.label.trim())) {
     errors.push(`${label}.label must be a non-empty string`);
@@ -154,7 +178,7 @@ export function loadConfig(repoRoot, env = process.env) {
   const repoPath = repoRoot ? path.join(repoRoot, ".git-rail.json") : "";
   const user = readConfig(userPath);
   const project = repoPath ? readConfig(repoPath) : { value: {}, errors: [] };
-  let config = merge(merge(DEFAULT_CONFIG, user.value), project.value);
+  let config = migrateLegacyGlowDefaults(merge(merge(DEFAULT_CONFIG, user.value), project.value));
   const errors = [...user.errors, ...project.errors];
 
   const editorVariable = env.GIT_RAIL_CLIENT !== undefined

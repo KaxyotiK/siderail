@@ -22,6 +22,21 @@ export function sanitizeTerminalText(value, replacement = "�") {
     .replace(BIDI_CONTROL, replacement);
 }
 
+export function sanitizeRendererAnsi(value, replacement = "�") {
+  const text = String(value ?? "")
+    .replace(OSC, replacement)
+    .replace(STRING_CONTROL, replacement);
+  let result = "";
+  let offset = 0;
+  CSI.lastIndex = 0;
+  for (const match of text.matchAll(CSI)) {
+    result += sanitizeTerminalText(text.slice(offset, match.index), replacement);
+    result += /^(?:\u001b\[|\u009b)[0-9;:]*m$/.test(match[0]) ? match[0] : replacement;
+    offset = match.index + match[0].length;
+  }
+  return result + sanitizeTerminalText(text.slice(offset), replacement);
+}
+
 export function stripTerminalAnsi(value) {
   return String(value ?? "").replace(CSI, "");
 }
@@ -133,6 +148,102 @@ export function sliceAnsiTerminalColumns(value, startColumn, maxColumns) {
   }
   if (!stopped && resultWidth < maxColumns) appendPlain(text.slice(offset));
   return `${result}${text.includes("\u001b[") ? "\u001b[0m" : ""}`;
+}
+
+export function wrapAnsiTerminalLines(lines, maxColumns, gutterColumns = 0, continuationGutter = "") {
+  const width = Math.max(1, maxColumns);
+  const gutter = Math.min(Math.max(0, gutterColumns), Math.max(0, width - 1));
+  const textWidth = Math.max(1, width - gutter);
+  const fittedContinuation = fitAnsiTerminalColumns(continuationGutter, gutter);
+  const continuation = gutter ? `${fittedContinuation}${" ".repeat(Math.max(0, gutter - terminalColumns(fittedContinuation)))}` : "";
+  const rows = [];
+  for (const [sourceRow, line] of lines.entries()) {
+    const lineWidth = terminalColumns(line);
+    const pieces = [];
+    let pendingAnsi = "";
+    let activeStyle = "";
+    let column = 0;
+    let offset = 0;
+    const updateStyle = (style, sequence) => {
+      if (!/^(?:\u001b\[|\u009b)[0-9;:]*m$/.test(sequence)) return style;
+      const parameters = sequence.replace(/^(?:\u001b\[|\u009b)|m$/g, "").split(/[;:]/);
+      const resets = parameters.includes("") || parameters.includes("0");
+      if (!resets) {
+        const combined = `${style}${sequence}`;
+        return combined.length <= 2048 ? combined : sequence.length <= 2048 ? sequence : "";
+      }
+      return parameters.every((parameter) => !parameter || parameter === "0") ? "" : sequence;
+    };
+    const appendPlain = (plain) => {
+      for (const { segment } of GRAPHEMES.segment(plain)) {
+        const segmentWidth = graphemeWidth(segment);
+        const nextColumn = column + segmentWidth;
+        if (nextColumn <= gutter) {
+          column = nextColumn;
+          continue;
+        }
+        if (column < gutter) {
+          column = nextColumn;
+          continue;
+        }
+        pieces.push({ text: `${pendingAnsi}${segment}`, width: segmentWidth, wordBreak: /^\s+$/u.test(segment) });
+        pendingAnsi = "";
+        column = nextColumn;
+      }
+    };
+    CSI.lastIndex = 0;
+    for (const match of line.matchAll(CSI)) {
+      appendPlain(line.slice(offset, match.index));
+      if (column < gutter) activeStyle = updateStyle(activeStyle, match[0]);
+      else pendingAnsi += match[0];
+      offset = match.index + match[0].length;
+    }
+    appendPlain(line.slice(offset));
+    let pieceIndex = 0;
+    let startColumn = Math.min(gutter, lineWidth);
+    let index = 0;
+    do {
+      let endIndex = pieceIndex;
+      let usedColumns = 0;
+      let wordEndIndex = pieceIndex;
+      let wordEndColumns = 0;
+      while (endIndex < pieces.length && usedColumns + pieces[endIndex].width <= textWidth) {
+        usedColumns += pieces[endIndex].width;
+        endIndex += 1;
+        if (pieces[endIndex - 1].wordBreak) {
+          wordEndIndex = endIndex;
+          wordEndColumns = usedColumns;
+        }
+      }
+      if (endIndex < pieces.length && wordEndColumns >= Math.ceil(textWidth / 3)) {
+        endIndex = wordEndIndex;
+        usedColumns = wordEndColumns;
+      }
+      if (endIndex === pieceIndex && pieceIndex < pieces.length) {
+        usedColumns = pieces[pieceIndex].width;
+        endIndex += 1;
+      }
+      const prefix = index === 0 ? sliceAnsiTerminalColumns(line, 0, gutter) : continuation;
+      let text = `${prefix}${activeStyle}`;
+      for (let current = pieceIndex; current < endIndex; current += 1) {
+        text += pieces[current].text;
+        CSI.lastIndex = 0;
+        for (const match of pieces[current].text.matchAll(CSI)) activeStyle = updateStyle(activeStyle, match[0]);
+      }
+      if (endIndex === pieces.length) text += pendingAnsi;
+      if (line.includes("\u001b[") || line.includes("\u009b")) text += "\u001b[0m";
+      rows.push({
+        text,
+        sourceRow,
+        startColumn,
+        endColumn: startColumn + usedColumns,
+      });
+      startColumn += usedColumns;
+      pieceIndex = endIndex;
+      index += 1;
+    } while (pieceIndex < pieces.length);
+  }
+  return rows;
 }
 
 export function padAnsiTerminalColumns(value, columns) {
