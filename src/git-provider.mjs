@@ -2,15 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "./config.mjs";
 import {
-  mergeStats,
-  mergeMetadata,
   parseCommitLogZ,
   parseCommitPathsRawLogZ,
   parseLsFilesStageZ,
-  parseNameStatusZ,
-  parseNumstatZ,
   parsePorcelainV2Z,
-  parseRawDiffZ,
+  parseRawNumstatZ,
   statusName,
 } from "./git-parsers.mjs";
 import { buildPathIndex } from "./model.mjs";
@@ -24,6 +20,15 @@ const HISTORY_LIMIT = 200;
 const DIRECTORY_FILE_LIMIT = 2_000;
 const DIRECTORY_DEPTH_LIMIT = 16;
 const DIRECTORY_SCAN_TIME_MS = 250;
+const CHANGE_SUMMARY_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
+
+// Raw metadata and numstat can share one tree walk. Exact-only copy matching
+// retains copy identity without similarity-scoring every unchanged tracked
+// file, which is prohibitively expensive in large repositories.
+const CHANGE_SUMMARY_ARGS = [
+  "--raw", "--numstat", "-z", "--abbrev=40",
+  "--find-renames", "--find-copies=100%", "--find-copies-harder",
+];
 
 async function gitText(cwd, args, options = {}) {
   return (await runGit(cwd, args, options)).stdout;
@@ -130,12 +135,11 @@ function withDescriptor(files, descriptor) {
 }
 
 async function changedFiles(repoRoot, diffArgs, descriptor) {
-  const [names, numstat, raw] = await Promise.all([
-    gitText(repoRoot, ["diff", ...diffArgs, "--name-status", "-z", "--find-renames", "--find-copies-harder"]),
-    gitText(repoRoot, ["diff", ...diffArgs, "--numstat", "-z", "--find-renames", "--find-copies-harder"]),
-    gitText(repoRoot, ["diff", ...diffArgs, "--raw", "-z", "--abbrev=40", "--find-renames", "--find-copies-harder"]),
-  ]);
-  return withDescriptor(mergeMetadata(mergeStats(parseNameStatusZ(names), parseNumstatZ(numstat)), parseRawDiffZ(raw)), descriptor);
+  const output = await gitText(repoRoot, ["diff", ...diffArgs, ...CHANGE_SUMMARY_ARGS], {
+    // Raw and numstat previously had independent 16 MiB subprocess budgets.
+    maxOutputBytes: CHANGE_SUMMARY_MAX_OUTPUT_BYTES,
+  });
+  return withDescriptor(parseRawNumstatZ(output), descriptor);
 }
 
 async function workspaceState(repoRoot, baseRef) {
@@ -337,13 +341,12 @@ export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 *
   const parentLine = (await gitText(repoRoot, ["rev-list", "--parents", "-n", "1", commitHash], { maxOutputBytes })).trim();
   const parentHash = parentLine.split(/\s+/)[1] || "";
   const comparison = parentHash ? ["diff", parentHash, commitHash] : ["show", "--root", "--format=", commitHash];
-  const [names, stats, raw] = await Promise.all([
-    gitText(repoRoot, [...comparison, "--name-status", "-z", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
-    gitText(repoRoot, [...comparison, "--numstat", "-z", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
-    gitText(repoRoot, [...comparison, "--raw", "-z", "--abbrev=40", "--find-renames", "--find-copies-harder"], { maxOutputBytes }),
-  ]);
+  const output = await gitText(repoRoot, [...comparison, ...CHANGE_SUMMARY_ARGS], {
+    // Preserve the old per-format allowance now that both formats share stdout.
+    maxOutputBytes: maxOutputBytes * 2,
+  });
   return withDescriptor(
-    mergeMetadata(mergeStats(parseNameStatusZ(names), parseNumstatZ(stats)), parseRawDiffZ(raw)),
+    parseRawNumstatZ(output),
     { kind: "commit", commitHash, parentHash, comparison: "first-parent" },
   );
 }

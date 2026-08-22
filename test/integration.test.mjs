@@ -8,6 +8,27 @@ import { getCommitFiles, getRepositoryState, scanDirectory } from "../src/git-pr
 import { diffArguments, loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand, runGit } from "../src/process.mjs";
 
+async function traceGitCommands(t, run) {
+  const traceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-command-trace-"));
+  t.after(() => fs.rm(traceRoot, { recursive: true, force: true }));
+  const tracePath = path.join(traceRoot, "trace.jsonl");
+  await fs.writeFile(tracePath, "");
+  const previous = process.env.GIT_TRACE2_EVENT;
+  process.env.GIT_TRACE2_EVENT = tracePath;
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) delete process.env.GIT_TRACE2_EVENT;
+    else process.env.GIT_TRACE2_EVENT = previous;
+  }
+  return (await fs.readFile(tracePath, "utf8"))
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.event === "start" && Array.isArray(entry.argv))
+    .map((entry) => entry.argv.slice(1));
+}
+
 test("fixture state is derived by the production provider", async (t) => {
   const root = await createFixtureRepository();
   t.after(() => removeFixtureRepository(root));
@@ -32,6 +53,37 @@ test("read-only refresh does not rewrite the Git index", async (t) => {
   await getRepositoryState(root);
   const after = await fs.stat(indexPath, { bigint: true });
   assert.equal(after.mtimeNs, before.mtimeNs);
+});
+
+test("refresh and commit details use one exact-copy diff scan per comparison", async (t) => {
+  const root = await createFixtureRepository();
+  t.after(() => removeFixtureRepository(root));
+  let state;
+  const refreshCommands = await traceGitCommands(t, async () => {
+    state = await getRepositoryState(root);
+  });
+  const refreshDiffs = refreshCommands.filter(([command]) => command === "diff");
+  // Base-ref discovery can take a different number of cheap rev-parse calls
+  // depending on repository configuration; the expensive diff count is exact.
+  assert.ok(refreshCommands.length <= 17);
+  assert.equal(refreshDiffs.length, 4);
+  for (const args of refreshDiffs) {
+    assert.ok(args.includes("--raw"));
+    assert.ok(args.includes("--numstat"));
+    assert.ok(args.includes("--find-copies=100%"));
+    assert.equal(args.filter((arg) => arg === "--find-copies-harder").length, 1);
+    assert.equal(args.includes("--name-status"), false);
+  }
+
+  const commitCommands = await traceGitCommands(t, () => getCommitFiles(root, state.commits[0].hash));
+  assert.equal(commitCommands.length, 2);
+  const detail = commitCommands.find(([command]) => command === "diff" || command === "show");
+  assert.ok(detail);
+  assert.ok(detail.includes("--raw"));
+  assert.ok(detail.includes("--numstat"));
+  assert.ok(detail.includes("--find-copies=100%"));
+  assert.equal(detail.filter((arg) => arg === "--find-copies-harder").length, 1);
+  assert.equal(detail.includes("--name-status"), false);
 });
 
 test("non-repository directories provide a bounded filesystem Files state", async (t) => {

@@ -7,6 +7,7 @@ import {
   parseNumstatZ,
   parsePorcelainV2Z,
   parseRawDiffZ,
+  parseRawNumstatZ,
 } from "../src/git-parsers.mjs";
 
 test("commit machine formats preserve control characters and unambiguous paths", () => {
@@ -79,4 +80,54 @@ test("name-status and numstat parse rename pairs without human-format reconstruc
   const stats = parseNumstatZ("2\t1\t\0old name.txt\0new\tname.txt\0-\t-\tbinary.dat\0");
   assert.deepEqual(stats.get("new\tname.txt"), { additions: 2, deletions: 1, binary: false, oldPath: "old name.txt" });
   assert.deepEqual(stats.get("binary.dat"), { additions: 0, deletions: 0, binary: true });
+});
+
+test("combined raw and numstat output preserves metadata, stats, and unusual paths", () => {
+  const output = [
+    ":100644 100644 aaaaaaa bbbbbbb R093", "old name.txt", "new\tname.txt",
+    ":100644 100755 ccccccc ddddddd M", "2\tpath\twith tabs.txt",
+    "2\t1\t", "old name.txt", "new\tname.txt",
+    "4\t3\t2\tpath\twith tabs.txt",
+    "",
+  ].join("\0");
+  assert.deepEqual(parseRawNumstatZ(output), [
+    {
+      path: "new\tname.txt",
+      oldPath: "old name.txt",
+      status: "renamed",
+      score: "093",
+      mode: "100644",
+      oldMode: "100644",
+      newMode: "100644",
+      oldObjectId: "aaaaaaa",
+      newObjectId: "bbbbbbb",
+      executableChange: false,
+      executable: false,
+      oldSymlink: false,
+      symlink: false,
+      oldSubmodule: false,
+      submodule: false,
+      additions: 2,
+      deletions: 1,
+      binary: false,
+    },
+    {
+      path: "2\tpath\twith tabs.txt",
+      status: "modified",
+      mode: "100755",
+      oldMode: "100644",
+      newMode: "100755",
+      oldObjectId: "ccccccc",
+      newObjectId: "ddddddd",
+      executableChange: true,
+      executable: true,
+      oldSymlink: false,
+      symlink: false,
+      oldSubmodule: false,
+      submodule: false,
+      additions: 4,
+      deletions: 3,
+      binary: false,
+    },
+  ]);
 });

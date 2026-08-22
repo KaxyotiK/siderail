@@ -159,10 +159,18 @@ export function parseLsFilesStageZ(output) {
 
 export function parseRawDiffZ(output) {
   const tokens = splitNul(output);
+  return parseRawDiffTokens(tokens).metadata;
+}
+
+function parseRawDiffTokens(tokens) {
   const metadata = new Map();
-  for (let index = 0; index < tokens.length;) {
+  let index = 0;
+  while (index < tokens.length) {
     const header = tokens[index++];
-    if (!header?.startsWith(":")) continue;
+    if (!header?.startsWith(":")) {
+      index -= 1;
+      break;
+    }
     const [oldMode, newMode, oldObjectId, newObjectId, statusToken] = header.slice(1).split(" ");
     const status = statusToken?.[0] || "M";
     let oldPath;
@@ -173,6 +181,9 @@ export function parseRawDiffZ(output) {
     } else filePath = tokens[index++] || "";
     if (!filePath) continue;
     metadata.set(filePath, {
+      path: filePath,
+      status: statusName(status),
+      ...(statusToken?.slice(1) ? { score: statusToken.slice(1) } : {}),
       mode: newMode,
       oldMode,
       newMode,
@@ -187,7 +198,17 @@ export function parseRawDiffZ(output) {
       ...(oldPath ? { oldPath } : {}),
     });
   }
-  return metadata;
+  return { metadata, nextIndex: index };
+}
+
+export function parseRawNumstatZ(output) {
+  const tokens = splitNul(output);
+  const { metadata, nextIndex } = parseRawDiffTokens(tokens);
+  // With `--raw --numstat -z`, Git writes the complete raw section first and
+  // the numstat section second. Consume the structured raw records to find the
+  // boundary instead of guessing from path text, which may itself contain tabs.
+  const stats = parseNumstatZ(tokens.slice(nextIndex).join("\0"));
+  return mergeStats([...metadata.values()], stats);
 }
 
 export function mergeStats(files, stats) {

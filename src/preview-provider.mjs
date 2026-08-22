@@ -45,7 +45,9 @@ function pathspecs(filePath, metadata = {}) {
 }
 
 export function diffArguments(descriptor, filePath, metadata = {}) {
-  const common = ["--no-ext-diff", "--color=always", "--find-renames", "--find-copies-harder"];
+  // Status discovery records exact copies only; use the same threshold here so
+  // preview generation cannot reintroduce an expensive similarity scan.
+  const common = ["--no-ext-diff", "--color=always", "--find-renames", "--find-copies=100%", "--find-copies-harder"];
   const paths = pathspecs(filePath, metadata);
   if (descriptor.kind === "workspace") return ["diff", ...common, descriptor.mergeBase || descriptor.baseRef, "--", ...paths];
   if (descriptor.kind === "against") return descriptor.mergeBase

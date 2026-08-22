@@ -46,8 +46,9 @@ it is not a future implementation plan.
 ## Git correctness
 
 GitRail uses machine-readable, NUL-delimited Git output for paths and status. It
-retains rename/copy source paths, revision-specific modes, object IDs, binary
-state, and independent descriptors for overlapping staged and unstaged changes.
+retains rename and exact-copy source paths, revision-specific modes, object IDs,
+binary state, and independent descriptors for overlapping staged and unstaged
+changes.
 
 | Scope | Diff meaning |
 | --- | --- |
