@@ -36,12 +36,17 @@ it is not a future implementation plan.
   only when the selected filename matches an enabled viewer rule. Matching
   actions are additive and explicitly key-bound, each pattern accepts one or
   more actions, and `*` provides global actions. Installed defaults bind
-  Markdown to `3`, auto-open it in Glow, and bind OS-default Open to `o` for
-  every file. Viewer executables are checked before launch; a missing Glow
-  installation leaves Diff and Raw usable and produces an actionable hint.
-- Preview search, keyboard navigation, and scrolling repaint in place without
-  clearing the terminal. Long Diff and Raw rows support horizontal arrow-key
-  navigation while retaining their line-number gutter.
+  Markdown to `3`, render bounded and sanitized Glow output inside GitRail, and
+  bind OS-default Open to `o` for every file. Viewer executables are checked
+  before launch; a missing Glow installation leaves Diff and wrapped Raw usable
+  and produces an actionable hint.
+- Preview search, keyboard navigation, paging, and mouse scrolling repaint in
+  place without clearing the terminal. Raw wraps by default with continuation
+  gutters; Diff preserves lines by default. `w` toggles wrapping, and unwrapped
+  long rows support horizontal arrow-key navigation while retaining their
+  line-number gutter. A right-edge marker shows the viewport position.
+  Pathological long lines automatically remain unwrapped instead of amplifying
+  into more than 100,000 visual rows.
 
 ## Git correctness
 
@@ -69,7 +74,8 @@ Both user and repository configuration files must declare `version: 1`. The
 runtime and published schema reject unknown top-level and nested keys, invalid
 object shapes, unsupported launch modes, and out-of-range limits. Editor rules
 accept `client`, `args`, and `mode`; viewer rules additionally accept `label`,
-`key`, and `autoOpen` and resolve by exact filename, suffix, or wildcard.
+`key`, and `autoOpen`, support bounded `embedded` output, and resolve by exact
+filename, suffix, or wildcard.
 Dot-prefixed patterns are suffix rules; all other non-wildcard patterns are
 exact basenames.
 Invalid files are reported and excluded from the merge. No editor executable is

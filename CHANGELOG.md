@@ -25,8 +25,13 @@ intentional configuration changes documented here.
   selected filename matches a configured rule; Markdown defaults to Glow.
 - Compose multiple matching global and file-specific viewer actions with
   configurable key bindings.
-- Ship `o Open` globally and auto-open Markdown through the `3` Glow action.
-- Skip unavailable viewer auto-launches and retain Diff/Raw with an install hint.
+- Ship `o Open` globally and render Markdown through the `3` Glow action inside
+  GitRail's viewport instead of launching a nested TUI.
+- Add word-wrapped Raw content, a wrap toggle, visual-row and page navigation,
+  and a right-edge preview position marker while retaining horizontal Diff
+  navigation. Migrate the exact former Glow default in memory.
+- Skip unavailable viewer rendering and retain Diff/wrapped Raw with an install
+  hint.
 - Harden exact revision handling for diverged bases, unusual index paths,
   staged copies, dangling symlinks, invalid base refs, and binary viewers.
 - Add explicit clean state, keyboard-reachable commit history, ordered terminal

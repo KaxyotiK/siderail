@@ -237,6 +237,8 @@ test("preview processes coalesced search input, advances matches, and exposes ho
   await new Promise((resolve) => setTimeout(resolve, 100));
   child.stdin.write("/\u0015executableAvailable\r");
   await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("w");
+  await new Promise((resolve) => setTimeout(resolve, 100));
   child.stdin.write("\u001b[C");
   await new Promise((resolve) => setTimeout(resolve, 100));
   child.stdin.write("q");
@@ -247,10 +249,71 @@ test("preview processes coalesced search input, advances matches, and exposes ho
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /Match 1 of \d+/);
   assert.match(plain, /Match 2 of \d+/);
-  assert.match(plain, /executableAvailab/);
+  assert.match(plain, /executableAvaila/);
   assert.match(plain, /↔ col (?:[2-9]|[1-9]\d+)/);
+  assert.match(plain, /w wrap:off/);
   assert.match(plain, /8 Open/);
   assert.match(plain, /9 VS Code/);
+});
+
+test("embedded Markdown rendering stays inside the pageable preview viewport", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-rendered-markdown-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const renderer = path.join(root, "test-renderer");
+  await fs.writeFile(renderer, `#!/bin/sh
+case "$*" in *'{width}'*) exit 9 ;; esac
+printf '\\033[1mRendered heading\\033[0m\\n'
+i=1
+while [ "$i" -le 40 ]; do
+  printf 'rendered row %s\\n' "$i"
+  i=$((i + 1))
+done
+`);
+  await fs.chmod(renderer, 0o700);
+  await fs.writeFile(path.join(root, "README.md"), "# Source heading\n\nA source paragraph that should remain available in Raw.\n");
+  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+    version: 1,
+    viewers: {
+      ".md": { label: "Rendered", client: renderer, args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    },
+  }));
+  const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
+  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "28", "--height", "18"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_RAIL_PREVIEW_PATH: "README.md",
+      GIT_RAIL_PREVIEW_REPO: root,
+      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
+      GIT_RAIL_PREVIEW_METADATA: metadata,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const deadline = Date.now() + 5_000;
+  while (!stdout.includes("Rendered heading") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.match(stdout, /3 Rendered/);
+  assert.match(stdout, /Rendered heading/);
+  assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
+  stdout = "";
+  child.stdin.write("\u001b[6~");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  child.stdin.write("q");
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  assert.equal(exitCode, 0, stderr);
+  const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(plain, /rendered row (?:[7-9]|1\d)/);
+  assert.doesNotMatch(plain, /Rendered heading/);
 });
 
 test("preview keeps repaint latency bounded for a large allowed line count", async (t) => {
@@ -300,6 +363,43 @@ test("preview keeps repaint latency bounded for a large allowed line count", asy
   assert.equal(exitCode, 0, stderr);
   assert.match(stdout, /worktree/);
   assert.doesNotMatch(stderr, /RangeError|Maximum call stack/);
+});
+
+test("preview avoids wrapped-row amplification for a pathological single line", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-long-line-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, "long.txt"), "x".repeat(150_000));
+  const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
+  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "24", "--height", "20"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_RAIL_PREVIEW_PATH: "long.txt",
+      GIT_RAIL_PREVIEW_REPO: root,
+      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
+      GIT_RAIL_PREVIEW_METADATA: metadata,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const deadline = Date.now() + 5_000;
+  while (!stdout.includes("Word wrap disabled") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  child.stdin.write("q");
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  assert.equal(exitCode, 0, stderr);
+  assert.match(stdout, /Word wrap disabled/);
+  assert.match(stdout, /w wrap:off/);
+  assert.doesNotMatch(stderr, /heap out of memory|RangeError/i);
 });
 
 test("preview rejects pathological line counts before rendered-memory amplification", async (t) => {

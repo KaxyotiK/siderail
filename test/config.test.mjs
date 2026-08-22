@@ -47,7 +47,9 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.match(preview, /resolveViewerActions\(config, filePath\)/);
   assert.match(preview, /viewerActions\.find/);
   assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?Glow is not installed/);
-  assert.ok(preview.indexOf("executableAvailable(viewer)") < preview.indexOf("sourceForLaunch(false, true)"));
+  assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?if \(clientMode\(viewer\) === "embedded"\)/);
+  assert.match(preview, /wrapAnsiTerminalLines/);
+  assert.match(preview, /PgUp\/PgDn/);
   assert.doesNotMatch(preview, /Math\.max\([^)]*\.\.\.(?:content|rows)/);
   assert.match(preview, /repeat\(contentGutterColumns\)/);
   assert.match(preview, /MAX_PREVIEW_LINES = 100_000/);
@@ -74,6 +76,7 @@ test("published schema exposes labels only on viewer rules", async () => {
   assert.equal(schema.properties.herdr.properties.sidebarWidth.default, 34);
   assert.equal(schema.$defs.launch.properties.label, undefined);
   assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
+  assert.ok(schema.$defs.viewer.properties.mode.enum.includes("embedded"));
   assert.equal(schema.$defs.viewer.properties.order.deprecated, true);
   assert.equal(schema.$defs.viewer.properties.key.pattern, "^[A-Za-z0-9]$");
   assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].type, "array");
@@ -88,10 +91,12 @@ test("configuration requires a version and rejects nested unknown keys", () => {
   assert.ok(validateConfig({ version: 1, herdr: { sidebarWidth: 19 } }).includes("herdr.sidebarWidth must be an integer from 20 to 200"));
   assert.ok(validateConfig({ version: 1, editor: { client: "vim", autoOpen: true } }).includes("unknown editor key: autoOpen"));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "View Markdown", client: "glow", key: "3", autoOpen: false } } }).length === 0);
+  assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", mode: "embedded", args: ["--width", "{width}"] } } }).length === 0);
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", typo: true } } }).includes('unknown viewers[".md"] key: typo'));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { label: "", client: "glow" } } }).includes('viewers[".md"].label must be a non-empty string'));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", order: 1.5 } } }).includes('viewers[".md"].order must be an integer from -10000 to 10000'));
   assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", key: "q" } } }).includes('viewers[".md"].key must be one unreserved letter or digit'));
+  assert.ok(validateConfig({ version: 1, viewers: { ".md": { client: "glow", key: "w" } } }).includes('viewers[".md"].key must be one unreserved letter or digit'));
   assert.deepEqual(validateConfig({ version: 1, viewers: { "*": [{ client: "system", key: "o" }, { client: "code", key: "9" }] } }), []);
   assert.ok(validateConfig({ version: 1, viewers: { "*": [] } }).includes('viewers["*"] must contain at least one viewer action'));
   assert.ok(validateConfig({ version: 1, viewers: { "": { client: "open" } } }).includes("viewer patterns must not be empty"));
@@ -102,10 +107,11 @@ test("configuration requires a version and rejects nested unknown keys", () => {
 test("viewer actions resolve conditionally by selected filename", () => {
   const markdown = resolveViewer(DEFAULT_CONFIG, "docs/README.md");
   assert.equal(markdown.client, "glow");
-  assert.equal(markdown.label, "View Markdown");
+  assert.equal(markdown.label, "Rendered");
+  assert.equal(markdown.mode, "embedded");
   assert.equal(markdown.autoOpen, true);
   assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.md").map(({ key, viewer }) => [key, viewer.label]), [
-    ["3", "View Markdown"], ["o", "Open"],
+    ["3", "Rendered"], ["o", "Open"],
   ]);
   assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.txt").map(({ key, viewer }) => [key, viewer.label]), [
     ["o", "Open"],
@@ -179,6 +185,30 @@ test("repository config merges by key and environment wins", async (t) => {
   assert.equal(config.editor.client, "nvim");
   assert.equal(config.editor.mode, "terminal");
   assert.equal(config.refresh.pollIntervalMs, 7000);
+});
+
+test("the former default Glow TUI rule migrates to embedded rendering", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-glow-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+    version: 1,
+    viewers: {
+      ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
+      ".txt": { label: "Custom Glow", client: "glow", args: ["--tui"], mode: "terminal", key: "4", autoOpen: false },
+    },
+  }));
+  const { config, errors } = loadConfig(root, {});
+  assert.deepEqual(errors, []);
+  assert.deepEqual(config.viewers[".md"], {
+    label: "Rendered",
+    client: "glow",
+    args: ["--style", "dark", "--width", "{width}"],
+    mode: "embedded",
+    key: "3",
+    autoOpen: true,
+  });
+  assert.equal(config.viewers[".txt"].mode, "terminal");
+  assert.deepEqual(config.viewers[".txt"].args, ["--tui"]);
 });
 
 test("environment overrides do not mutate built-in defaults", () => {

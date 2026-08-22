@@ -16,6 +16,7 @@ import {
   previewInitialMode,
   previewTabName,
   revealScrollOffset,
+  sanitizeRendererAnsi,
   sanitizeTerminalText,
   sliceAnsiTerminalColumns,
   startupFailureState,
@@ -23,6 +24,7 @@ import {
   terminalColumns,
   truncateTerminalColumns,
   validPollInterval,
+  wrapAnsiTerminalLines,
 } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
 
@@ -78,6 +80,31 @@ test("terminal layout helpers measure, truncate, pad, and compact by display col
   assert.equal(compactTerminalPath("long/path", 1), "…");
   assert.equal(sliceAnsiTerminalColumns("\u001b[31m0123456789\u001b[0m", 4, 3), "\u001b[31m456\u001b[0m");
   assert.equal(terminalColumns(sliceAnsiTerminalColumns("A界BC", 1, 3)), 3);
+});
+
+test("preview wrapping preserves gutters, ANSI styles, Unicode width, and source rows", () => {
+  const rows = wrapAnsiTerminalLines([
+    "  1 │ \u001b[31malpha界bravo\u001b[0m",
+    "  2 │ short",
+  ], 12, 6, "    ↳ ");
+  assert.deepEqual(rows.map(({ sourceRow, startColumn }) => [sourceRow, startColumn]), [
+    [0, 6], [0, 11], [0, 17], [1, 6],
+  ]);
+  assert.equal(rows[0].text.replace(/\u001b\[[0-9;]*m/g, ""), "  1 │ alpha");
+  assert.match(rows[0].text, /\u001b\[31malpha/);
+  assert.equal(rows[1].text.replace(/\u001b\[[0-9;]*m/g, ""), "    ↳ 界brav");
+  assert.ok(rows.every((row) => terminalColumns(row.text) <= 12));
+
+  const words = wrapAnsiTerminalLines(["  1 │ alpha beta gamma"], 14, 6, "    ↳ ");
+  assert.deepEqual(words.map((row) => row.text.replace(/\u001b\[[0-9;]*m/g, "")), [
+    "  1 │ alpha ", "    ↳ beta ", "    ↳ gamma",
+  ]);
+});
+
+test("embedded renderer output keeps only SGR styling", () => {
+  const output = sanitizeRendererAnsi("\u001b[1mheading\u001b[0m\u001b]52;c;c2VjcmV0\u0007\u001b[2Jtail");
+  assert.equal(output, "\u001b[1mheading\u001b[0m��tail");
+  assert.doesNotMatch(output, /secret|\u001b\[2J|\u001b\]/);
 });
 
 test("terminal input decoder preserves ordered coalesced keyboard, CSI, and mouse events", async () => {

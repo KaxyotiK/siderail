@@ -8,10 +8,10 @@
   },
   "viewers": {
     ".md": {
-      "label": "View Markdown",
+      "label": "Rendered",
       "client": "glow",
-      "args": ["--tui", "--style", "dark"],
-      "mode": "terminal",
+      "args": ["--style", "dark", "--width", "{width}"],
+      "mode": "embedded",
       "key": "3",
       "autoOpen": true
     },

@@ -14,10 +14,10 @@ while Changes clearly reports that Git state is unavailable.
 - macOS or Linux
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
-editor configuration when provided. The installed defaults auto-open `.md`,
-`.mdx`, and `.markdown` files in Glow, so install `glow` for that integration or
-override the Markdown rules. If Glow is unavailable, GitRail skips auto-open,
-shows an installation hint, and leaves Diff and Raw fully usable.
+editor configuration when provided. The installed defaults render `.md`,
+`.mdx`, and `.markdown` files with Glow inside GitRail's own scrollable preview.
+If Glow is unavailable, GitRail keeps the wrapped Raw view open with an
+installation hint; Diff and Raw do not require Glow.
 
 ## Install and launch
 
@@ -89,11 +89,16 @@ remains Git-only.
 The preview tab uses the selected basename as its label, sanitized and capped at
 32 terminal columns. It replaces the previous plugin-owned preview tab, then
 starts in the selected descriptor's exact diff, or Raw for a clean file. Use
-`1` and `2` to select Diff and Raw. Configured filename and extension matches
-add actions with explicit key bindings. Installed defaults provide `o Open` for
-every file and `3 View Markdown` through Glow for `.md`, `.mdx`, and `.markdown`
-files; Markdown launches Glow automatically. `/` searches the current content
-and `n`/`N` moves through matches. `e` opens the configured editor; historical,
+`1` and `2` to select Diff and Raw. Raw wraps by default; Diff preserves lines.
+`w` toggles wrapping, arrows or `j`/`k` scroll by a visual row, Page Up/Page Down
+scroll by a viewport, `Ctrl-U`/`Ctrl-D` scroll by half a viewport, and the mouse
+wheel scrolls. A gold marker at the right edge shows the current position.
+Configured filename and extension matches add actions with explicit key
+bindings. Installed defaults provide `o Open` for every file and `3 Rendered`
+for `.md`, `.mdx`, and `.markdown` files. Glow renders Markdown as bounded,
+sanitized output inside GitRail; it does not launch a nested TUI. `/` searches
+the current content and `n`/`N` moves through matches. `e` opens the configured
+editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
 the exact Raw revision. Binary and oversized content produce bounded,
 actionable errors. A `?` statistic means the aggregate untracked-inspection
@@ -194,8 +199,11 @@ basename, a dot-prefixed filename suffix such as `.pdf`, or `*`. Exact names do
 not act as implicit suffixes: `Makefile` will not match `NotMakefile`. Every matching rule is shown,
 so `*` can provide a global action alongside a file-specific action. Each
 pattern accepts one rule or an array of rules, so multiple global or
-file-specific actions can coexist. Each rule can configure its action `label`, executable `client`, `args`, launch
-`mode`, single-letter-or-digit `key`, and optional `autoOpen`. File-specific
+file-specific actions can coexist. Each rule can configure its action `label`,
+executable `client`, `args`, launch `mode`, single-letter-or-digit `key`, and
+optional `autoOpen`. `embedded` mode captures bounded output and displays it in
+GitRail's viewport; `{width}` in an argument expands to the available content
+width. File-specific
 rules win if two matching actions claim the same key. Preview navigation keys
 are reserved and rejected by validation. Version-1 rules without `key` retain
 legacy automatic numeric assignment. If no enabled rule matches, the preview omits
@@ -206,10 +214,10 @@ viewer actions. The built-in Markdown defaults use Glow:
   "version": 1,
   "viewers": {
     ".md": {
-      "label": "View Markdown",
+      "label": "Rendered",
       "client": "glow",
-      "args": ["--tui", "--style", "dark"],
-      "mode": "terminal",
+      "args": ["--style", "dark", "--width", "{width}"],
+      "mode": "embedded",
       "key": "3",
       "autoOpen": true
     }
@@ -237,9 +245,11 @@ Supported overrides include `GIT_RAIL_BASE`, `GIT_RAIL_CLIENT`,
 for sanitized operation names, timestamps, durations, and exit status; source,
 diffs, environment values, and command arguments are never logged.
 
-Explicit `terminal` and `external` modes override executable heuristics. `system`
-uses macOS `open` or Linux `xdg-open`; `none` disables editing. External apps,
-including VS Code and Cursor, open outside Herdr.
+Explicit `terminal`, `external`, and viewer-only `embedded` modes override
+executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`
+disables editing. External apps, including VS Code and Cursor, open outside
+Herdr. The former installed Glow `--tui` default is recognized and migrated in
+memory to embedded rendering; other custom terminal viewer rules are preserved.
 
 Viewer and editor actions materialize the exact selected commit, Against-base,
 or staged revision with a bounded byte-preserving copy. This allows OS-default
