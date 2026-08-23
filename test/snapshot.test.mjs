@@ -59,7 +59,7 @@ test("commit-history search filters expanded commit children", async () => {
   assert.doesNotMatch(plain, /rail\.mjs|status\.mjs/);
 });
 
-test("large repositories expose an explicit reachable continuation", async (t) => {
+test("large repositories fully render Files while Changes stays paginated", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -69,6 +69,12 @@ test("large repositories expose an explicit reachable continuation", async (t) =
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /Unstaged  250/);
   assert.match(plain, /Show 100 more\s+\(150 remaining\)/);
+
+  const filesSnapshot = await exec(process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "270"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
+  const filesPlain = filesSnapshot.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(filesPlain, /file-000\.txt/);
+  assert.match(filesPlain, /file-249\.txt/);
+  assert.doesNotMatch(filesPlain, /Show \d+ more/);
 });
 
 test("sidebar rows stay within terminal width for wide filenames", async (t) => {
