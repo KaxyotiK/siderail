@@ -267,9 +267,9 @@ function fileRow(file, width, prefix = " ") {
   row.keyboardIdentity = identity;
   return row;
 }
-function renderTree(files, width, scope) {
+function renderTree(files, width, scope, paginate = true) {
   if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
-  const paged = page(files, scope);
+  const paged = paginate ? page(files, scope) : { visible: files, remaining: 0 };
   const collapsed = collapsedFolders.get(scope);
   const rows = buildTree(paged.visible, collapsed).map((row) => {
     const guides = treeGuides(row.depth, width);
@@ -282,8 +282,8 @@ function renderTree(files, width, scope) {
   });
   return [...rows, ...showMoreRow(scope, paged.remaining)];
 }
-function renderGrouped(files, width, scope) {
-  const paged = page(files, scope);
+function renderGrouped(files, width, scope, paginate = true) {
+  const paged = paginate ? page(files, scope) : { visible: files, remaining: 0 };
   const groups = new Map();
   for (const file of paged.visible) {
     const folder = path.dirname(file.path) === "." ? "" : path.dirname(file.path);
@@ -309,7 +309,11 @@ function renderGrouped(files, width, scope) {
   }
   return [...lines, ...showMoreRow(scope, paged.remaining)];
 }
-function renderFilesList(files, width, scope) { return resolvedViewMode(width) === "tree" ? renderTree(files, width, scope) : renderGrouped(files, width, scope); }
+function renderFilesList(files, width, scope, paginate = true) {
+  return resolvedViewMode(width) === "tree"
+    ? renderTree(files, width, scope, paginate)
+    : renderGrouped(files, width, scope, paginate);
+}
 function search(files, rawQuery) {
   const query = rawQuery.trim().toLocaleLowerCase();
   if (!query) return files;
@@ -430,7 +434,7 @@ function renderFiles(width) {
   ];
   if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : state.repoRoot ? "Repository has no files" : "Directory has no files"}${C.reset}`];
   if (state.directoryFilesTruncated) lines.push(` ${C.dim}Showing the first ${(state.files || []).length.toLocaleString("en-US")} files · scan limit reached${C.reset}`);
-  return [...lines, ...renderFilesList(files, width, `files:${query}`)];
+  return [...lines, ...renderFilesList(files, width, `files:${query}`, false)];
 }
 function renderBody(width) {
   keyboardItems = [];

@@ -71,11 +71,12 @@ signal.
 - Escape clears the current selection; press Escape again to close GitRail.
   `q` closes GitRail immediately.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
-- Folder expanders and **Show more** rows are currently mouse controls; commit
-  expansion and file opening remain fully keyboard-accessible.
+- Folder expanders and **Show more** rows in Changes are currently mouse
+  controls; commit expansion and file opening remain fully keyboard-accessible.
 
 Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
-Large sections expose explicit **Show more** rows, so displayed totals never
+Files renders every discovered path immediately. Large Changes sections and
+commit history expose explicit **Show more** rows, so displayed totals never
 refer to unreachable content.
 
 Files contains every tracked and untracked worktree path. Files changed since
