@@ -51,29 +51,6 @@ function merge(base, override) {
   return result;
 }
 
-function migrateLegacyGlowDefaults(config) {
-  for (const [pattern, configured] of Object.entries(config.viewers || {})) {
-    const viewers = Array.isArray(configured) ? configured : [configured];
-    const migrated = viewers.map((viewer) => {
-      const formerDefault = [".md", ".mdx", ".markdown"].includes(pattern.toLowerCase())
-        && path.basename(viewer.client || "").toLowerCase() === "glow"
-        && viewer.label === "View Markdown"
-        && viewer.mode === "terminal"
-        && JSON.stringify(viewer.args || []) === JSON.stringify(["--tui", "--style", "dark"])
-        && viewer.key === "3"
-        && viewer.autoOpen === true;
-      return formerDefault ? {
-        ...viewer,
-        label: "Rendered",
-        args: ["--style", "dark", "--width", "{width}"],
-        mode: "embedded",
-      } : viewer;
-    });
-    config.viewers[pattern] = Array.isArray(configured) ? migrated : migrated[0];
-  }
-  return config;
-}
-
 function validateKeys(value, label, allowed, errors) {
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) errors.push(`unknown ${label} key: ${key}`);
@@ -178,7 +155,7 @@ export function loadConfig(repoRoot, env = process.env) {
   const repoPath = repoRoot ? path.join(repoRoot, ".git-rail.json") : "";
   const user = readConfig(userPath);
   const project = repoPath ? readConfig(repoPath) : { value: {}, errors: [] };
-  let config = migrateLegacyGlowDefaults(merge(merge(DEFAULT_CONFIG, user.value), project.value));
+  let config = merge(merge(DEFAULT_CONFIG, user.value), project.value);
   const errors = [...user.errors, ...project.errors];
 
   const editorVariable = env.GIT_RAIL_CLIENT !== undefined

@@ -17,6 +17,7 @@ export function runCommand(command, args = [], options = {}) {
     maxOutputBytes = 16 * 1024 * 1024,
     allowExitCodes = [0],
     stdoutEncoding = "utf8",
+    stdinInput,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -26,7 +27,7 @@ export function runCommand(command, args = [], options = {}) {
       env: env ? { ...process.env, ...env } : process.env,
       detached: process.platform !== "win32",
       shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [stdinInput === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     const stdout = [];
     const stderr = [];
@@ -99,6 +100,12 @@ export function runCommand(command, args = [], options = {}) {
 
     timer = setTimeout(() => terminate("timeout", `${command} timed out after ${timeoutMs}ms`), timeoutMs);
     timer.unref();
+    if (stdinInput !== undefined) {
+      child.stdin.on("error", (error) => {
+        if (error.code !== "EPIPE") terminate("stdin", `${command} could not read input: ${error.message}`);
+      });
+      child.stdin.end(stdinInput);
+    }
   });
 }
 

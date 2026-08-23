@@ -267,6 +267,43 @@ export function validPollInterval(value, fallback = 10_000) {
   return Number.isInteger(value) && value >= 1_000 && value <= 300_000 ? value : fallback;
 }
 
+export function jitteredPollInterval(interval, random = Math.random) {
+  const boundedRandom = Math.max(0, Math.min(1, Number(random()) || 0));
+  return Math.max(1, Math.round(interval * (0.9 + boundedRandom * 0.2)));
+}
+
+export function refreshStatusAfterSuccess(status, configErrors = []) {
+  if (configErrors[0]) return configErrors[0];
+  return String(status).startsWith("Refresh failed:") ? "Git state current" : status;
+}
+
+export function createCoalescedScheduler(callback, {
+  delayMs = 125,
+  minimumIntervalMs = 2_000,
+  now = Date.now,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+} = {}) {
+  let timer;
+  let lastRunAt = Number.NEGATIVE_INFINITY;
+  return {
+    schedule() {
+      if (timer) return;
+      const wait = Math.max(delayMs, lastRunAt + minimumIntervalMs - now());
+      timer = setTimer(() => {
+        timer = undefined;
+        lastRunAt = now();
+        callback();
+      }, wait);
+      timer.unref?.();
+    },
+    cancel() {
+      clearTimer(timer);
+      timer = undefined;
+    },
+  };
+}
+
 export function stripSgrMouseEvents(value) {
   return String(value ?? "").replace(/\u001b\[<\d+;\d+;\d+[Mm]/g, "");
 }

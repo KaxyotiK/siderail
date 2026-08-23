@@ -12,6 +12,16 @@ test("process stdout remains text by default and can preserve exact bytes", asyn
   assert.deepEqual(bytes.stdout, Buffer.from([0x66, 0x80, 0x6f]));
 });
 
+test("process input can be supplied as exact bytes", async () => {
+  const input = Buffer.from([0x66, 0x00, 0x80, 0x6f]);
+  const result = await runCommand(
+    process.execPath,
+    ["-e", "process.stdin.pipe(process.stdout)"],
+    { stdinInput: input, stdoutEncoding: null },
+  );
+  assert.deepEqual(result.stdout, input);
+});
+
 test("timeouts settle without waiting for descendants that inherited output pipes", async () => {
   const script = [
     "const { spawn } = require('node:child_process')",

@@ -298,8 +298,12 @@ async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
   fs.chmodSync(copy, 0o600);
   return copy;
 }
-function embeddedArguments(viewer, width, sourcePath) {
-  return [...(viewer.args || []).map((argument) => argument.replaceAll("{width}", String(width))), sourcePath];
+function embeddedViewerReadsStdin(viewer) {
+  return path.basename(viewer.client || "").toLowerCase().replace(/\.exe$/, "") === "glow";
+}
+function embeddedArguments(viewer, width, sourcePath = "") {
+  const args = (viewer.args || []).map((argument) => argument.replaceAll("{width}", String(width)));
+  return sourcePath ? [...args, sourcePath] : args;
 }
 async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
   const generation = ++loadGeneration;
@@ -314,12 +318,17 @@ async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
   statusMessage = `Rendering ${safe(viewer.label || path.basename(viewer.client))}…`;
   render();
   try {
-    const sourcePath = await sourceForLaunch(false, true);
+    const readsStdin = embeddedViewerReadsStdin(viewer);
+    const raw = readsStdin
+      ? await loadRawBytes({ repoRoot, filePath, descriptor, metadata, maxFileBytes: config.limits.maxFileBytes })
+      : null;
+    const sourcePath = readsStdin ? "" : await sourceForLaunch(false, true);
     const executable = launchExecutable(viewer);
     const result = await runCommand(executable, embeddedArguments(viewer, bodyWidth(), sourcePath), {
       cwd: repoRoot,
       timeoutMs: 15_000,
       maxOutputBytes: Math.min(16 * 1024 * 1024, Math.max(1024 * 1024, config.limits.maxFileBytes * 2)),
+      stdinInput: raw?.bytes,
     });
     if (generation !== loadGeneration) return;
     assertPreviewLineLimit(result.stdout);

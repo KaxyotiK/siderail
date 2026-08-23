@@ -9,12 +9,15 @@ import {
   compactTerminalPath,
   commitExpansionState,
   commitComparisonSource,
+  createCoalescedScheduler,
   createLatestSerialQueue,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
+  jitteredPollInterval,
   padAnsiTerminalColumns,
   previewInitialMode,
   previewTabName,
+  refreshStatusAfterSuccess,
   revealScrollOffset,
   sanitizeRendererAnsi,
   sanitizeTerminalText,
@@ -139,6 +142,43 @@ test("poll timers reject corrupted intervals independently of configuration", ()
   assert.equal(validPollInterval(5000), 5000);
   assert.equal(validPollInterval(NaN), 10_000);
   assert.equal(validPollInterval(0, 7000), 7000);
+  assert.equal(jitteredPollInterval(10_000, () => 0), 9_000);
+  assert.equal(jitteredPollInterval(10_000, () => 0.5), 10_000);
+  assert.equal(jitteredPollInterval(10_000, () => 1), 11_000);
+});
+
+test("filesystem invalidations coalesce and enforce a minimum refresh cadence", () => {
+  let currentTime = 0;
+  let refreshes = 0;
+  const timers = [];
+  const scheduler = createCoalescedScheduler(() => { refreshes += 1; }, {
+    now: () => currentTime,
+    setTimer: (callback, delay) => {
+      const timer = { callback, delay, unref() {} };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimer: () => {},
+  });
+  scheduler.schedule();
+  scheduler.schedule();
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 125);
+  currentTime = 125;
+  timers.shift().callback();
+  assert.equal(refreshes, 1);
+  currentTime = 200;
+  scheduler.schedule();
+  assert.equal(timers[0].delay, 1_925);
+  currentTime = 2_125;
+  timers.shift().callback();
+  assert.equal(refreshes, 2);
+});
+
+test("a successful refresh clears only refresh failures", () => {
+  assert.equal(refreshStatusAfterSuccess("Refresh failed: git timed out · showing previous state"), "Git state current");
+  assert.equal(refreshStatusAfterSuccess("Loaded more staged"), "Loaded more staged");
+  assert.equal(refreshStatusAfterSuccess("Refresh failed: timeout", ["invalid configuration"]), "invalid configuration");
 });
 
 test("SGR mouse reports can be removed without leaking bytes into search text", () => {
@@ -170,6 +210,9 @@ test("recovery polling follows repository transitions in either direction", asyn
   assert.match(rail, /if \(invalidationRepoRoot === watchRoot && refreshTimer\) return;/);
   assert.match(rail, /currentProviderCwd = fixtureRoot \|\| await liveProviderCwd\(\)/);
   assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
+  assert.match(rail, /createCoalescedScheduler/);
+  assert.match(rail, /jitteredPollInterval/);
+  assert.match(rail, /refreshStatusAfterSuccess\(statusMessage, next\.configErrors\)/);
 });
 
 test("preview requests serialize and skip superseded queued selections", async () => {

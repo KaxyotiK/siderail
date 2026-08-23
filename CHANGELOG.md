@@ -27,9 +27,11 @@ intentional configuration changes documented here.
   configurable key bindings.
 - Ship `o Open` globally and render Markdown through the `3` Glow action inside
   GitRail's viewport instead of launching a nested TUI.
+- Feed exact Markdown revision bytes to embedded Glow rendering so piped stdin
+  cannot hide the selected file and leave the Rendered view empty.
 - Add word-wrapped Raw content, a wrap toggle, visual-row and page navigation,
   and a right-edge preview position marker while retaining horizontal Diff
-  navigation. Migrate the exact former Glow default in memory.
+  navigation while respecting explicit terminal Glow configuration.
 - Skip unavailable viewer rendering and retain Diff/wrapped Raw with an install
   hint.
 - Harden exact revision handling for diverged bases, unusual index paths,
@@ -37,6 +39,8 @@ intentional configuration changes documented here.
 - Add explicit clean state, keyboard-reachable commit history, ordered terminal
   input decoding, horizontal preview navigation, wrapped narrow actions, and
   transient preview-open feedback.
+- Recover visibly after transient Git timeouts, throttle filesystem-triggered
+  refresh storms, and stagger polling across concurrently open rails.
 - Auto-open one unfocused GitRail pane per Git-backed Herdr tab at startup and
   workspace or tab creation, with a global or per-repository `herdr.autoOpen`
   opt-out, stale-lock recovery, state migration, right-edge placement,

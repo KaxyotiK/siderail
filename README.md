@@ -249,8 +249,8 @@ diffs, environment values, and command arguments are never logged.
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`
 disables editing. External apps, including VS Code and Cursor, open outside
-Herdr. The former installed Glow `--tui` default is recognized and migrated in
-memory to embedded rendering; other custom terminal viewer rules are preserved.
+Herdr. Explicit Glow `--tui` rules remain terminal actions; the built-in
+Markdown rule uses embedded rendering unless configuration overrides it.
 
 Viewer and editor actions materialize the exact selected commit, Against-base,
 or staged revision with a bounded byte-preserving copy. This allows OS-default

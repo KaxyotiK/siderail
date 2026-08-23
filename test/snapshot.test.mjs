@@ -268,6 +268,7 @@ test("embedded Markdown rendering stays inside the pageable preview viewport", a
   const renderer = path.join(root, "test-renderer");
   await fs.writeFile(renderer, `#!/bin/sh
 case "$*" in *'{width}'*) exit 9 ;; esac
+test -f "$3" || exit 10
 printf '\\033[1mRendered heading\\033[0m\\n'
 i=1
 while [ "$i" -le 40 ]; do
@@ -320,6 +321,112 @@ done
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /rendered row (?:[7-9]|1\d)/);
   assert.doesNotMatch(plain, /Rendered heading/);
+});
+
+test("embedded Glow renders the selected Markdown bytes through stdin", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-glow-stdin-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const renderer = path.join(root, "glow");
+  await fs.writeFile(renderer, `#!/bin/sh
+test "$#" -eq 2 || exit 9
+test "$1" = "--width" || exit 10
+case "$(cat)" in *'Source heading'*) ;; *) exit 11 ;; esac
+printf '\\033[1mRendered from stdin\\033[0m\\n'
+`);
+  await fs.chmod(renderer, 0o700);
+  await fs.writeFile(path.join(root, "README.md"), "# Source heading\n\nMarkdown body.\n");
+  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+    version: 1,
+    viewers: {
+      ".md": { label: "Rendered", client: renderer, args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    },
+  }));
+  const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
+  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_RAIL_PREVIEW_PATH: "README.md",
+      GIT_RAIL_PREVIEW_REPO: root,
+      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
+      GIT_RAIL_PREVIEW_METADATA: metadata,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const deadline = Date.now() + 5_000;
+  while (!stdout.includes("Rendered from stdin") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  child.stdin.write("q");
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  assert.equal(exitCode, 0, stderr);
+  assert.match(stdout, /3 Rendered/);
+  assert.match(stdout, /Rendered from stdin/);
+  assert.doesNotMatch(stdout, /Renderer returned no content/);
+});
+
+test("an explicit terminal Glow action opens the Glow TUI", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-glow-tui-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const renderer = path.join(root, "glow");
+  await fs.writeFile(renderer, `#!/bin/sh
+test "$1" = "--tui" || exit 9
+test "$2" = "--style" || exit 10
+test "$3" = "dark" || exit 11
+test -f "$4" || exit 12
+printf 'Glow TUI opened\n'
+`);
+  await fs.chmod(renderer, 0o700);
+  await fs.writeFile(path.join(root, "README.md"), "# Source heading\n");
+  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+    version: 1,
+    viewers: {
+      ".md": { label: "View Markdown", client: renderer, args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
+    },
+  }));
+  const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
+  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_RAIL_PREVIEW_PATH: "README.md",
+      GIT_RAIL_PREVIEW_REPO: root,
+      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
+      GIT_RAIL_PREVIEW_METADATA: metadata,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const readyDeadline = Date.now() + 5_000;
+  while (!stdout.includes("3 View Markdown") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  child.stdin.write("3");
+  const launchDeadline = Date.now() + 5_000;
+  while (!stdout.includes("Glow TUI opened") && Date.now() < launchDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  child.stdin.write("q");
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  assert.equal(exitCode, 0, stderr);
+  assert.match(stdout, /3 View Markdown/);
+  assert.match(stdout, /Glow TUI opened/);
+  assert.match(stdout, /Returned from glow/);
 });
 
 test("preview keeps repaint latency bounded for a large allowed line count", async (t) => {

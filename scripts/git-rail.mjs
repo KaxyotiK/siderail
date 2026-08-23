@@ -10,11 +10,14 @@ import { runCommand } from "../src/process.mjs";
 import {
   compactTerminalPath,
   commitExpansionState,
+  createCoalescedScheduler,
   createLatestSerialQueue,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
+  jitteredPollInterval,
   padAnsiTerminalColumns,
   previewTabName,
+  refreshStatusAfterSuccess,
   revealScrollOffset,
   sanitizeTerminalText,
   sliceAnsiTerminalColumns,
@@ -108,7 +111,7 @@ let refreshRunning = false;
 let refreshVisible = false;
 let refreshQueued = false;
 let refreshTimer;
-let watchTimer;
+let invalidationScheduler;
 let renderTimer;
 let statusTimer;
 let transientRestoreStatus = "";
@@ -670,7 +673,7 @@ async function refreshState(announce = false) {
       if ((state.repoRoot || state.cwd) !== invalidationRepoRoot) startInvalidation();
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) showTransientStatus("Git state refreshed");
-      else if (next.configErrors?.[0]) statusMessage = next.configErrors[0];
+      else statusMessage = refreshStatusAfterSuccess(statusMessage, next.configErrors);
     }
   } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
   finally {
@@ -687,7 +690,8 @@ function startInvalidation() {
   if (invalidationRepoRoot === watchRoot && refreshTimer) return;
   stopInvalidation();
   invalidationRepoRoot = watchRoot || "";
-  const debounce = () => { clearTimeout(watchTimer); watchTimer = setTimeout(() => void refreshState(false), 125); };
+  invalidationScheduler = createCoalescedScheduler(() => void refreshState(false));
+  const debounce = () => invalidationScheduler.schedule();
   if (watchRoot) {
     try {
       watchers.push(fs.watch(watchRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
@@ -700,13 +704,19 @@ function startInvalidation() {
   resetRefreshTimer();
 }
 function resetRefreshTimer() {
-  clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => void refreshState(false), validPollInterval(state.config?.refresh?.pollIntervalMs));
+  clearTimeout(refreshTimer);
+  const interval = validPollInterval(state.config?.refresh?.pollIntervalMs);
+  const poll = () => {
+    refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
+    refreshTimer.unref();
+    void refreshState(false);
+  };
+  refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
   refreshTimer.unref();
 }
 function stopInvalidation() {
-  clearInterval(refreshTimer); refreshTimer = undefined;
-  clearTimeout(watchTimer); watchTimer = undefined;
+  clearTimeout(refreshTimer); refreshTimer = undefined;
+  invalidationScheduler?.cancel(); invalidationScheduler = undefined;
   watchers.forEach((watcher) => watcher.close()); watchers = [];
   invalidationRepoRoot = "";
 }

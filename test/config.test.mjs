@@ -187,7 +187,7 @@ test("repository config merges by key and environment wins", async (t) => {
   assert.equal(config.refresh.pollIntervalMs, 7000);
 });
 
-test("the former default Glow TUI rule migrates to embedded rendering", async (t) => {
+test("an explicit Glow TUI rule is preserved", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-glow-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
@@ -200,10 +200,10 @@ test("the former default Glow TUI rule migrates to embedded rendering", async (t
   const { config, errors } = loadConfig(root, {});
   assert.deepEqual(errors, []);
   assert.deepEqual(config.viewers[".md"], {
-    label: "Rendered",
+    label: "View Markdown",
     client: "glow",
-    args: ["--style", "dark", "--width", "{width}"],
-    mode: "embedded",
+    args: ["--tui", "--style", "dark"],
+    mode: "terminal",
     key: "3",
     autoOpen: true,
   });
