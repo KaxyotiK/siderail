@@ -15,6 +15,7 @@
     "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='src/**/*.mjs' --test-coverage-lines=88 --test-coverage-branches=78 --test-coverage-functions=86",
     "artifact:verify": "node scripts/verify-artifact.mjs",
     "fixture:verify": "node --test test/integration.test.mjs",
+    "live:herdr:smoke": "node scripts/live-herdr-smoke.mjs",
     "check": "npm run lint && npm test"
   },
   "license": "MIT",
