@@ -59,13 +59,13 @@ function snapshot(checkout, width, environmentRoot) {
   ], { cwd: checkout, env: environment });
 }
 
-export function verifyScreenshotMetadata({ candidate = "HEAD" } = {}) {
+export function verifyScreenshotMetadata({ candidate = "HEAD", resolveCommits = true } = {}) {
   const readme = fs.readFileSync(path.join(repositoryRoot, "docs", "screenshots", "README.md"), "utf8");
   const visualSource = readme.match(/^- Visual source: `([0-9a-f]{40,64})`$/m)?.[1];
   if (!visualSource) throw new Error("screenshot README must name a full visual-source SHA");
   if (!/^- Herdr: `0\.8\.\d+`$/m.test(readme)) throw new Error("screenshot README must name exact Herdr 0.8.x");
-  const candidateSha = fullCommit(candidate, "candidate");
-  const visualSourceSha = fullCommit(visualSource, "visual source");
+  const candidateSha = resolveCommits ? fullCommit(candidate, "candidate") : null;
+  const visualSourceSha = resolveCommits ? fullCommit(visualSource, "visual source") : visualSource;
   for (const [width, expected] of expectedImages) {
     const file = path.join(repositoryRoot, "docs", "screenshots", `gitrail-${width}.png`);
     const bytes = fs.readFileSync(file);
@@ -76,7 +76,7 @@ export function verifyScreenshotMetadata({ candidate = "HEAD" } = {}) {
 }
 
 export function verifyScreenshotSnapshots({ candidate = "HEAD" } = {}) {
-  const metadata = verifyScreenshotMetadata({ candidate });
+  const metadata = verifyScreenshotMetadata({ candidate, resolveCommits: true });
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-screenshot-proof-"));
   try {
     const sourceRoot = path.join(temporaryRoot, "source");

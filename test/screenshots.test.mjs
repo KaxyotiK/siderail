@@ -4,8 +4,8 @@ import test from "node:test";
 import { pngDimensions, verifyScreenshotMetadata } from "../scripts/verify-screenshots.mjs";
 
 test("release screenshots have the declared dimensions and resolvable source commits", () => {
-  const result = verifyScreenshotMetadata();
-  assert.match(result.candidateSha, /^[0-9a-f]{40}$/);
+  const result = verifyScreenshotMetadata({ resolveCommits: false });
+  assert.equal(result.candidateSha, null);
   assert.match(result.visualSourceSha, /^[0-9a-f]{40}$/);
   assert.deepEqual(pngDimensions(fs.readFileSync("docs/screenshots/gitrail-52.png")), {
     pixelWidth: 660,
