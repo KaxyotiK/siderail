@@ -135,9 +135,12 @@ jobs:
           server_pid=""
           start_server
           test "$("$HERDR_BIN_PATH" plugin list)" = "No plugins installed."
+          unlink_proof=$("$HERDR_BIN_PATH" workspace create --cwd "$GITHUB_WORKSPACE" --label "GitRail unlink proof" --no-focus)
+          unlink_proof_tab=$(jq -r '.result.tab.tab_id' <<<"$unlink_proof")
           sleep 1
-          if "$HERDR_BIN_PATH" pane list | grep -Eq 'HERDER GITRAIL|GitRail Preview|GitRail Demo'; then
-            echo "GitRail pane restored after unlink" >&2
+          if "$HERDR_BIN_PATH" pane list | jq -e --arg tab "$unlink_proof_tab" \
+            '.result.panes[] | select(.tab_id == $tab and .label == "HERDER GITRAIL")' >/dev/null; then
+            echo "GitRail event action remained after unlink" >&2
             exit 1
           fi
           "$HERDR_BIN_PATH" session stop "$HERDR_SESSION" --json
@@ -205,9 +208,12 @@ jobs:
           server_pid=""
           start_server
           test "$("$HERDR_BIN_PATH" plugin list)" = "No plugins installed."
+          migration_unlink_proof=$("$HERDR_BIN_PATH" workspace create --cwd "$GITHUB_WORKSPACE" --label "GitRail migration unlink proof" --no-focus)
+          migration_unlink_tab=$(jq -r '.result.tab.tab_id' <<<"$migration_unlink_proof")
           sleep 1
-          if "$HERDR_BIN_PATH" pane list | grep -Eq 'HERDER GITRAIL|GitRail Preview|GitRail Demo'; then
-            echo "GitRail pane restored after development-migration unlink" >&2
+          if "$HERDR_BIN_PATH" pane list | jq -e --arg tab "$migration_unlink_tab" \
+            '.result.panes[] | select(.tab_id == $tab and .label == "HERDER GITRAIL")' >/dev/null; then
+            echo "GitRail event action remained after development-migration unlink" >&2
             exit 1
           fi
           git worktree remove --force "$old_checkout"
