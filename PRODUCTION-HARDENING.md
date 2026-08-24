@@ -84,7 +84,7 @@ operations.
 - [x] **L1** Add `.gitignore`
 - [x] **L2** Rewrite the `CHANGELOG.md` 0.1.0 entry as consumable release notes
 - [x] **L2a** Define the candidate-SHA local checks and isolated real-Herdr walkthrough in `docs/RELEASING.md`
-- [ ] **L2b** Run all eight candidate-SHA evidence cells and complete every pre-tag gate **(D6 and D8 accepted)**
+- [x] **L2b** Run all eight candidate-SHA evidence cells and complete every pre-tag gate **(D6 and D8 accepted)** — candidate `3aaaf05aa0f8adeb284adf4b30bb3171fe587b75`, evidence commit `ea182ee1070469f1c88c7bfadd469c97299c25ec`
 - [ ] **L2c** After L2b passes, create annotated `v0.1.0` only under a separate explicit tagging authorization
 - [x] **L3** Prune stale local branches (10 local, all merged)
 - [x] **L4** Add pinned lint rules for prohibited `void` expressions, unused locals, and unused production exports; use explicit handled async boundaries; remove four unused parser helpers and make two active helpers private **(D2 accepted)**
