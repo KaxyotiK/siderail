@@ -51,6 +51,11 @@ counts, patches, or pseudo-paths. Temporary repositories and editor copies are
 owner-only and removed when the process exits normally or receives a handled
 signal.
 
+Live Herdr captures of that demo are available at
+[36 columns](docs/screenshots/gitrail-36.png),
+[52 columns](docs/screenshots/gitrail-52.png), and
+[100 columns](docs/screenshots/gitrail-100.png).
+
 ## Interaction
 
 - `Tab` switches Changes and Files.

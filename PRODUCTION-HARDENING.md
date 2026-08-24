@@ -88,7 +88,7 @@ operations.
 - [x] **L3** Prune stale local branches (10 local, all merged)
 - [x] **L4** Add pinned lint rules for discarded promises and unused production exports; remove four unused parser helpers and make two active helpers private **(D2 accepted)**
 - [ ] **L5** CI: Node 22 + 24 matrix; coverage threshold at the current 88% line / 78% branch; demo/snapshot job; dependency review
-- [ ] **L6** Capture the 36 / 52 / 100-column screenshots `CONTRIBUTING.md` already mandates
+- [x] **L6** Capture the 36 / 52 / 100-column screenshots `CONTRIBUTING.md` already mandates
 - [x] **L7** Remove nonexistent private-contact and response-time promises from `SECURITY.md`; add a reporting channel only before external distribution
 - [x] **P1** Rewrite `PRODUCTION-READINESS.md` as a checklist where each line cites the test or CI job that proves it
 

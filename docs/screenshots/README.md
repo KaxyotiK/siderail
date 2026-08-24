@@ -1,21 +1,25 @@
 # Sidebar captures
 
-GitRail's terminal snapshots are generated from the real fixture provider and
-verified at 36, 52, and 100 columns by `test/snapshot.test.mjs`.
+These captures show the same deterministic production-provider demo in actual
+Herdr panes at 36, 52, and 100 terminal columns. The pane output was read with
+Herdr's ANSI-preserving CLI and rendered with its complete boundary and footer;
+the content was not cropped or hand-edited.
 
-Generate the standard 52-column capture with:
+- Visual source: `c818a5a327b0f69e09891b652b8afdd765da4b1c`
+- Herdr: `0.8.2`
+- Captured: `2026-08-23`, macOS 15
+
+| Narrow (36) | Standard (52) | Wide (100) |
+| --- | --- | --- |
+| [gitrail-36.png](gitrail-36.png) | [gitrail-52.png](gitrail-52.png) | [gitrail-100.png](gitrail-100.png) |
+
+The fixture intentionally uses `feature/sidebar` and includes Against-base,
+commit, staged, unstaged, untracked text, and untracked binary states. Regenerate
+the captures from a real Herdr pane after visual changes; never hand-edit totals
+or diff statistics.
+
+Generate the text snapshot gate independently with:
 
 ```bash
 npm run snapshot
 ```
-
-The fixture intentionally uses a feature branch and includes Against-base,
-commit, staged, unstaged, untracked text, and binary states. Do not hand-edit
-captured totals or diff statistics: regenerate them from the fixture so the
-documentation cannot drift from the provider.
-
-For live review, capture both Changes and Files. Files should contain the same
-branch diff as Against-base plus neutral grey rows for paths unchanged from the
-merge base. Opening a row should create or replace the dedicated preview tab.
-Its label should be the selected basename, sanitized and capped at 32 terminal
-columns.
