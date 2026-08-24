@@ -10,10 +10,10 @@ From a clean `main` worktree:
 
 ```bash
 candidate_sha=$(git rev-parse HEAD)
-evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-gitrail/releases/0.1.0"
+evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-gitrail/releases/0.1.0/$candidate_sha"
 evidence_file="$evidence_root/evidence.json"
 mkdir -p "$evidence_root"
-test ! -e "$evidence_file" # archive an older candidate manifest; never overwrite it
+test ! -e "$evidence_file" # never overwrite evidence for the same candidate
 npm run release:evidence -- init --file "$evidence_file" --sha "$candidate_sha"
 local_log="$evidence_root/local.log"
 set -o pipefail
