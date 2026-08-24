@@ -8,10 +8,13 @@ while Changes clearly reports that Git state is unavailable.
 
 ## Requirements
 
-- Node.js 22 or newer
+- Node.js 22 or 24
 - Git 2.35 or newer
-- Herdr 0.8.0 or newer
-- macOS or Linux
+- Herdr 0.8.x
+- macOS 15 or Ubuntu 24.04
+
+The launcher accepts newer Node and Herdr versions, but they are outside the
+0.1.0 release matrix until separately validated.
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. The installed defaults render `.md`,
@@ -22,6 +25,8 @@ installation hint; Diff and Raw do not require Glow.
 ## Install and launch
 
 ```bash
+npm ci --ignore-scripts
+npm run check
 herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
 ```

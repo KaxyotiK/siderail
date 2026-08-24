@@ -170,7 +170,183 @@ test("startup recovery closes a proven rail created during an interrupted open",
   await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
 });
 
-function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
+for (const [name, pane, tabs] of [
+  ["a missing pane", null, [{ workspace_id: "w1", tab_id: "w1:t1" }]],
+  ["a pane moved to another workspace", {
+    workspace_id: "w2", tab_id: "w2:t1", pane_id: "w1:p1", terminal_id: "term-original",
+  }, [{ workspace_id: "w1", tab_id: "w1:t1" }]],
+  ["a staging tab whose label changed", {
+    workspace_id: "w1", tab_id: "w1:t9", pane_id: "w1:p1", terminal_id: "term-original",
+  }, [
+    { workspace_id: "w1", tab_id: "w1:t1" },
+    { workspace_id: "w1", tab_id: "w1:t9", label: "User tab" },
+  ]],
+]) {
+  test(`startup recovery leaves user state untouched for ${name}`, async (t) => {
+    const root = await temporaryRoot(t, "gitrail-layout-ambiguous-");
+    const journalPath = await writeLayoutJournal(root);
+    const calls = [];
+    const result = await recoverLayoutTransactions({
+      environment: environment(root),
+      workspaceId: "w1",
+      herdr: "herdr-test",
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "tab") return { stdout: JSON.stringify({ result: { tabs } }) };
+        if (args[0] === "pane" && args[1] === "get") {
+          return { stdout: JSON.stringify({ result: pane ? { pane } : {} }) };
+        }
+        throw new Error(`unexpected mutation: ${args.join(" ")}`);
+      },
+    });
+    assert.deepEqual(result.deferredWorkspaces, ["w1"]);
+    assert.equal(calls.some((args) => args[0] === "pane" && ["move", "close"].includes(args[1])), false);
+    assert.equal((await fs.stat(journalPath)).isFile(), true);
+  });
+}
+
+test("startup recovery reports and retains a corrupt journal without mutating panes", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-corrupt-");
+  const directory = path.join(root, "herdr-gitrail", "layout-transactions");
+  await fs.mkdir(directory, { recursive: true });
+  const journalPath = path.join(directory, "corrupt.json");
+  await fs.writeFile(journalPath, "{not-json");
+  const calls = [];
+  const messages = [];
+  const originalError = console.error;
+  console.error = (message) => messages.push(message);
+  t.after(() => { console.error = originalError; });
+  const result = await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    run: async (_command, args) => {
+      calls.push(args);
+      if (args[0] === "tab") return { stdout: JSON.stringify({ result: { tabs: [] } }) };
+      throw new Error(`unexpected mutation: ${args.join(" ")}`);
+    },
+  });
+  assert.deepEqual(result.recovered, []);
+  assert.match(messages.join("\n"), /deferred.*corrupt\.json/);
+  assert.equal((await fs.stat(journalPath)).isFile(), true);
+  assert.deepEqual(calls, [["tab", "list"]]);
+});
+
+function twoPaneRecoveryJournal() {
+  return {
+    recoveryTree: {
+      type: "split",
+      direction: "down",
+      ratio: 0.5,
+      first: { type: "pane", paneId: "w1:p1" },
+      second: { type: "pane", paneId: "w1:p2" },
+    },
+    paneTerminalIds: { "w1:p1": "term-p1", "w1:p2": "term-p2" },
+  };
+}
+
+function recoveryRunner({ failMove = false } = {}) {
+  const calls = [];
+  const paneTabs = new Map([["w1:p1", "w1:t1"], ["w1:p2", "w1:t1"]]);
+  const run = async (_command, args) => {
+    calls.push(args);
+    if (args[0] === "tab") {
+      return { stdout: JSON.stringify({ result: { tabs: [
+        { workspace_id: "w1", tab_id: "w1:t1" },
+        { workspace_id: "w1", tab_id: "w1:t9", label: "GitRail Layout Staging" },
+      ] } }) };
+    }
+    if (args[0] === "pane" && args[1] === "get") {
+      const paneId = args[2];
+      return { stdout: JSON.stringify({ result: { pane: {
+        workspace_id: "w1",
+        tab_id: paneTabs.get(paneId),
+        pane_id: paneId,
+        terminal_id: paneId === "w1:p1" ? "term-p1" : "term-p2",
+      } } }) };
+    }
+    if (args[0] === "pane" && args[1] === "move") {
+      if (failMove) throw new Error("injected recovery command failure");
+      paneTabs.set(args[2], args.includes("--new-tab") ? "w1:t9" : args[args.indexOf("--tab") + 1]);
+      return { stdout: JSON.stringify({ result: { move_result: { changed: true, created_tab: args.includes("--new-tab") ? { tab_id: "w1:t9" } : undefined } } }) };
+    }
+    throw new Error(`unexpected command: ${args.join(" ")}`);
+  };
+  return { calls, paneTabs, run };
+}
+
+test("successful startup recovery is idempotent when repeated", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-repeat-");
+  const journalPath = await writeLayoutJournal(root, twoPaneRecoveryJournal());
+  const mocked = recoveryRunner();
+  const first = await recoverLayoutTransactions({ environment: environment(root), workspaceId: "w1", herdr: "herdr-test", run: mocked.run });
+  const moveCount = mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length;
+  const second = await recoverLayoutTransactions({ environment: environment(root), workspaceId: "w1", herdr: "herdr-test", run: mocked.run });
+  assert.deepEqual(first.recovered, [journalPath]);
+  assert.deepEqual(second.recovered, []);
+  assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, moveCount);
+  assert.deepEqual([...mocked.paneTabs.values()], ["w1:t1", "w1:t1"]);
+  await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
+});
+
+test("a Herdr command failure retains the journal for a later recovery", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-recovery-failure-");
+  const journalPath = await writeLayoutJournal(root, twoPaneRecoveryJournal());
+  const mocked = recoveryRunner({ failMove: true });
+  const result = await recoverLayoutTransactions({ environment: environment(root), workspaceId: "w1", herdr: "herdr-test", run: mocked.run });
+  assert.deepEqual(result.deferredWorkspaces, ["w1"]);
+  assert.equal((await fs.stat(journalPath)).isFile(), true);
+});
+
+test("concurrent startup recovery contender defers without entering the recovery sweep", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-concurrent-");
+  let held = false;
+  let releaseInspection;
+  const inspection = new Promise((resolve) => { releaseInspection = resolve; });
+  const acquireLock = async () => {
+    if (held) throw new Error("layout recovery already in progress");
+    held = true;
+    return async () => { held = false; };
+  };
+  const first = recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    acquireLock,
+    run: async () => {
+      await inspection;
+      return { stdout: JSON.stringify({ result: { tabs: [] } }) };
+    },
+  });
+  while (!held) await new Promise((resolve) => setImmediate(resolve));
+  const contender = await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    acquireLock,
+    run: async () => { throw new Error("contender must not inspect or mutate Herdr"); },
+  });
+  assert.deepEqual(contender, { recovered: [], deferredWorkspaces: ["w1"] });
+  releaseInspection();
+  await first;
+  assert.equal(held, false);
+});
+
+test("startup recovery reclaims a stale recovery lock", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-stale-lock-");
+  const lockPath = path.join(root, "herdr-gitrail", "layout-transactions", "recovery.lock");
+  await fs.mkdir(lockPath, { recursive: true });
+  await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify({ pid: 2_147_483_647, createdAt: 1, nonce: "dead" }));
+  await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    run: async () => ({ stdout: JSON.stringify({ result: { tabs: [] } }) }),
+  });
+  await assert.rejects(fs.stat(lockPath), { code: "ENOENT" });
+});
+
+function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }) {
   panes = panes.map((pane) => ({ terminal_id: `term-${pane.pane_id}`, ...pane }));
   const calls = [];
   const paneTabs = new Map(panes.map((pane) => [pane.pane_id, pane.tab_id]));
@@ -178,7 +354,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
   const run = async (_command, args) => {
     calls.push(args);
     if (args[0] === "pane" && args[1] === "list") {
-      return { stdout: JSON.stringify({ result: { panes } }) };
+      return { stdout: JSON.stringify({ result: { panes: [...panes, ...(openedPane ? [openedPane] : [])] } }) };
     }
     if (args[0] === "tab" && args[1] === "list") {
       const tabs = [...new Set([...paneTabs.values(), openedPane?.tab_id].filter(Boolean))]
@@ -210,20 +386,29 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
         label: args.includes("git-mockup") ? "GitRail Demo" : "HERDER GITRAIL",
       };
       paneTabs.set(openedPaneId, openedPane.tab_id);
+      await afterMutation?.(args);
       return { stdout: JSON.stringify({ result: { plugin_pane: { pane: openedPane } } }) };
     }
     if (args[0] === "pane" && args[1] === "move") {
       const paneId = args[2];
       paneTabs.set(paneId, args.includes("--new-tab") ? "w1:t9" : args[args.indexOf("--tab") + 1]);
       if (openedPane?.pane_id === paneId) openedPane.tab_id = paneTabs.get(paneId);
+      await afterMutation?.(args);
       return { stdout: JSON.stringify({ result: { move_result: {
         changed: true,
         created_tab: args.includes("--new-tab") ? { tab_id: "w1:t9" } : undefined,
       } } }) };
     }
+    if (args[0] === "plugin" && args[1] === "pane" && args[2] === "close") {
+      if (openedPane?.pane_id === args[3]) {
+        paneTabs.delete(openedPane.pane_id);
+        openedPane = null;
+      }
+      return { stdout: JSON.stringify({ result: { type: "ok" } }) };
+    }
     return { stdout: JSON.stringify({ result: { type: "ok" } }) };
   };
-  return { calls, run };
+  return { calls, paneTabs, run, openedPane: () => openedPane };
 }
 
 async function temporaryRoot(t, prefix) {
@@ -363,6 +548,30 @@ test("toggle opens a rail when the current tab has none", async (t) => {
   assert.equal(result.paneId, "w1:p9");
   assert.equal(result.openMode, "toggle");
   assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane open")), true);
+});
+
+test("automatic ensure uses a safe outer-right split without layout staging", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-safe-auto-split-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const panes = [{ workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" }];
+  const mocked = mockRun({ panes, layout: {
+    area: { x: 0, y: 0, width: 100, height: 20 },
+    focused_pane_id: "w1:p1",
+    panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 100, height: 20 } }],
+  } });
+  const result = await openHerdrPanel({
+    entrypoint: "git-tui",
+    openMode: "ensure",
+    environment: env,
+    run: mocked.run,
+    resize: async () => {},
+    writeOutput: () => {},
+  });
+  assert.equal(result.paneId, "w1:p9");
+  const opened = mocked.calls.find((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open");
+  assert.ok(opened.includes("--target-pane"));
+  assert.equal(opened[opened.indexOf("--target-pane") + 1], "w1:p1");
+  assert.equal(mocked.calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
 });
 
 test("legacy rails are replaced at the right edge using the tab-focused source cwd", async (t) => {
@@ -612,6 +821,69 @@ test("partial staging failure replays the complete nested content layout", async
     ["w1:p2", "down", "w1:p1"],
     ["w1:p4", "down", "w1:p3"],
   ]);
+});
+
+test("every journaled layout mutation can be interrupted and recovered", async (t) => {
+  for (const failAt of [1, 2, 3, 4]) {
+    await t.test(`after mutation ${failAt}`, async (subtest) => {
+      const root = await temporaryRoot(subtest, `gitrail-layout-interrupt-${failAt}-`);
+      const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+      const panes = [
+        { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-p1", cwd: "/repo", focused: true },
+        { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", terminal_id: "term-p2", cwd: "/repo" },
+      ];
+      const layout = {
+        area: { x: 0, y: 0, width: 120, height: 40 },
+        focused_pane_id: "w1:p1",
+        panes: [
+          { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
+          { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
+        ],
+      };
+      const recoveryTree = {
+        type: "split",
+        direction: "down",
+        ratio: 0.5,
+        first: { type: "pane", paneId: "w1:p1" },
+        second: { type: "pane", paneId: "w1:p2" },
+      };
+      const journalPath = path.join(root, "herdr-gitrail", "layout-transactions", "w1-w1_t1.json");
+      let mutations = 0;
+      let interrupted = false;
+      const mocked = mockRun({
+        panes,
+        layout,
+        afterMutation: async (args) => {
+          mutations += 1;
+          if (interrupted) return;
+          const journal = JSON.parse(await fs.readFile(journalPath, "utf8"));
+          assert.ok(journal.pendingOperation, `mutation ${mutations} did not have a durable intent`);
+          if (args[0] === "pane" && args[1] === "move") {
+            assert.deepEqual(journal.pendingOperation.args, args.slice(2));
+          } else {
+            assert.equal(journal.pendingOperation.kind, "open-rail");
+          }
+          if (mutations === failAt) {
+            interrupted = true;
+            throw new Error(`simulated interruption after mutation ${failAt}`);
+          }
+        },
+      });
+      await assert.rejects(openHerdrPanel({
+        entrypoint: "git-tui",
+        environment: env,
+        run: mocked.run,
+        resize: async () => {},
+        exportLayout: async () => recoveryTree,
+        writeOutput: () => {},
+      }), new RegExp(`simulated interruption after mutation ${failAt}`));
+      assert.ok(mutations >= failAt);
+      assert.equal(mocked.paneTabs.get("w1:p1"), "w1:t1");
+      assert.equal(mocked.paneTabs.get("w1:p2"), "w1:t1");
+      assert.equal(mocked.openedPane(), null);
+      await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
+    });
+  }
 });
 
 test("manual replace retargets an existing rail while ensure adopts it", async (t) => {

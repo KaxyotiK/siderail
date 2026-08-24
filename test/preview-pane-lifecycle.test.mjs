@@ -3,8 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { paneStatePath, readPaneState, writePaneState } from "../src/herdr-pane-state.mjs";
 import { openOwnedPreview, previewPaneStatePath } from "../src/preview-pane-lifecycle.mjs";
+
+const PROJECT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-lifecycle-"));
@@ -27,7 +30,7 @@ function mockRunner({ staleLabel = "GitRail Preview", staleWorkspace = "w1", arg
     }
     if (args[0] === "tab" && args[1] === "rename" && failRename) throw new Error("rename failed");
     if (args[0] === "pane" && args[1] === "process-info") {
-      return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{ argv }] } } }) };
+      return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{ argv, cwd: PROJECT_ROOT }] } } }) };
     }
     return { stdout: JSON.stringify({ result: { type: "ok" } }) };
   };
@@ -70,6 +73,7 @@ for (const [name, options] of [
   ["reused user pane id", { staleLabel: "shell" }],
   ["wrong workspace", { staleWorkspace: "w2" }],
   ["unrelated process", { argv: ["node", "server.mjs"] }],
+  ["same-named script from another checkout", { argv: ["node", "/tmp/unrelated/scripts/file-preview.mjs"] }],
 ]) {
   test(`${name} is never closed from stale preview state`, async (t) => {
     const { environment } = await fixture(t);

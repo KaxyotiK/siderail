@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
-import { autoOpenEnabled, autoOpenHerdrTabs, collectTabTargets, runBoundedSweep, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
+import { autoOpenEnabled, autoOpenHerdrTabs, collectTabTargets, openAutoOpenTarget, runBoundedSweep, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -107,6 +107,64 @@ test("bounded sweep does not dequeue work after its global deadline", async () =
   }, { deadlineMs: 35_000, now: () => clock });
   assert.equal(summary.opened.length, 1);
   assert.equal(summary.deadlineCancelled.length, 7);
+});
+
+test("bounded sweep cancels every target when the deadline has already expired", async () => {
+  const targets = Array.from({ length: 5 }, (_value, index) => ({ tabId: `t${index}` }));
+  let calls = 0;
+  const summary = await runBoundedSweep(targets, async () => { calls += 1; }, {
+    deadlineAt: 35_000,
+    now: () => 35_000,
+  });
+  assert.equal(calls, 0);
+  assert.deepEqual(summary.deadlineCancelled, targets.map((target) => target.tabId));
+});
+
+test("bounded sweep reports both active and queued jobs as deadline-cancelled", async () => {
+  const targets = Array.from({ length: 8 }, (_value, index) => ({ tabId: `t${index}` }));
+  let clock = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const started = [];
+  const sweep = runBoundedSweep(targets, async (target) => {
+    started.push(target.tabId);
+    await gate;
+    const error = new Error("hung child reached the global deadline");
+    error.kind = "timeout";
+    throw error;
+  }, { deadlineAt: 35_000, now: () => clock });
+  while (started.length < 4) await new Promise((resolve) => setImmediate(resolve));
+  clock = 35_000;
+  release();
+  const summary = await sweep;
+  assert.deepEqual(started, ["t0", "t1", "t2", "t3"]);
+  assert.deepEqual([...summary.deadlineCancelled].sort(), targets.map((target) => target.tabId).sort());
+  assert.deepEqual(summary.opened, []);
+});
+
+test("auto-open target gives its process group the remaining deadline and recovery grace", async (t) => {
+  const { environment } = hermeticEnvironment(t);
+  let clock = 10_000;
+  let shellOptions;
+  const opened = await openAutoOpenTarget({ cwd: "/repo", workspaceId: "w1", tabId: "t1", paneId: "p1" }, {
+    herdr: "herdr-test",
+    pluginRoot: "/plugin",
+    environment,
+    timeoutMs: 25_000,
+    now: () => clock,
+    run: async (command, _args, options) => {
+      if (command === "git") {
+        clock = 15_000;
+        return { stdout: "/repo\n" };
+      }
+      shellOptions = options;
+      return { stdout: "" };
+    },
+  });
+  assert.equal(opened, true);
+  assert.equal(shellOptions.timeoutMs, 20_000);
+  assert.equal(shellOptions.killGraceMs, 5_000);
+  assert.equal(shellOptions.waitForTermination, true);
 });
 
 test("the global auto-open deadline starts before Herdr discovery", async (t) => {

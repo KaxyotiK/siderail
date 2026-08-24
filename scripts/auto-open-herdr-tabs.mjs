@@ -83,7 +83,7 @@ export function autoOpenEnabled(environment = process.env) {
   return loadConfig(environment).config.herdr.autoOpen;
 }
 
-async function openTarget(target, {
+export async function openAutoOpenTarget(target, {
   herdr,
   pluginRoot,
   environment,
@@ -207,7 +207,7 @@ export async function autoOpenHerdrTabs(environment = process.env, dependencies 
 
   const summary = await runBoundedSweep(
     targets,
-    dependencies.openTarget || ((target, timeoutMs) => openTarget(target, {
+    dependencies.openTarget || ((target, timeoutMs) => openAutoOpenTarget(target, {
       herdr,
       pluginRoot,
       environment,
@@ -220,14 +220,16 @@ export async function autoOpenHerdrTabs(environment = process.env, dependencies 
   if (summary.failed.length || summary.deadlineCancelled.length) {
     const failed = summary.failed.map((item) => `${item.tabId}: ${item.message}`).join("; ");
     const cancelled = summary.deadlineCancelled.join(", ");
-    throw new Error(`GitRail auto-open partial result (opened ${summary.opened.length}, skipped ${summary.skipped.length})${failed ? `; failed ${failed}` : ""}${cancelled ? `; deadline-cancelled ${cancelled}` : ""}`);
+    console.error(`GitRail auto-open partial result (opened ${summary.opened.length}, skipped ${summary.skipped.length})${failed ? `; failed ${failed}` : ""}${cancelled ? `; deadline-cancelled ${cancelled}` : ""}`);
   }
   return summary;
 }
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
-  autoOpenHerdrTabs().catch((error) => {
+  autoOpenHerdrTabs().then((summary) => {
+    if (summary?.failed?.length || summary?.deadlineCancelled?.length) process.exitCode = 1;
+  }).catch((error) => {
     console.error(sanitizeTerminalText(error.message));
     process.exitCode = 1;
   });

@@ -4,6 +4,10 @@ import {
   readPaneState,
   writePaneState,
 } from "./herdr-pane-state.mjs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const PLUGIN_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 function parseJson(value) {
   return JSON.parse(value || "{}");
@@ -22,7 +26,21 @@ export function previewPaneStatePath({ workspaceId, sourceTabId, environment = p
   return paneStatePath({ workspaceId, tabId: sourceTabId, entrypoint: "file-preview", environment });
 }
 
-async function verifiedPreviewPane({ run, herdr, paneId, terminalId, workspaceId, cwd }) {
+function processRunsOwnedPreview(processInfo, pluginRoot) {
+  const argv = Array.isArray(processInfo?.argv) ? processInfo.argv.map(String) : [];
+  const scriptArgument = argv.find((argument) => (
+    argument === "scripts/file-preview.mjs" || argument.endsWith("/scripts/file-preview.mjs")
+  ));
+  if (!scriptArgument) return false;
+  const processCwd = processInfo?.cwd ? path.resolve(String(processInfo.cwd)) : "";
+  if (!path.isAbsolute(scriptArgument) && !processCwd) return false;
+  const scriptPath = path.isAbsolute(scriptArgument)
+    ? path.resolve(scriptArgument)
+    : path.resolve(processCwd, scriptArgument);
+  return scriptPath === path.join(path.resolve(pluginRoot), "scripts/file-preview.mjs");
+}
+
+async function verifiedPreviewPane({ run, herdr, paneId, terminalId, workspaceId, cwd, pluginRoot }) {
   if (!paneId || !terminalId) return false;
   const paneResult = await run(herdr, ["pane", "get", paneId], {
     cwd,
@@ -38,8 +56,7 @@ async function verifiedPreviewPane({ run, herdr, paneId, terminalId, workspaceId
     maxOutputBytes: 256 * 1_024,
   });
   return processArgv(processResult.stdout).some((processInfo) => (
-    Array.isArray(processInfo.argv)
-    && processInfo.argv.some((argument) => /(?:^|\/)scripts\/file-preview\.mjs$/.test(String(argument)))
+    processRunsOwnedPreview(processInfo, pluginRoot)
   ));
 }
 
@@ -52,6 +69,7 @@ export async function openOwnedPreview({
   sourceTabId,
   environment = process.env,
   tabName = "",
+  pluginRoot = PLUGIN_ROOT,
 }) {
   const statePath = workspaceId && sourceTabId
     ? previewPaneStatePath({ workspaceId, sourceTabId, environment })
@@ -87,6 +105,7 @@ export async function openOwnedPreview({
         terminalId: staleState.terminalId,
         workspaceId,
         cwd,
+        pluginRoot,
       })) {
         await run(herdr, ["plugin", "pane", "close", staleState.paneId], {
           cwd,

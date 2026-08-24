@@ -7,6 +7,7 @@ test("20k-path files model materializes only the viewport at supported widths", 
   for (const width of [36, 52, 100]) {
     const cache = new FilesViewModelCache();
     const rows = cache.rows(`${width}`, files, { mode: width > 88 ? "tree" : "grouped", scope: "files" });
+    const selectablePaths = rows.filter((row) => row.kind === "file").map((row) => row.file.path);
     const first = cache.materialize(rows, 0, 30, (row) => row.file?.path || row.folder || row.path);
     const middle = cache.materialize(rows, Math.floor(rows.length / 2), 30, (row) => row.file?.path || row.folder || row.path);
     const final = cache.materialize(rows, rows.length - 30, 30, (row) => row.file?.path || row.folder || row.path);
@@ -15,10 +16,21 @@ test("20k-path files model materializes only the viewport at supported widths", 
     assert.equal(final.length, 30);
     assert.equal(cache.instrumentation.materializedRows, 90);
     assert.equal(cache.instrumentation.regenerations, 1);
+    assert.equal(selectablePaths.length, files.length);
+    assert.ok(selectablePaths.includes(files[0].path));
+    assert.ok(selectablePaths.includes(files[Math.floor(files.length / 2)].path));
+    assert.ok(selectablePaths.includes(files.at(-1).path));
     cache.rows(`${width}`, files, { mode: width > 88 ? "tree" : "grouped", scope: "files" });
     assert.equal(cache.instrumentation.regenerations, 1);
     cache.invalidate();
     cache.rows(`${width}`, files, { mode: width > 88 ? "tree" : "grouped", scope: "files" });
     assert.equal(cache.instrumentation.regenerations, 2);
+    cache.rows(`${width}:search`, files.slice(0, 20), { mode: width > 88 ? "tree" : "grouped", scope: "files:search" });
+    cache.rows(`${width}:resize`, files, { mode: "tree", scope: "files" });
+    cache.rows(`${width}:view`, files, { mode: "grouped", scope: "files" });
+    cache.rows(`${width}:collapse`, files, { mode: "tree", collapsed: new Set(["folder-000"]), scope: "files" });
+    cache.invalidate();
+    cache.rows(`${width}:refresh`, files, { mode: width > 88 ? "tree" : "grouped", scope: "files" });
+    assert.equal(cache.instrumentation.regenerations, 7);
   }
 });

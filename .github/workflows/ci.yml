@@ -80,8 +80,12 @@ jobs:
           npm run artifact:verify
           npm run check
 
-  live-herdr-ubuntu:
-    runs-on: ubuntu-24.04
+  live-herdr:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -93,33 +97,63 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - name: Install pinned Herdr and Glow binaries
-        env:
-          HERDR_SHA256: 976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4
-          GLOW_SHA256: 6063d4f2af8a82a5f4bba0831e165de9381660aa8b41df4816d0106a265b07d5
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/gitrail-live-bin" "$RUNNER_TEMP/gitrail-live-glow"
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)
+              herdr_asset=herdr-linux-x86_64
+              herdr_sha=976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4
+              glow_asset=glow_2.1.2_Linux_x86_64.tar.gz
+              glow_sha=6063d4f2af8a82a5f4bba0831e165de9381660aa8b41df4816d0106a265b07d5
+              ;;
+            Linux-aarch64)
+              herdr_asset=herdr-linux-aarch64
+              herdr_sha=f55610658e1c2e0d2aaef730b4b2ab885f7f8ba00285ab372bfb14f2e3d5b40d
+              glow_asset=glow_2.1.2_Linux_arm64.tar.gz
+              glow_sha=cf63abebcb50b72909db965d78290e7cecbf17a900e84705dc84addbb6952099
+              ;;
+            Darwin-arm64)
+              herdr_asset=herdr-macos-aarch64
+              herdr_sha=a5d4f4d504d8b309c91f811050559300faba31258425f53c50852fc96f6ae574
+              glow_asset=glow_2.1.2_Darwin_arm64.tar.gz
+              glow_sha=6f7abfb47de69fbf7b0e67d2fa019cc554916e8b6694f9877212be89fc7ebb8c
+              ;;
+            Darwin-x86_64)
+              herdr_asset=herdr-macos-x86_64
+              herdr_sha=ab50262c8190cd7aa9056d249d255c08c328c3e8716de9cfa29db4f131b8e2c1
+              glow_asset=glow_2.1.2_Darwin_x86_64.tar.gz
+              glow_sha=8cbc78a4947c68e804edf34d36070153fcc5d424873152da83ad6be14fa88ed3
+              ;;
+            *) echo "unsupported live runner architecture" >&2; exit 1 ;;
+          esac
           curl --fail --show-error --silent --location \
-            https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-linux-x86_64 \
-            --output "$RUNNER_TEMP/herdr-linux-x86_64"
-          printf '%s  %s\n' "$HERDR_SHA256" "$RUNNER_TEMP/herdr-linux-x86_64" | sha256sum --check
-          install -m 755 "$RUNNER_TEMP/herdr-linux-x86_64" "$RUNNER_TEMP/gitrail-live-bin/herdr"
+            "https://github.com/herdrdev/herdr/releases/download/v0.8.2/$herdr_asset" \
+            --output "$RUNNER_TEMP/$herdr_asset"
+          node -e 'const fs=require("node:fs"),c=require("node:crypto");const actual=c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex");if(actual!==process.argv[2])throw new Error(`checksum mismatch: ${actual}`)' \
+            "$RUNNER_TEMP/$herdr_asset" "$herdr_sha"
+          install -m 755 "$RUNNER_TEMP/$herdr_asset" "$RUNNER_TEMP/gitrail-live-bin/herdr"
           curl --fail --show-error --silent --location \
-            https://github.com/charmbracelet/glow/releases/download/v2.1.2/glow_2.1.2_Linux_x86_64.tar.gz \
+            "https://github.com/charmbracelet/glow/releases/download/v2.1.2/$glow_asset" \
             --output "$RUNNER_TEMP/glow.tar.gz"
-          printf '%s  %s\n' "$GLOW_SHA256" "$RUNNER_TEMP/glow.tar.gz" | sha256sum --check
+          node -e 'const fs=require("node:fs"),c=require("node:crypto");const actual=c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex");if(actual!==process.argv[2])throw new Error(`checksum mismatch: ${actual}`)' \
+            "$RUNNER_TEMP/glow.tar.gz" "$glow_sha"
           tar -xzf "$RUNNER_TEMP/glow.tar.gz" -C "$RUNNER_TEMP/gitrail-live-glow"
-          install -m 755 "$RUNNER_TEMP/gitrail-live-glow/glow_2.1.2_Linux_x86_64/glow" "$RUNNER_TEMP/gitrail-live-bin/glow"
-          ln -s /usr/bin/git "$RUNNER_TEMP/gitrail-live-bin/git"
+          glow_directory=${glow_asset%.tar.gz}
+          install -m 755 "$RUNNER_TEMP/gitrail-live-glow/$glow_directory/glow" "$RUNNER_TEMP/gitrail-live-bin/glow"
+          ln -s "$(command -v git)" "$RUNNER_TEMP/gitrail-live-bin/git"
           ln -s "$(command -v node)" "$RUNNER_TEMP/gitrail-live-bin/node"
           ln -s /bin/bash "$RUNNER_TEMP/gitrail-live-bin/bash"
           "$RUNNER_TEMP/gitrail-live-bin/herdr" --version
           "$RUNNER_TEMP/gitrail-live-bin/glow" --version
       - name: Run clean-install live Herdr walkthrough and unlink proof
+        shell: bash
         env:
           HERDR_SESSION: gitrail-release-ci
           XDG_CONFIG_HOME: ${{ runner.temp }}/gitrail-live-config
           XDG_CACHE_HOME: ${{ runner.temp }}/gitrail-live-cache
+          XDG_STATE_HOME: ${{ runner.temp }}/gitrail-live-state
           HERDR_BIN_PATH: ${{ runner.temp }}/gitrail-live-bin/herdr
           GIT_RAIL_LIVE_GIT_SHIM: ${{ runner.temp }}/gitrail-live-bin/git
           GIT_RAIL_POLL_INTERVAL_MS: 1000
@@ -169,6 +203,10 @@ jobs:
           "$HERDR_BIN_PATH" session stop "$HERDR_SESSION" --json
           wait "$server_pid"
           server_pid=""
+
+          if [[ "$RUNNER_OS" != "Linux" ]]; then
+            exit 0
+          fi
 
           export HERDR_SESSION=gitrail-migration-ci
           export XDG_CONFIG_HOME="$HOME/.config"

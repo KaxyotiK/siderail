@@ -55,6 +55,20 @@ for (const width of [25, 36, 52, 100]) {
   });
 }
 
+test("demo snapshot ignores ambient user configuration and GitRail overrides", async (t) => {
+  const { environment } = hermeticEnvironment(t, {
+    GIT_RAIL_PANEL_WIDTH: "99",
+    GIT_RAIL_POLL_INTERVAL_MS: "invalid",
+  });
+  await writeUserConfig(environment, { version: 1, unexpected: "ambient" });
+  const { stdout } = await exec(process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--snapshot", "--width", "52", "--height", "32",
+  ], { env: environment });
+  const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.doesNotMatch(plain, /config\.json|unknown|invalid polling/i);
+  assert.match(plain, /gitrail-fixture/);
+});
+
 for (const width of [25, 100]) {
   test(`Files view puts repository-root files after folders at ${width} columns`, async (t) => {
     const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
@@ -83,6 +97,33 @@ test("production Files repaint materializes only the 20k-path viewport", async (
     assert.equal(metrics.regenerations, 1);
     assert.ok(metrics.materializedRows <= 120, `${width}-column repaint materialized ${metrics.materializedRows} rows`);
   }
+});
+
+test("keyboard navigation reaches the first, middle, and final 20k-path Files rows", async (t) => {
+  const child = spawnHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs",
+    "--demo",
+    "--files",
+    "--width", "52",
+    "--height", "40",
+    "--viewport-fixture-count", "20000",
+  ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] }, { NODE_ENV: "test" });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => stdout.includes("file-00000.txt"), "first Files row did not render");
+  child.stdin.write("j");
+  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "first Files row was not keyboard selected");
+  child.stdin.write("j".repeat(10_000));
+  await waitFor(() => stdout.includes("file-00050.txt"), "middle Files row was not revealed");
+  child.stdin.write("j".repeat(20_000));
+  await waitFor(() => stdout.includes("file-19999.txt"), "final Files row was not revealed");
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
 });
 
 test("Changes search includes commit history summaries", async (t) => {

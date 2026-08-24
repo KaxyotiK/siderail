@@ -84,10 +84,11 @@ operations.
 - [x] **L1** Add `.gitignore`
 - [x] **L2** Rewrite the `CHANGELOG.md` 0.1.0 entry as consumable release notes
 - [x] **L2a** Define the candidate-SHA install / upgrade / uninstall matrix and real-Herdr walkthrough in `docs/RELEASING.md`
-- [ ] **L2b** Run the matrix and walkthrough, complete all gates, then tag `v0.1.0` **(D6 accepted)**
+- [ ] **L2b** Run the candidate-SHA matrix and walkthrough and complete every pre-tag gate **(D6 accepted)**
+- [ ] **L2c** After L2b passes, create annotated `v0.1.0` only under a separate explicit tagging authorization
 - [x] **L3** Prune stale local branches (10 local, all merged)
 - [x] **L4** Add pinned lint rules for discarded promises and unused production exports; remove four unused parser helpers and make two active helpers private **(D2 accepted)**
-- [ ] **L5** CI: Node 22 + 24 matrix; coverage threshold at the current 88% line / 78% branch; demo/snapshot job; dependency audit
+- [ ] **L5** CI: Node 22 + 24 matrix; enforced 95% line / 86% branch / 95% function coverage floors; demo/snapshot job; dependency audit
 - [x] **L6** Capture the 36 / 52 / 100-column screenshots `CONTRIBUTING.md` already mandates
 - [x] **L7** Remove nonexistent private-contact and response-time promises from `SECURITY.md`; add a reporting channel only before external distribution
 - [x] **P1** Rewrite `PRODUCTION-READINESS.md` as a checklist where each line cites the test or CI job that proves it
@@ -196,8 +197,10 @@ and the stated acceptance evidence still passes.
 - Extract preview-pane lifecycle work from `git-rail.mjs` into a testable module
   that accepts the Herdr runner and pane-state store as dependencies.
 - For a cached stale id, call `pane get`, require the recorded `terminal_id`,
-  `GitRail Preview` label, and expected workspace, then call `pane process-info` and require an argv entry
-  ending in `scripts/file-preview.mjs`.
+  `GitRail Preview` label, and expected workspace, then call `pane process-info`.
+  Resolve its script argument against the reported process cwd and require the
+  exact `scripts/file-preview.mjs` path under the active plugin checkout; a
+  same-named script in another checkout is not ownership proof.
 - Close only a verified pane, using `plugin pane close`. If the pane is missing,
   discard the stale state; if it exists but ownership is not proven, leave it
   untouched and continue opening the new preview.
@@ -448,7 +451,7 @@ and the stated acceptance evidence still passes.
   creates `.git-rail.json` inside its temporary Git fixture and proves GitRail
   ignores it even when Git tracks it.
 
-**L2/L2a/L2b — release notes, release contract, and first tag** *(D6 accepted)*
+**L2/L2a/L2b/L2c — release notes, release contract, gates, and first tag** *(D6 accepted)*
 
 - Rewrite the 0.1.0 changelog entry under Highlights, Security, Fixed,
   Configuration, and Installation/Upgrade. Describe user-visible behavior and
@@ -469,8 +472,8 @@ and the stated acceptance evidence still passes.
   manifest-referenced runtime file plus the uninstall entrypoint is present,
   removed schema/root-repository-config artifacts are absent, and no untracked
   local file or `node_modules/` content enters the install artifact.
-- Define live-Herdr cells on macOS 15 and Ubuntu 24.04 using
-  Herdr 0.8.0 or newer and Node 22 or newer. Each clean-install walkthrough must
+- Define live-Herdr cells on macOS 15 and Ubuntu 24.04 using an exact Herdr
+  0.8.x release and Node 22 or 24. Each clean-install walkthrough must
   observe: one unfocused auto-open rail in a Git tab; no rail in a non-Git or
   preview tab; manual open/toggle; Staged, Unstaged, and Untracked separation;
   Raw, Diff, and action-3 Rendered Markdown; per-source-tab preview replacement;
@@ -488,9 +491,13 @@ and the stated acceptance evidence still passes.
   commit, run every automated and live cell against that SHA and store CI links,
   environment versions, commands, and pass/fail results in a versioned evidence
   manifest outside the worktree. Every required record names the full candidate
-  SHA. Verification fails on missing/mismatched cells, and the annotated tag
-  embeds the manifest SHA-256 plus durable evidence references; validation must
-  not dirty the candidate.
+  SHA. CI evidence is recorded only after querying GitHub Actions and confirming
+  a successful run at that SHA. Local and live evidence names an existing log
+  file and records its SHA-256; verification re-hashes it and rejects missing or
+  changed logs. Supported platform/Node/Herdr versions are validated structurally.
+  Verification fails on missing, failed, stale, mismatched, or unsupported cells,
+  and the annotated tag embeds the manifest SHA-256 plus durable evidence
+  references; validation must not dirty the candidate.
 - If code, manifest, dependencies, release inputs, or packaged artifacts change,
   invalidate all affected cells and rerun them. Verify a clean worktree,
   version/config agreement, artifact contents, and release-note links; only then
@@ -524,8 +531,8 @@ and the stated acceptance evidence still passes.
 - Pin the OS jobs to macOS 15 and Ubuntu 24.04, expand each to a Node 22/24
   matrix, and run both
   `npm ci --ignore-scripts` and `npm run check` on every cell.
-- Add enforced initial floors of 88% lines, 78% branches, and 86% functions;
-  raise them when preview, refresh, and watcher lifecycle tests land.
+- Enforce floors of 95% lines, 86% branches, and 95% functions, rounded down
+  from the candidate's measured 95.75% / 86.49% / 95.51% coverage.
 - Add a deterministic demo/snapshot job, an exact-archive job, the
   poisoned-environment job from B2b, and a read-only dependency audit. Because
   this private repository has no GitHub Advanced Security dependency-review API,
@@ -591,8 +598,10 @@ criteria. Keep the worktree testable after each numbered group.
    L2a, L7, and P1 from verified behavior, capture L6, then freeze the release
    candidate with all release inputs present.
 8. Run the L2b install/development-migration/uninstall matrix and real-Herdr
-   walkthrough on that exact commit. Tag only if all evidence remains current
-   and the worktree is clean.
+   walkthrough on that exact commit. Mark the pre-tag gate complete only if all
+   evidence remains current and the worktree is clean. Under a separate explicit
+   authorization, L2c may then create the annotated tag without moving an
+   existing tag.
 
 Phase 1 exits only when all B/H items in that phase pass their unit,
 integration, negative, and recovery witnesses. Phase 2 exits only when its

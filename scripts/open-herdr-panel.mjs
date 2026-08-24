@@ -757,12 +757,13 @@ export async function recoverLayoutTransactions({
   herdr = environment.HERDR_BIN_PATH || "herdr",
   workspaceId = "",
   now = () => performance.now(),
+  acquireLock = acquirePaneStateLock,
 } = {}) {
   const directory = layoutTransactionDirectory(environment);
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   let release;
   try {
-    release = await acquirePaneStateLock(path.join(directory, "recovery"), {
+    release = await acquireLock(path.join(directory, "recovery"), {
       timeoutMs: 1_000,
       staleMs: 20_000,
       ownerGraceMs: 500,
@@ -947,6 +948,9 @@ async function rebuildWithOuterRail({
     let recoveryError = null;
     try {
       const recoveryBudget = createRecoveryBudget(15_000);
+      if (!railPaneId && transaction.pendingOperation?.kind === "open-rail") {
+        await cleanupInterruptedRailOpen({ run, herdr, transaction, budget: recoveryBudget });
+      }
       if (railPaneId && !existingRail) {
         const closed = await closeOwnedPane(run, herdr, railPaneId, {
           quiet: true,

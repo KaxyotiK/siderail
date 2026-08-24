@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
@@ -48,7 +49,9 @@ const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
 const forcedWidth = numberArg("--width");
 const forcedHeight = numberArg("--height");
 const initialSearch = stringArg("--search");
-const viewportFixtureCount = snapshotMode ? numberArg("--viewport-fixture-count") : null;
+const viewportFixtureCount = snapshotMode || process.env.NODE_ENV === "test"
+  ? numberArg("--viewport-fixture-count")
+  : null;
 const snapshotFrameCount = Math.max(1, snapshotMode ? numberArg("--snapshot-frames") || 1 : 1);
 const PAGE_SIZE = 100;
 const NARROW_RAIL_MAX = 88;
@@ -82,6 +85,17 @@ const context = parseContext();
 const initialCwd = process.env.GIT_RAIL_REPO_ROOT || context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
 let sourcePaneId = process.env.GIT_RAIL_SOURCE_PANE_ID || context.focused_pane_id || "";
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
+let snapshotEnvironmentRoot = "";
+if (snapshotMode && demoMode) {
+  snapshotEnvironmentRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-snapshot-env-"));
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("GIT_RAIL_")) delete process.env[key];
+  }
+  process.env.HOME = path.join(snapshotEnvironmentRoot, "home");
+  process.env.XDG_CONFIG_HOME = path.join(snapshotEnvironmentRoot, "config");
+  process.env.XDG_CACHE_HOME = path.join(snapshotEnvironmentRoot, "cache");
+  process.env.XDG_STATE_HOME = path.join(snapshotEnvironmentRoot, "state");
+}
 let currentProviderCwd = initialCwd;
 let currentWorkspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
 let currentSourceTabId = process.env.GIT_RAIL_SOURCE_TAB_ID || process.env.HERDR_TAB_ID || context.tab_id || "";
@@ -831,6 +845,7 @@ function cleanup() {
   cleanupComplete = true;
   stopInvalidation(); clearTimeout(renderTimer); clearTimeout(statusTimer);
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
+  if (snapshotEnvironmentRoot) { const root = snapshotEnvironmentRoot; snapshotEnvironmentRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
 function quit() { cleanup(); process.exit(0); }

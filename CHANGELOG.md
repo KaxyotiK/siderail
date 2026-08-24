@@ -54,7 +54,9 @@ intentional configuration changes documented here.
 
 ### Installation and upgrade
 
-- Requires Node.js 22+, Git 2.35+, and Herdr 0.8.0+ on macOS or Linux.
+- Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS 15 and Ubuntu
+  24.04. Newer Node and Herdr versions are accepted by the launcher but are not
+  part of the 0.1.0 release matrix.
 - Routes all manifest entrypoints through a launcher that resolves an absolute
   Node executable and rejects unsupported versions before layout or terminal
   mutation.

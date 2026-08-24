@@ -18,3 +18,17 @@ test("documentation states the eventual refresh and user-only configuration cont
   assert.match(readme, /Untracked is a separate section/);
   await assert.rejects(() => fs.access("schema/v1/git-rail.schema.json"), (error) => error.code === "ENOENT");
 });
+
+test("public installation and release evidence instructions enforce the candidate gates", async () => {
+  const readme = await fs.readFile("README.md", "utf8");
+  const releasing = await fs.readFile("docs/RELEASING.md", "utf8");
+  const install = readme.slice(readme.indexOf("## Install and launch"), readme.indexOf("## Configuration"));
+  assert.ok(install.indexOf("npm ci --ignore-scripts") < install.indexOf("herdr plugin link ."));
+  assert.ok(install.indexOf("npm run check") < install.indexOf("herdr plugin link ."));
+  assert.match(readme, /Herdr 0\.8\.x/);
+  assert.match(readme, /macOS 15 or Ubuntu 24\.04/);
+  assert.doesNotMatch(releasing, /release:evidence -- record(?:\s|$)/);
+  assert.match(releasing, /record-ci/);
+  assert.match(releasing, /record-file/);
+  assert.match(releasing, /separate explicit\s+authorization/);
+});

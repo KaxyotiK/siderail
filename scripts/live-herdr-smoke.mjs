@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +17,7 @@ const previewLabel = "GitRail Preview";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-live-herdr-"));
 const nonGitRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-live-nongit-"));
-const commandEnvironment = { ...process.env };
+const commandEnvironment = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };
 
 for (const key of [
   "HERDR_SOCKET_PATH",
@@ -94,6 +95,42 @@ function write(relativePath, contents) {
 
 function append(relativePath, contents) {
   fs.appendFileSync(path.join(fixtureRoot, relativePath), contents);
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function repositoryInvariant() {
+  const indexPathValue = git(["rev-parse", "--git-path", "index"]).stdout.trim();
+  const indexPath = path.isAbsolute(indexPathValue) ? indexPathValue : path.join(fixtureRoot, indexPathValue);
+  const indexStat = fs.statSync(indexPath, { bigint: true });
+  const listed = git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"]).stdout
+    .split("\0").filter(Boolean).sort();
+  const worktree = listed.map((relativePath) => {
+    const absolutePath = path.join(fixtureRoot, relativePath);
+    let stat;
+    try { stat = fs.lstatSync(absolutePath, { bigint: true }); }
+    catch (error) {
+      if (error.code === "ENOENT") return { path: relativePath, missing: true };
+      throw error;
+    }
+    const bytes = stat.isSymbolicLink()
+      ? Buffer.from(fs.readlinkSync(absolutePath))
+      : stat.isFile() ? fs.readFileSync(absolutePath) : Buffer.alloc(0);
+    return { path: relativePath, mode: Number(stat.mode), sha256: sha256(bytes) };
+  });
+  return {
+    head: git(["rev-parse", "HEAD"]).stdout,
+    refs: git(["for-each-ref", "--format=%(refname)%00%(objectname)%00"]).stdout,
+    status: git(["status", "--porcelain=v2", "-z", "--untracked-files=all"]).stdout,
+    index: {
+      size: indexStat.size.toString(),
+      mtimeNs: indexStat.mtimeNs.toString(),
+      sha256: sha256(fs.readFileSync(indexPath)),
+    },
+    worktree,
+  };
 }
 
 function delay(milliseconds) {
@@ -208,6 +245,7 @@ function initializeFixture() {
 
 async function main() {
   initializeFixture();
+  const beforeInspection = repositoryInvariant();
   const observations = [];
 
   const beforeGitEvents = pluginLogCount();
@@ -289,6 +327,9 @@ async function main() {
   assertPaneExists(previewA2.pane_id);
   assertPaneExists(previewB1.pane_id);
   observations.push("per-source-tab preview replacement");
+
+  assert.deepEqual(repositoryInvariant(), beforeInspection);
+  observations.push("inspection preserved HEAD, refs, status, index bytes/mtime, and worktree bytes");
 
   focusTab(sourceA.tabId);
   append("modified.md", "manual refresh marker\n");
