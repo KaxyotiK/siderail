@@ -352,8 +352,16 @@ async function main() {
 
   focusTab(sourceA.tabId);
   append("modified.md", "manual refresh marker\n");
-  herdr(["pane", "send-text", rebuiltRailA.pane_id, "r"]);
-  await eventually("manual refresh confirmation", () => paneText(rebuiltRailA.pane_id).includes("Git state refreshed"));
+  let nextRefreshAttempt = 0;
+  await eventually("manual refresh confirmation", () => {
+    const text = paneText(rebuiltRailA.pane_id);
+    if (text.includes("Git state refreshed")) return text;
+    if (Date.now() >= nextRefreshAttempt) {
+      herdr(["pane", "send-keys", rebuiltRailA.pane_id, "r"]);
+      nextRefreshAttempt = Date.now() + 1_000;
+    }
+    return "";
+  });
 
   git(["switch", "-c", "live-refresh"]);
   await eventually("watcher or recovery-poll branch convergence", () => paneText(rebuiltRailA.pane_id).includes("live-refresh"), { timeout: 20_000 });
