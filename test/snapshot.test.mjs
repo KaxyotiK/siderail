@@ -66,6 +66,25 @@ for (const width of [25, 100]) {
   });
 }
 
+test("production Files repaint materializes only the 20k-path viewport", async (t) => {
+  for (const width of [36, 52, 100]) {
+    const { stderr } = await execHermetic(t, process.execPath, [
+      "scripts/git-rail.mjs",
+      "--demo",
+      "--snapshot",
+      "--files",
+      "--width", String(width),
+      "--height", "40",
+      "--viewport-fixture-count", "20000",
+      "--snapshot-frames", "3",
+      "--viewport-metrics",
+    ], { maxBuffer: 4 * 1024 * 1024 });
+    const metrics = JSON.parse(stderr.trim().split("\n").at(-1));
+    assert.equal(metrics.regenerations, 1);
+    assert.ok(metrics.materializedRows <= 120, `${width}-column repaint materialized ${metrics.materializedRows} rows`);
+  }
+});
+
 test("Changes search includes commit history summaries", async (t) => {
   const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "descriptor-aware", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");

@@ -54,3 +54,29 @@ test("timeouts terminate descendants in the command process group", async (t) =>
   await new Promise((resolve) => setTimeout(resolve, 500));
   await assert.rejects(() => fs.access(marker), (error) => error.code === "ENOENT");
 });
+
+test("abort signals terminate and await the command process group", async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-process-abort-"));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const marker = path.join(directory, "survived");
+  const descendant = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'alive'), 300)`;
+  const parent = [
+    "const { spawn } = require('node:child_process')",
+    `const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], { stdio: ['ignore', 1, 2] })`,
+    "child.unref()",
+    "setTimeout(() => {}, 5000)",
+  ].join(";");
+  const controller = new globalThis.AbortController();
+  setTimeout(() => controller.abort(), 50);
+  await assert.rejects(
+    () => runCommand(process.execPath, ["-e", parent], {
+      signal: controller.signal,
+      timeoutMs: 5_000,
+      killGraceMs: 50,
+      waitForTermination: true,
+    }),
+    (error) => error.kind === "aborted",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await assert.rejects(() => fs.access(marker), (error) => error.code === "ENOENT");
+});

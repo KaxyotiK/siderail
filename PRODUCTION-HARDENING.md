@@ -23,7 +23,7 @@ Legend: `[ ]` open · `[x]` done · **(Dn)** blocked on a decision below.
 ## Outcome and constraints
 
 The target is a production-ready private `v0.1.0` candidate for Herdr users on
-macOS 15 and Ubuntu 24.04, with Node 22 or 24 and Herdr 0.8.0 or newer. A user
+macOS 15 and Ubuntu 24.04, with Node 22 or 24 and Herdr 0.8.x. A user
 must be able to install GitRail, inspect Git and filesystem state, open exact
 Raw/Diff/Rendered previews, and remove the plugin without GitRail mutating Git,
 closing panes it cannot prove it owns, or moving user panes automatically or
@@ -195,8 +195,8 @@ and the stated acceptance evidence still passes.
 
 - Extract preview-pane lifecycle work from `git-rail.mjs` into a testable module
   that accepts the Herdr runner and pane-state store as dependencies.
-- For a cached stale id, call `pane get`, require the `GitRail Preview` label and
-  expected workspace, then call `pane process-info` and require an argv entry
+- For a cached stale id, call `pane get`, require the recorded `terminal_id`,
+  `GitRail Preview` label, and expected workspace, then call `pane process-info` and require an argv entry
   ending in `scripts/file-preview.mjs`.
 - Close only a verified pane, using `plugin pane close`. If the pane is missing,
   discard the stale state; if it exists but ownership is not proven, leave it
@@ -230,7 +230,8 @@ and the stated acceptance evidence still passes.
   and continues the sweep.
 - Explicit invocation may rebuild only after atomically writing a versioned
   transaction journal under GitRail's state directory. The journal records the
-  workspace, source tab, staging tab, affected pane ids, their original tab and
+  workspace, source tab, staging tab, affected pane ids and terminal-instance
+  ids, their original tab and
   ordering/layout metadata, completed moves, and transaction phase. If the
   state required for recovery cannot be captured, abort before the first move.
 - Before each mutation, durably replace the journal with the intended operation;
@@ -378,7 +379,8 @@ and the stated acceptance evidence still passes.
 **M7 — bounded auto-open sweep**
 
 - Use a worker pool of at most four tab jobs and one monotonic 35-second
-  deadline for the complete auto-open invocation, not 35 seconds per tab.
+  deadline beginning before workspace/tab/pane discovery and covering the
+  complete auto-open invocation, not 35 seconds per tab or after discovery.
 - Stop dequeuing tabs at the deadline. Send termination to every active child
   process group, allow a five-second recovery grace, and then force-kill any
   survivor. Configure this grace only for auto-open children instead of changing
@@ -456,12 +458,17 @@ and the stated acceptance evidence still passes.
   command occurs before tagging. It must give exact candidate-SHA checkout/link,
   version capture, unlink, expected-result, failure-cleanup, and evidence-record
   commands rather than referring to an undefined “matrix” or “walkthrough.”
+- Every public clean-install path must run `npm ci --ignore-scripts` and
+  `npm run check` before `herdr plugin link .`; uninstall must run the candidate's
+  ownership-verifying `npm run uninstall:herdr`, close verified persisted panes,
+  restart Herdr, and prove both restored and newly created Git tabs stay rail-free.
 - Define automated cells for macOS 15 and Ubuntu 24.04 on Node
   22 and 24: clean checkout, `npm ci --ignore-scripts`, `npm run check`, demo and
   snapshot gates, and manifest/launcher smoke tests. Build a `git archive` from
-  the candidate SHA and assert every manifest-referenced runtime file is present,
-  removed schema/repository-config examples are absent, and no untracked local
-  file or `node_modules/` content enters the install artifact.
+  the candidate SHA, inspect its member list before extraction, and assert every
+  manifest-referenced runtime file plus the uninstall entrypoint is present,
+  removed schema/root-repository-config artifacts are absent, and no untracked
+  local file or `node_modules/` content enters the install artifact.
 - Define live-Herdr cells on macOS 15 and Ubuntu 24.04 using
   Herdr 0.8.0 or newer and Node 22 or newer. Each clean-install walkthrough must
   observe: one unfocused auto-open rail in a Git tab; no rail in a non-Git or
@@ -471,16 +478,19 @@ and the stated acceptance evidence still passes.
   unlink with no remaining startup/event action.
 - Because 0.1.0 has no earlier public release, mark public upgrade as not
   applicable. Add a separate development-migration cell that starts from
-  `6c7d9ac`, removes `$schema`, moves any desired repository settings into the
-  user config, links the candidate over the existing plugin id, and verifies
-  configuration, pane-state migration, launch, and uninstall. Never edit user
-  configuration automatically.
+  `6c7d9ac`, first proves distinct user/repository values resolve with the old
+  repository precedence, removes `$schema` from that same user file, links the
+  candidate over the existing plugin id, and verifies user-only configuration,
+  pane-state continuity, launch, and uninstall. Never edit user configuration
+  automatically and do not describe continuity as a migration feature.
 - Prepare code, docs, and screenshot assets before the final candidate commit.
   Screenshots record the exact visual-source SHA they depict. After the candidate
   commit, run every automated and live cell against that SHA and store CI links,
-  environment versions, commands, and pass/fail results outside the worktree for
-  inclusion in the annotated tag/release record; validation must not dirty the
-  candidate.
+  environment versions, commands, and pass/fail results in a versioned evidence
+  manifest outside the worktree. Every required record names the full candidate
+  SHA. Verification fails on missing/mismatched cells, and the annotated tag
+  embeds the manifest SHA-256 plus durable evidence references; validation must
+  not dirty the candidate.
 - If code, manifest, dependencies, release inputs, or packaged artifacts change,
   invalidate all affected cells and rerun them. Verify a clean worktree,
   version/config agreement, artifact contents, and release-note links; only then
@@ -516,8 +526,11 @@ and the stated acceptance evidence still passes.
   `npm ci --ignore-scripts` and `npm run check` on every cell.
 - Add enforced initial floors of 88% lines, 78% branches, and 86% functions;
   raise them when preview, refresh, and watcher lifecycle tests land.
-- Add a deterministic demo/snapshot job, the poisoned-environment job from B2b,
-  and GitHub dependency review with pinned action SHAs and read-only permissions.
+- Add a deterministic demo/snapshot job, an exact-archive job, the
+  poisoned-environment job from B2b, and GitHub dependency review with pinned
+  action SHAs and read-only permissions. Dependency review must be dispatchable
+  against explicit base/candidate SHAs so the first-release gate is runnable
+  without a pull request.
 
 **L6 — required screenshots**
 
@@ -549,6 +562,8 @@ and the stated acceptance evidence still passes.
   gate, and pre-tag release gate instead of restating them without proof. The
   checklist names the command/job that will verify a tag but does not claim a tag
   exists until the separately authorized tag operation succeeds.
+- Include explicit rows for exact-descriptor Raw/Diff/Rendered behavior, the
+  before/after read-only Git invariant, and ownership-safe uninstall.
 
 ## Execution order and completion gates
 

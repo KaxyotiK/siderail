@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { openHerdrPanel, recoverLayoutTransactions, rightmostPaneId } from "../scripts/open-herdr-panel.mjs";
 import {
   acquirePaneStateLock,
@@ -13,6 +14,8 @@ import {
   readPaneState,
   writePaneState,
 } from "../src/herdr-pane-state.mjs";
+
+const PROJECT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 function environment(root, overrides = {}) {
   return {
@@ -48,7 +51,127 @@ test("startup reports an unjournaled staging tab without mutating it", async (t)
   assert.match(messages.join("\n"), /w1:t-stale.*left untouched/);
 });
 
+async function writeLayoutJournal(root, overrides = {}) {
+  const directory = path.join(root, "herdr-gitrail", "layout-transactions");
+  await fs.mkdir(directory, { recursive: true });
+  const journalPath = path.join(directory, "w1-w1_t1.json");
+  await fs.writeFile(journalPath, JSON.stringify({
+    version: 2,
+    workspaceId: "w1",
+    tabId: "w1:t1",
+    entrypoint: "git-tui",
+    recoveryTree: { type: "pane", paneId: "w1:p1" },
+    paneTerminalIds: { "w1:p1": "term-original" },
+    createdRail: false,
+    pendingOperation: null,
+    completedOperations: 0,
+    phase: "prepared",
+    ...overrides,
+  }));
+  return journalPath;
+}
+
+test("startup recovery fails closed when a pane id belongs to a different terminal instance", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-reused-pane-");
+  const journalPath = await writeLayoutJournal(root);
+  const calls = [];
+  const result = await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    run: async (_command, args) => {
+      calls.push(args);
+      if (args[0] === "tab") {
+        return { stdout: JSON.stringify({ result: { tabs: [{ workspace_id: "w1", tab_id: "w1:t1" }] } }) };
+      }
+      if (args[0] === "pane" && args[1] === "get") {
+        return { stdout: JSON.stringify({ result: { pane: {
+          workspace_id: "w1",
+          tab_id: "w1:t1",
+          pane_id: "w1:p1",
+          terminal_id: "term-reused",
+        } } }) };
+      }
+      throw new Error(`unexpected mutation: ${args.join(" ")}`);
+    },
+  });
+  assert.deepEqual(result.deferredWorkspaces, ["w1"]);
+  assert.equal(calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
+  assert.equal((await fs.stat(journalPath)).isFile(), true);
+});
+
+test("startup recovery enforces one-second commands and its shared 15-second budget", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-budget-");
+  const journalPath = await writeLayoutJournal(root);
+  const timeouts = [];
+  let clock = 0;
+  const result = await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    now: () => clock,
+    run: async (_command, args, options) => {
+      timeouts.push(options.timeoutMs);
+      clock += 8_000;
+      if (args[0] === "tab") {
+        return { stdout: JSON.stringify({ result: { tabs: [{ workspace_id: "w1", tab_id: "w1:t1" }] } }) };
+      }
+      return { stdout: JSON.stringify({ result: { pane: {
+        workspace_id: "w1",
+        tab_id: "w1:t1",
+        pane_id: "w1:p1",
+        terminal_id: "term-original",
+      } } }) };
+    },
+  });
+  assert.ok(timeouts.every((timeout) => timeout <= 1_000));
+  assert.deepEqual(result.deferredWorkspaces, ["w1"]);
+  assert.equal((await fs.stat(journalPath)).isFile(), true);
+});
+
+test("startup recovery closes a proven rail created during an interrupted open", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-layout-interrupted-open-");
+  const journalPath = await writeLayoutJournal(root, {
+    createdRail: true,
+    priorPaneIds: ["w1:p1"],
+    pendingOperation: { kind: "open-rail" },
+  });
+  const calls = [];
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-original" },
+    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p9", terminal_id: "term-new", label: "HERDER GITRAIL" },
+  ];
+  const result = await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    run: async (_command, args) => {
+      calls.push(args);
+      if (args[0] === "tab") return { stdout: JSON.stringify({ result: { tabs: [
+        { workspace_id: "w1", tab_id: "w1:t1" },
+        { workspace_id: "w1", tab_id: "w1:t2" },
+      ] } }) };
+      if (args[0] === "pane" && args[1] === "get") {
+        return { stdout: JSON.stringify({ result: { pane: panes.find((pane) => pane.pane_id === args[2]) } }) };
+      }
+      if (args[0] === "pane" && args[1] === "list") {
+        return { stdout: JSON.stringify({ result: { panes } }) };
+      }
+      if (args[0] === "pane" && args[1] === "process-info") {
+        return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{
+          argv: ["node", "scripts/git-rail.mjs"], cwd: PROJECT_ROOT,
+        }] } } }) };
+      }
+      return { stdout: JSON.stringify({ result: { type: "ok" } }) };
+    },
+  });
+  assert.deepEqual(result.recovered, [journalPath]);
+  assert.equal(calls.some((args) => args.join(" ") === "plugin pane close w1:p9"), true);
+  await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
+});
+
 function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
+  panes = panes.map((pane) => ({ terminal_id: `term-${pane.pane_id}`, ...pane }));
   const calls = [];
   const paneTabs = new Map(panes.map((pane) => [pane.pane_id, pane.tab_id]));
   let openedPane = null;
@@ -75,7 +198,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
       const argv = pane?.label === "GitRail Demo"
         ? ["node", "scripts/git-rail.mjs", "--demo"]
         : ["node", "scripts/git-rail.mjs"];
-      return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{ argv }] } } }) };
+      return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{ argv, cwd: PROJECT_ROOT }] } } }) };
     }
     if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") {
       const targetPaneId = args[args.indexOf("--target-pane") + 1];
@@ -83,10 +206,11 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
         workspace_id: "w1",
         tab_id: args.includes("--target-pane") ? paneTabs.get(targetPaneId) : "w1:t8",
         pane_id: openedPaneId,
+        terminal_id: `term-${openedPaneId}`,
         label: args.includes("git-mockup") ? "GitRail Demo" : "HERDER GITRAIL",
       };
       paneTabs.set(openedPaneId, openedPane.tab_id);
-      return { stdout: JSON.stringify({ result: { plugin_pane: { pane: { pane_id: openedPaneId } } } }) };
+      return { stdout: JSON.stringify({ result: { plugin_pane: { pane: openedPane } } }) };
     }
     if (args[0] === "pane" && args[1] === "move") {
       const paneId = args[2];
@@ -186,7 +310,11 @@ test("existing current rails are adopted, deduplicated, and never reopened from 
   assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
   assert.deepEqual(mocked.calls.filter((args) => args.join(" ").startsWith("plugin pane close")).map((args) => args[3]), ["w1:p4", "w1:p5"]);
   const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
-  assert.deepEqual(await readPaneState(statePath), { paneId: "w1:p3", cwd: "/repo" });
+  assert.deepEqual(await readPaneState(statePath), {
+    paneId: "w1:p3",
+    cwd: "/repo",
+    terminalId: "term-w1:p3",
+  });
   await assert.rejects(fs.stat(legacyState), { code: "ENOENT" });
 });
 
@@ -373,8 +501,8 @@ test("layout staging rolls content back when opening the rail fails", async (t) 
   const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
   const paneTabs = new Map([["w1:p1", "w1:t1"], ["w1:p2", "w1:t1"]]);
   const panes = [
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo", focused: true },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-p1", cwd: "/repo", focused: true },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", terminal_id: "term-p2", cwd: "/repo" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1",
@@ -416,7 +544,7 @@ test("partial staging failure replays the complete nested content layout", async
   const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
   const paneTabs = new Map(["w1:p1", "w1:p2", "w1:p3", "w1:p4"].map((paneId) => [paneId, "w1:t1"]));
   const panes = [...paneTabs.keys()].map((paneId) => ({
-    workspace_id: "w1", tab_id: "w1:t1", pane_id: paneId, cwd: "/repo",
+    workspace_id: "w1", tab_id: "w1:t1", pane_id: paneId, terminal_id: `term-${paneId}`, cwd: "/repo",
   }));
   const layout = {
     area: { x: 0, y: 0, width: 120, height: 40 },
@@ -639,7 +767,7 @@ test("a user pane renamed like GitRail is never treated as plugin-owned", async 
     }
     if (args[0] === "pane" && args[1] === "get" && args[2] === "w1:p9") {
       return { stdout: JSON.stringify({ result: { pane: {
-        workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p9", label: "HERDER GITRAIL",
+        workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p9", terminal_id: "term-p9", label: "HERDER GITRAIL",
       } } }) };
     }
     return { stdout: JSON.stringify({ result: { type: "ok" } }) };

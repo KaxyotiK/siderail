@@ -40,17 +40,17 @@ export async function ensurePaneStateDirectory(environment = process.env) {
 
 export async function readPaneState(statePath) {
   try {
-    const [paneId = "", cwd = ""] = (await fs.readFile(statePath, "utf8")).split(/\r?\n/);
-    return paneId ? { paneId, cwd } : null;
+    const [paneId = "", cwd = "", terminalId = ""] = (await fs.readFile(statePath, "utf8")).split(/\r?\n/);
+    return paneId ? { paneId, cwd, ...(terminalId ? { terminalId } : {}) } : null;
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
   }
 }
 
-export async function writePaneState(statePath, paneId, cwd = "") {
+export async function writePaneState(statePath, paneId, cwd = "", terminalId = "") {
   const temporary = `${statePath}.${process.pid}.tmp`;
-  await fs.writeFile(temporary, `${paneId}\n${cwd}\n`, { mode: 0o600 });
+  await fs.writeFile(temporary, `${paneId}\n${cwd}\n${terminalId}\n`, { mode: 0o600 });
   await fs.chmod(temporary, 0o600);
   await fs.rename(temporary, statePath);
 }

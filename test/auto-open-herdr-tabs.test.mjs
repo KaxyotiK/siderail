@@ -109,6 +109,35 @@ test("bounded sweep does not dequeue work after its global deadline", async () =
   assert.equal(summary.deadlineCancelled.length, 7);
 });
 
+test("the global auto-open deadline starts before Herdr discovery", async (t) => {
+  const { environment } = hermeticEnvironment(t, {
+    HERDR_PLUGIN_EVENT: "startup",
+    HERDR_BIN_PATH: "herdr-test",
+  });
+  let clock = 0;
+  let receivedTimeout = 0;
+  const run = async (_command, args) => {
+    clock = 8_000;
+    if (args[0] === "workspace") {
+      return { stdout: JSON.stringify({ result: { workspaces: [{ workspace_id: "w1" }] } }) };
+    }
+    if (args[0] === "tab") {
+      return { stdout: JSON.stringify({ result: { tabs: [{ workspace_id: "w1", tab_id: "w1:t1" }] } }) };
+    }
+    return { stdout: JSON.stringify({ result: { panes: [{ workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" }] } }) };
+  };
+  const result = await autoOpenHerdrTabs(environment, {
+    run,
+    now: () => clock,
+    openTarget: async (_target, timeoutMs) => {
+      receivedTimeout = timeoutMs;
+      return false;
+    },
+  });
+  assert.equal(receivedTimeout, 27_000);
+  assert.deepEqual(result.skipped, ["w1:t1"]);
+});
+
 test("only user configuration can disable automatic Herdr opening", async (t) => {
   const { environment } = hermeticEnvironment(t);
   const directory = path.join(environment.XDG_CONFIG_HOME, "git-rail");
@@ -158,13 +187,13 @@ printf 'CALL' >> "$MOCK_ARGS_FILE"
 for arg in "$@"; do printf ' <%s>' "$arg" >> "$MOCK_ARGS_FILE"; done
 printf '\\n' >> "$MOCK_ARGS_FILE"
 if [ "$1" = "pane" ] && [ "$2" = "list" ]; then
-  printf '%s\\n' '{"result":{"panes":[{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","cwd":"/repo"}]}}'
+  printf '%s\\n' '{"result":{"panes":[{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p1","terminal_id":"term-p1","cwd":"/repo"}]}}'
 elif [ "$1" = "pane" ] && [ "$2" = "layout" ]; then
   printf '%s\\n' '{"result":{"layout":{"area":{"x":0,"y":0,"width":68,"height":20},"focused_pane_id":"w1:p1","panes":[{"pane_id":"w1:p1","rect":{"x":0,"y":0,"width":68,"height":20}}],"splits":[]}}}'
 elif [ "$1" = "plugin" ] && [ "$2" = "pane" ] && [ "$3" = "open" ]; then
-  printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"pane_id":"w1:p2"}}}}'
+  printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","terminal_id":"term-p2","label":"HERDER GITRAIL"}}}}'
 elif [ "$1" = "pane" ] && [ "$2" = "get" ] && [ "$3" = "w1:p2" ]; then
-  printf '%s\\n' '{"result":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","label":"HERDER GITRAIL"}}}'
+  printf '%s\\n' '{"result":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","terminal_id":"term-p2","label":"HERDER GITRAIL"}}}'
 else
   printf '%s\\n' '{"result":{"type":"ok"}}'
 fi

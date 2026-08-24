@@ -48,6 +48,8 @@ const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
 const forcedWidth = numberArg("--width");
 const forcedHeight = numberArg("--height");
 const initialSearch = stringArg("--search");
+const viewportFixtureCount = snapshotMode ? numberArg("--viewport-fixture-count") : null;
+const snapshotFrameCount = Math.max(1, snapshotMode ? numberArg("--snapshot-frames") || 1 : 1);
 const PAGE_SIZE = 100;
 const NARROW_RAIL_MAX = 88;
 
@@ -104,6 +106,16 @@ let state;
 try { state = await getRepositoryState(currentProviderCwd); }
 catch (error) { state = startupFailureState(currentProviderCwd, error); }
 if (demoMode) state.repository = "gitrail-fixture";
+if (viewportFixtureCount) {
+  state.files = Array.from({ length: viewportFixtureCount }, (_value, index) => ({
+    path: `folder-${String(index % 100).padStart(3, "0")}/file-${String(index).padStart(5, "0")}.txt`,
+    clean: true,
+    states: [],
+    descriptor: { kind: "clean" },
+  }));
+  state.workspaceChanges = [];
+  state.workspaceDescriptor = { kind: "workspace", baseRef: state.baseLabel || "HEAD" };
+}
 let mainTab = cliArgs.has("--files") ? "files" : "changes";
 let viewModePreference = "auto";
 let selectedSection = 0;
@@ -111,6 +123,7 @@ let scrollOffset = 0;
 let selectedIdentity = "";
 let revealSelected = false;
 let keyboardItems = [];
+let keyboardIndexByIdentity = new Map();
 let statusMessage = state.configErrors?.[0] || "Click a section or file";
 let fileSearchQuery = "";
 let diffSearchQuery = initialSearch;
@@ -142,6 +155,7 @@ const commitFiles = new Map();
 const pageSizes = new Map();
 const filesViewModels = new FilesViewModelCache();
 let filesViewGeneration = 0;
+let filesTabViewCache = null;
 
 function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
 function regions(text, targets) { return { text, targets }; }
@@ -242,14 +256,17 @@ function descriptorLabel(descriptor = { kind: "clean" }) {
   const kind = safe(descriptor.kind || "file");
   return kind[0].toUpperCase() + kind.slice(1);
 }
-function fileRow(file, width, prefix = " ") {
+function keyboardItemForFile(file) {
   const identity = selectionKey(state.repoRoot || state.cwd, file);
-  const keyboardItem = {
+  return {
     identity,
     file,
     status: `${descriptorLabel(file.descriptor)} · ${file.path}`,
     action: () => reportAsync(requestPreview(file)),
   };
+}
+function fileRow(file, width, prefix = " ", keyboardItem = keyboardItemForFile(file)) {
+  const { identity } = keyboardItem;
   return { keyboardIdentity: identity, keyboardItem, materialize() {
     const suffix = statsLabel(file);
     const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
@@ -419,14 +436,78 @@ function canonicalFiles() {
 }
 function renderFiles(width) {
   const query = fileSearchQuery.trim();
-  const files = search(canonicalFiles(), query);
-  const lines = [
+  const mode = resolvedViewMode(width);
+  const scope = `files:${query}`;
+  const collapsed = mode === "tree" ? (collapsedFolders.get(scope) || new Set()) : collapsedGroups;
+  if (mode === "tree" && !collapsedFolders.has(scope)) collapsedFolders.set(scope, collapsed);
+  const cacheKey = [
+    filesViewGeneration,
+    mode,
+    width,
+    query,
+    [...collapsed].sort().join("\0"),
+  ].join(":");
+  if (filesTabViewCache?.key !== cacheKey) {
+    const files = search(canonicalFiles(), query);
+    const rows = files.length
+      ? filesViewModels.rows(cacheKey, files, { mode, collapsed, scope })
+      : [];
+    const rowKeyboardItems = rows
+      .filter((row) => row.kind === "file")
+      .map((row) => keyboardItemForFile(row.file));
+    filesTabViewCache = {
+      key: cacheKey,
+      files,
+      rows,
+      keyboardItems: rowKeyboardItems,
+      keyboardIndexByIdentity: new Map(rowKeyboardItems.map((item, index) => [item.identity, index])),
+      rowIndexByIdentity: new Map(rows.flatMap((row, index) => row.kind === "file"
+        ? [[selectionKey(state.repoRoot || state.cwd, row.file), index]]
+        : [])),
+    };
+  }
+  const { files } = filesTabViewCache;
+  const fixed = [
     interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
     toolbar(width), rule(width),
   ];
-  if (!files.length) return [...lines, ` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : state.repoRoot ? "Repository has no files" : "Directory has no files"}${C.reset}`];
-  if (state.directoryFilesTruncated) lines.push(` ${C.dim}Showing the first ${(state.files || []).length.toLocaleString("en-US")} files · scan limit reached${C.reset}`);
-  return [...lines, ...renderFilesList(files, width, `files:${query}`, false)];
+  if (state.directoryFilesTruncated) fixed.push(` ${C.dim}Showing the first ${(state.files || []).length.toLocaleString("en-US")} files · scan limit reached${C.reset}`);
+  const rows = files.length
+    ? filesTabViewCache.rows
+    : [` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : state.repoRoot ? "Repository has no files" : "Directory has no files"}${C.reset}`];
+  return { virtualFiles: true, fixed, ...filesTabViewCache, rows };
+}
+
+function materializeFilesTabRow(row, width) {
+  if (typeof row === "string") return row;
+  if (row.kind === "file") {
+    const prefix = Number.isInteger(row.depth)
+      ? ` ${treeGuides(row.depth, width)}`
+      : row.prefix === "last" ? `  ${C.faint}└─${C.reset} `
+        : row.prefix === "middle" ? `  ${C.faint}├─${C.reset} ` : " ";
+    const item = filesTabViewCache.keyboardItems[filesTabViewCache.keyboardIndexByIdentity.get(
+      selectionKey(state.repoRoot || state.cwd, row.file),
+    )];
+    return fileRow(row.file, width, prefix, item).materialize();
+  }
+  if (row.kind === "folder") {
+    const guides = treeGuides(row.depth, width);
+    const collapsed = collapsedFolders.get(`files:${fileSearchQuery.trim()}`) || new Set();
+    const open = !collapsed.has(row.path);
+    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
+      if (open) collapsed.add(row.path); else collapsed.delete(row.path);
+      filesViewModels.invalidate();
+      statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
+    }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`);
+  }
+  return interactive(
+    `${C.fog} ${row.open ? "⌄" : "›"} ${compactPath(row.folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${row.count}${C.reset}`,
+    () => {
+      if (row.open) collapsedGroups.add(row.key); else collapsedGroups.delete(row.key);
+      filesViewModels.invalidate();
+    },
+    `${row.open ? "Collapse" : "Expand"} folder: ${row.folder}`,
+  );
 }
 function renderBody(width) {
   keyboardItems = [];
@@ -513,28 +594,49 @@ function renderFrame() {
   const height = Math.max(18, forcedHeight || process.stdout.rows || 42);
   const { half, lines: header } = renderHeader(width);
   const body = helpVisible ? helpRows(width) : renderBody(width);
-  if (!helpVisible) keyboardItems = body.flatMap((entry) => entry?.keyboardItem ? [entry.keyboardItem] : []);
+  if (!helpVisible) {
+    keyboardItems = body?.virtualFiles
+      ? body.keyboardItems
+      : body.flatMap((entry) => entry?.keyboardItem ? [entry.keyboardItem] : []);
+    keyboardIndexByIdentity = body?.virtualFiles
+      ? body.keyboardIndexByIdentity
+      : new Map(keyboardItems.map((item, index) => [item.identity, index]));
+  }
   const controls = helpVisible
     ? "↑/↓ or j/k scroll · ?/Esc/q close help"
     : activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · ? help · / search · q";
   const footerMessage = helpVisible ? controls : statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
   const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
-  const fixedCount = helpVisible ? 3 : mainTab === "files" ? 3 + (state.directoryFilesTruncated ? 1 : 0) : state.repoRoot ? 3 : 0;
   const bodyHeight = Math.max(1, height - header.length - footer.length);
-  const fixed = body.slice(0, Math.min(fixedCount, bodyHeight));
-  const scrollable = body.slice(fixed.length);
+  const fixedCount = helpVisible ? 3 : mainTab === "files" ? 3 + (state.directoryFilesTruncated ? 1 : 0) : state.repoRoot ? 3 : 0;
+  const fixedSource = body?.virtualFiles ? body.fixed : body;
+  const fixed = fixedSource.slice(0, Math.min(fixedCount, bodyHeight));
+  const scrollable = body?.virtualFiles ? body.rows : body.slice(fixed.length);
   const visibleHeight = Math.max(0, bodyHeight - fixed.length);
   let activeScrollOffset = helpVisible ? helpScrollOffset : scrollOffset;
   if (!helpVisible && revealSelected) {
-    const selectedRow = scrollable.findIndex((entry) => typeof entry !== "string" && entry.keyboardIdentity === selectedIdentity);
+    const selectedRow = body?.virtualFiles
+      ? (body.rowIndexByIdentity.get(selectedIdentity) ?? -1)
+      : scrollable.findIndex((entry) => typeof entry !== "string" && entry.keyboardIdentity === selectedIdentity);
     activeScrollOffset = revealScrollOffset(selectedRow, activeScrollOffset, visibleHeight, scrollable.length);
     revealSelected = false;
   }
   const maxScrollOffset = Math.max(0, scrollable.length - visibleHeight);
   activeScrollOffset = Math.max(0, Math.min(activeScrollOffset, maxScrollOffset));
   if (helpVisible) helpScrollOffset = activeScrollOffset; else scrollOffset = activeScrollOffset;
-  const viewport = [...fixed, ...scrollable.slice(activeScrollOffset, activeScrollOffset + visibleHeight)]
-    .map((entry) => entry?.materialize ? entry.materialize() : entry);
+  const visibleRows = body?.virtualFiles
+    ? filesViewModels.materialize(
+      scrollable,
+      activeScrollOffset,
+      visibleHeight,
+      (entry) => materializeFilesTabRow(entry, width),
+    )
+    : scrollable.slice(activeScrollOffset, activeScrollOffset + visibleHeight)
+      .map((entry) => entry?.materialize ? entry.materialize() : entry);
+  const viewport = [
+    ...fixed.map((entry) => entry?.materialize ? entry.materialize() : entry),
+    ...visibleRows,
+  ];
   while (viewport.length < bodyHeight) viewport.push("");
   hitTargets = helpVisible ? [] : [
     { row: 4, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
@@ -739,7 +841,10 @@ function fatal(error) {
 }
 
 if (snapshotMode) {
-  draw();
+  for (let index = 0; index < snapshotFrameCount; index += 1) draw();
+  if (cliArgs.has("--viewport-metrics")) {
+    process.stderr.write(`${JSON.stringify(filesViewModels.instrumentation)}\n`);
+  }
   cleanup();
   process.exit(0);
 }
@@ -803,18 +908,19 @@ function handleInput(key) {
   else if (key === "/") activeSearch = mainTab;
   else if (/^(?:j|\u001b\[B)+$/.test(key)) {
     const steps = key.match(/j|\u001b\[B/g)?.length || 1;
-    const index = keyboardItems.findIndex((item) => item.identity === selectedIdentity);
+    const index = keyboardIndexByIdentity.get(selectedIdentity) ?? -1;
     const next = keyboardItems[Math.min(keyboardItems.length - 1, Math.max(0, index + steps))];
     if (next) selectKeyboardItem(next);
   }
   else if (/^(?:k|\u001b\[A)+$/.test(key)) {
     const steps = key.match(/k|\u001b\[A/g)?.length || 1;
-    const index = keyboardItems.findIndex((item) => item.identity === selectedIdentity);
+    const index = keyboardIndexByIdentity.get(selectedIdentity) ?? -1;
     const next = keyboardItems[Math.max(0, index < 0 ? 0 : index - steps)];
     if (next) selectKeyboardItem(next);
   }
   else if (key === "\r" || key === "\n" || key === "o") {
-    const selected = keyboardItems.find((item) => item.identity === selectedIdentity);
+    const selectedIndex = keyboardIndexByIdentity.get(selectedIdentity);
+    const selected = selectedIndex === undefined ? null : keyboardItems[selectedIndex];
     if (selected && (key !== "o" || selected.file)) selected.action();
   }
   else if (key === "l" || key === "\u001b[C") selectedSection = Math.min(sectionIds.length - 1, selectedSection + 1);

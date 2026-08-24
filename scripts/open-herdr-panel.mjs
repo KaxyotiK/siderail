@@ -27,8 +27,36 @@ const STAGING_LABEL = "GitRail Layout Staging";
 const MAX_SOCKET_BYTES = 1024 * 1024;
 const MAX_LAYOUT_DEPTH = 16;
 const MAX_LAYOUT_PANES = 24;
-const LAYOUT_JOURNAL_VERSION = 1;
+const LAYOUT_JOURNAL_VERSION = 2;
+const PLUGIN_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let activeLayoutRecovery = null;
+let activeLayoutAbort = null;
+let activeLayoutSettled = null;
+let layoutTerminationRequested = false;
+
+function createRecoveryBudget(durationMs, now = () => performance.now()) {
+  const deadline = now() + durationMs;
+  return {
+    remaining(maximumMs = 1_000) {
+      const remaining = Math.floor(deadline - now());
+      if (remaining <= 0) throw new Error("layout recovery budget exhausted");
+      return Math.max(1, Math.min(maximumMs, remaining));
+    },
+  };
+}
+
+function recoveryCommandOptions(budget, maxOutputBytes) {
+  return {
+    timeoutMs: budget.remaining(1_000),
+    maxOutputBytes,
+    killGraceMs: 0,
+    waitForTermination: true,
+  };
+}
+
+function mergeCommandOptions(defaults, overrides) {
+  return overrides ? { ...defaults, ...overrides } : defaults;
+}
 
 function safeToken(value) {
   return String(value || "").replace(/[^A-Za-z0-9._-]+/g, "_");
@@ -62,9 +90,11 @@ async function persistLayoutTransaction(transaction) {
 }
 
 async function journaledMove(transaction, run, herdr, args, destination) {
+  if (layoutTerminationRequested) throw new Error("layout transaction interrupted before mutation");
   transaction.pendingOperation = { kind: "move", args, destination };
   await persistLayoutTransaction(transaction);
-  const result = await movePane(run, herdr, args, destination);
+  if (layoutTerminationRequested) throw new Error("layout transaction interrupted before mutation");
+  const result = await movePane(run, herdr, args, destination, transaction.commandOptions || null);
   transaction.completedOperations = (transaction.completedOperations || 0) + 1;
   transaction.pendingOperation = null;
   await persistLayoutTransaction(transaction);
@@ -354,9 +384,9 @@ async function resolveInvocation(environment, herdr, run) {
   return { context, workspaceId, tabId, requestedPaneId, workspaceCwd };
 }
 
-async function closeOwnedPane(run, herdr, paneId, { quiet = false } = {}) {
+async function closeOwnedPane(run, herdr, paneId, { quiet = false, commandOptions = null } = {}) {
   try {
-    await run(herdr, ["plugin", "pane", "close", paneId], {
+    await run(herdr, ["plugin", "pane", "close", paneId], commandOptions || {
       timeoutMs: 5_000,
       maxOutputBytes: 256 * 1_024,
     });
@@ -368,7 +398,8 @@ async function closeOwnedPane(run, herdr, paneId, { quiet = false } = {}) {
 }
 
 async function verifiedOwnedRail(run, herdr, pane, state, entrypoint) {
-  if (state?.paneId === pane.pane_id) return true;
+  if (state?.paneId === pane.pane_id && state.terminalId
+    && state.terminalId !== pane.terminal_id) return false;
   try {
     const { payload } = await commandJson(run, herdr, ["pane", "process-info", "--pane", pane.pane_id], {
       timeoutMs: 3_000,
@@ -376,8 +407,15 @@ async function verifiedOwnedRail(run, herdr, pane, state, entrypoint) {
     });
     const processes = payload?.result?.process_info?.foreground_processes || [];
     return processes.some((processInfo) => {
-      const argv = Array.isArray(processInfo.argv) ? processInfo.argv : [];
-      const isGitRail = argv.some((argument) => /(?:^|\/)scripts\/git-rail\.mjs$/.test(argument));
+      const argv = Array.isArray(processInfo.argv) ? processInfo.argv.map(String) : [];
+      const cwd = processInfo.cwd ? path.resolve(String(processInfo.cwd)) : "";
+      const scriptArgument = argv.find((argument) => argument === "scripts/git-rail.mjs"
+        || argument.endsWith("/scripts/git-rail.mjs"));
+      if (!scriptArgument || !cwd) return false;
+      const scriptPath = path.isAbsolute(scriptArgument)
+        ? path.resolve(scriptArgument)
+        : path.resolve(cwd, scriptArgument);
+      const isGitRail = scriptPath === path.join(PLUGIN_ROOT, "scripts/git-rail.mjs");
       const isDemo = argv.includes("--demo");
       return isGitRail && (entrypoint === "git-mockup" ? isDemo : !isDemo);
     });
@@ -388,20 +426,57 @@ async function verifiedOwnedRail(run, herdr, pane, state, entrypoint) {
   }
 }
 
-async function movePane(run, herdr, args, destination) {
-  const moved = await run(herdr, ["pane", "move", ...args], {
+async function cleanupInterruptedRailOpen({ run, herdr, transaction, budget }) {
+  if (transaction.pendingOperation?.kind !== "open-rail" || transaction.railPaneId) return;
+  if (!Array.isArray(transaction.priorPaneIds)) {
+    throw new Error("layout recovery has no pre-open pane inventory");
+  }
+  const { payload } = await commandJson(
+    run,
+    herdr,
+    ["pane", "list", "--workspace", transaction.workspaceId],
+    recoveryCommandOptions(budget, 8 * 1_024 * 1_024),
+  );
+  const prior = new Set(transaction.priorPaneIds);
+  const labels = entrypointIdentity(transaction.entrypoint).current;
+  const candidates = responseItems(payload, "panes").filter((pane) => (
+    pane.workspace_id === transaction.workspaceId
+    && !prior.has(pane.pane_id)
+    && hasLabel(pane, labels)
+  ));
+  for (const pane of candidates) {
+    if (!pane.terminal_id || !await verifiedOwnedRail(run, herdr, pane, null, transaction.entrypoint)) {
+      throw new Error(`layout recovery cannot prove interrupted pane ${sanitizeTerminalText(pane.pane_id)} is owned`);
+    }
+    await closeOwnedPane(run, herdr, pane.pane_id, {
+      commandOptions: recoveryCommandOptions(budget, 256 * 1_024),
+    });
+  }
+}
+
+async function movePane(run, herdr, args, destination, commandOptions = null) {
+  const moved = await run(herdr, ["pane", "move", ...args], commandOptions || {
     timeoutMs: 8_000,
     maxOutputBytes: 2 * 1_024 * 1_024,
   });
   return assertMoved(moved.stdout, destination);
 }
 
-async function validateOpenedRail({ run, herdr, paneId, workspaceId, tabId = "", entrypoint, priorPaneIds }) {
+async function validateOpenedRail({
+  run,
+  herdr,
+  paneId,
+  workspaceId,
+  tabId = "",
+  entrypoint,
+  priorPaneIds,
+  commandOptions = null,
+}) {
   if (priorPaneIds.has(paneId)) throw new Error("Herdr returned an existing pane instead of the opened GitRail pane");
-  const { payload } = await commandJson(run, herdr, ["pane", "get", paneId], {
+  const { payload } = await commandJson(run, herdr, ["pane", "get", paneId], mergeCommandOptions({
     timeoutMs: 3_000,
     maxOutputBytes: 256 * 1_024,
-  });
+  }, commandOptions));
   const pane = payload?.result?.pane;
   const labels = entrypointIdentity(entrypoint).current;
   if (!pane || pane.pane_id !== paneId || pane.workspace_id !== workspaceId
@@ -411,19 +486,19 @@ async function validateOpenedRail({ run, herdr, paneId, workspaceId, tabId = "",
   return pane;
 }
 
-async function workspacePaneIds(run, herdr, workspaceId) {
-  const { payload } = await commandJson(run, herdr, ["pane", "list", "--workspace", workspaceId], {
+async function workspacePaneIds(run, herdr, workspaceId, commandOptions = null) {
+  const { payload } = await commandJson(run, herdr, ["pane", "list", "--workspace", workspaceId], mergeCommandOptions({
     timeoutMs: 5_000,
     maxOutputBytes: 8 * 1_024 * 1_024,
-  });
+  }, commandOptions));
   return new Set(responseItems(payload, "panes").map((pane) => pane.pane_id));
 }
 
-async function workspaceTabIds(run, herdr, workspaceId) {
-  const { payload } = await commandJson(run, herdr, ["tab", "list"], {
+async function workspaceTabIds(run, herdr, workspaceId, commandOptions = null) {
+  const { payload } = await commandJson(run, herdr, ["tab", "list"], mergeCommandOptions({
     timeoutMs: 5_000,
     maxOutputBytes: 8 * 1_024 * 1_024,
-  });
+  }, commandOptions));
   return new Set(responseItems(payload, "tabs")
     .filter((tab) => tab.workspace_id === workspaceId)
     .map((tab) => tab.tab_id));
@@ -438,6 +513,7 @@ async function openRailInTab({
   sourceTabId,
   workspaceCwd,
   sourcePaneId,
+  commandOptions = null,
 }) {
   const args = [
     "plugin", "pane", "open",
@@ -451,13 +527,16 @@ async function openRailInTab({
   if (sourcePaneId) args.push("--env", `GIT_RAIL_SOURCE_PANE_ID=${sourcePaneId}`);
   if (sourceTabId) args.push("--env", `GIT_RAIL_SOURCE_TAB_ID=${sourceTabId}`);
   const [priorPaneIds, priorTabIds] = await Promise.all([
-    workspacePaneIds(run, herdr, workspaceId),
-    workspaceTabIds(run, herdr, workspaceId),
+    workspacePaneIds(run, herdr, workspaceId, commandOptions),
+    workspaceTabIds(run, herdr, workspaceId, commandOptions),
   ]);
-  const opened = await run(herdr, args, { timeoutMs: 8_000, maxOutputBytes: 2 * 1_024 * 1_024 });
+  const opened = await run(herdr, args, mergeCommandOptions({
+    timeoutMs: 8_000,
+    maxOutputBytes: 2 * 1_024 * 1_024,
+  }, commandOptions));
   const paneId = resultPaneId(opened.stdout);
   if (!paneId) throw new Error("Herdr did not return the opened GitRail pane id");
-  const currentTabIds = await workspaceTabIds(run, herdr, workspaceId);
+  const currentTabIds = await workspaceTabIds(run, herdr, workspaceId, commandOptions);
   const createdTabIds = [...currentTabIds].filter((tabId) => !priorTabIds.has(tabId));
   if (createdTabIds.length !== 1) throw new Error("Herdr did not create one identifiable GitRail tab");
   await validateOpenedRail({
@@ -468,6 +547,7 @@ async function openRailInTab({
     tabId: createdTabIds[0],
     entrypoint,
     priorPaneIds,
+    commandOptions,
   });
   return { paneId, stdout: opened.stdout };
 }
@@ -501,9 +581,9 @@ async function stageContentPanes({ run, herdr, workspaceId, tabId, paneIds, tran
   return stagingTabId;
 }
 
-async function paneTabId(run, herdr, paneId) {
+async function paneTabId(run, herdr, paneId, commandOptions = null) {
   try {
-    const { payload } = await commandJson(run, herdr, ["pane", "get", paneId], {
+    const { payload } = await commandJson(run, herdr, ["pane", "get", paneId], commandOptions || {
       timeoutMs: 3_000,
       maxOutputBytes: 256 * 1_024,
     });
@@ -513,11 +593,25 @@ async function paneTabId(run, herdr, paneId) {
   }
 }
 
-async function stageTreeForRecovery({ run, herdr, workspaceId, tabId, tree }) {
+async function stageTreeForRecovery({
+  run,
+  herdr,
+  workspaceId,
+  tabId,
+  tree,
+  budget = createRecoveryBudget(15_000),
+}) {
   const paneIds = treeLeaves(tree).slice(1);
   if (paneIds.length === 0) return "";
   const locations = new Map();
-  for (const paneId of paneIds) locations.set(paneId, await paneTabId(run, herdr, paneId));
+  for (const paneId of paneIds) {
+    locations.set(paneId, await paneTabId(
+      run,
+      herdr,
+      paneId,
+      recoveryCommandOptions(budget, 256 * 1_024),
+    ));
+  }
   let stagingAnchor = paneIds.find((paneId) => locations.get(paneId) && locations.get(paneId) !== tabId);
   let stagingTabId = stagingAnchor ? locations.get(stagingAnchor) : "";
   if (!stagingAnchor) {
@@ -525,8 +619,13 @@ async function stageTreeForRecovery({ run, herdr, workspaceId, tabId, tree }) {
     await movePane(run, herdr, [
       stagingAnchor, "--new-tab", "--workspace", workspaceId,
       "--label", STAGING_LABEL, "--no-focus",
-    ], "a recovery layout tab");
-    stagingTabId = await paneTabId(run, herdr, stagingAnchor);
+    ], "a recovery layout tab", recoveryCommandOptions(budget, 2 * 1_024 * 1_024));
+    stagingTabId = await paneTabId(
+      run,
+      herdr,
+      stagingAnchor,
+      recoveryCommandOptions(budget, 256 * 1_024),
+    );
     if (!stagingTabId || stagingTabId === tabId) throw new Error("Herdr did not create the recovery layout tab");
   }
   for (const paneId of paneIds) {
@@ -534,14 +633,31 @@ async function stageTreeForRecovery({ run, herdr, workspaceId, tabId, tree }) {
     await movePane(run, herdr, [
       paneId, "--tab", stagingTabId, "--split", "right",
       "--target-pane", stagingAnchor, "--no-focus",
-    ], "the recovery layout tab");
+    ], "the recovery layout tab", recoveryCommandOptions(budget, 2 * 1_024 * 1_024));
   }
   return stagingTabId;
 }
 
-async function restoreContentTree({ run, herdr, tabId, contentTree, restoreFocusPaneId, continueOnError = false, transaction = null }) {
+async function restoreContentTree({
+  run,
+  herdr,
+  tabId,
+  contentTree,
+  restoreFocusPaneId,
+  continueOnError = false,
+  transaction = null,
+  budget = null,
+}) {
   let firstError = null;
-  const move = transaction ? (args, destination) => journaledMove(transaction, run, herdr, args, destination) : (args, destination) => movePane(run, herdr, args, destination);
+  const move = transaction
+    ? (args, destination) => journaledMove(transaction, run, herdr, args, destination)
+    : (args, destination) => movePane(
+      run,
+      herdr,
+      args,
+      destination,
+      budget ? recoveryCommandOptions(budget, 2 * 1_024 * 1_024) : null,
+    );
   for (const insertion of treeInsertions(contentTree)) {
     const focusArg = insertion.paneId === restoreFocusPaneId ? "--focus" : "--no-focus";
     try {
@@ -561,19 +677,28 @@ async function restoreContentTree({ run, herdr, tabId, contentTree, restoreFocus
   if (firstError) throw firstError;
 }
 
-async function verifyRecoveryOwnership({ run, herdr, transaction }) {
-  const { payload: tabsPayload } = await commandJson(run, herdr, ["tab", "list"], {
-    timeoutMs: 1_000,
-    maxOutputBytes: 4 * 1_024 * 1_024,
-  });
+async function verifyRecoveryOwnership({ run, herdr, transaction, budget }) {
+  const { payload: tabsPayload } = await commandJson(
+    run,
+    herdr,
+    ["tab", "list"],
+    recoveryCommandOptions(budget, 4 * 1_024 * 1_024),
+  );
   const tabs = new Map(responseItems(tabsPayload, "tabs").map((tab) => [tab.tab_id, tab]));
   for (const paneId of treeLeaves(transaction.recoveryTree)) {
-    const { payload } = await commandJson(run, herdr, ["pane", "get", paneId], {
-      timeoutMs: 1_000,
-      maxOutputBytes: 256 * 1_024,
-    });
+    const expectedTerminalId = transaction.paneTerminalIds?.[paneId];
+    if (!expectedTerminalId) {
+      throw new Error(`layout recovery has no instance identity for pane ${sanitizeTerminalText(paneId)}`);
+    }
+    const { payload } = await commandJson(
+      run,
+      herdr,
+      ["pane", "get", paneId],
+      recoveryCommandOptions(budget, 256 * 1_024),
+    );
     const pane = payload?.result?.pane;
-    if (!pane || pane.pane_id !== paneId || pane.workspace_id !== transaction.workspaceId) {
+    if (!pane || pane.pane_id !== paneId || pane.terminal_id !== expectedTerminalId
+      || pane.workspace_id !== transaction.workspaceId) {
       throw new Error(`layout recovery cannot verify pane ${sanitizeTerminalText(paneId)}`);
     }
     if (pane.tab_id !== transaction.tabId && tabs.get(pane.tab_id)?.label !== STAGING_LABEL) {
@@ -582,20 +707,26 @@ async function verifyRecoveryOwnership({ run, herdr, transaction }) {
   }
 }
 
-async function recoverLayoutTransaction({ run, herdr, transaction }) {
+async function recoverLayoutTransaction({ run, herdr, transaction, budget = createRecoveryBudget(15_000) }) {
   if (transaction.version !== LAYOUT_JOURNAL_VERSION || !transaction.workspaceId || !transaction.tabId || !transaction.recoveryTree) {
     throw new Error("invalid GitRail layout transaction journal");
   }
-  await verifyRecoveryOwnership({ run, herdr, transaction });
+  await verifyRecoveryOwnership({ run, herdr, transaction, budget });
+  await cleanupInterruptedRailOpen({ run, herdr, transaction, budget });
   if (transaction.createdRail && transaction.railPaneId) {
     try {
-      const { payload } = await commandJson(run, herdr, ["pane", "get", transaction.railPaneId], {
-        timeoutMs: 1_000,
-        maxOutputBytes: 256 * 1_024,
-      });
+      const { payload } = await commandJson(
+        run,
+        herdr,
+        ["pane", "get", transaction.railPaneId],
+        recoveryCommandOptions(budget, 256 * 1_024),
+      );
       const pane = payload?.result?.pane;
       if (pane && await verifiedOwnedRail(run, herdr, pane, null, transaction.entrypoint)) {
-        await closeOwnedPane(run, herdr, transaction.railPaneId, { quiet: true });
+        await closeOwnedPane(run, herdr, transaction.railPaneId, {
+          quiet: true,
+          commandOptions: recoveryCommandOptions(budget, 256 * 1_024),
+        });
       }
     } catch {}
   }
@@ -605,6 +736,7 @@ async function recoverLayoutTransaction({ run, herdr, transaction }) {
     workspaceId: transaction.workspaceId,
     tabId: transaction.tabId,
     tree: transaction.recoveryTree,
+    budget,
   });
   await restoreContentTree({
     run,
@@ -613,11 +745,19 @@ async function recoverLayoutTransaction({ run, herdr, transaction }) {
     contentTree: transaction.recoveryTree,
     restoreFocusPaneId: transaction.restoreFocusPaneId || "",
     continueOnError: true,
+    budget,
   });
+  budget.remaining();
   await fs.rm(transaction.journalPath, { force: true });
 }
 
-export async function recoverLayoutTransactions({ environment = process.env, run = runCommand, herdr = environment.HERDR_BIN_PATH || "herdr", workspaceId = "" } = {}) {
+export async function recoverLayoutTransactions({
+  environment = process.env,
+  run = runCommand,
+  herdr = environment.HERDR_BIN_PATH || "herdr",
+  workspaceId = "",
+  now = () => performance.now(),
+} = {}) {
   const directory = layoutTransactionDirectory(environment);
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   let release;
@@ -631,7 +771,7 @@ export async function recoverLayoutTransactions({ environment = process.env, run
     console.error(`GitRail layout recovery deferred: ${sanitizeTerminalText(error.message)}`);
     return { recovered: [], deferredWorkspaces: workspaceId ? [workspaceId] : [] };
   }
-  const deadline = performance.now() + 15_000;
+  const budget = createRecoveryBudget(15_000, now);
   let entries;
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
@@ -653,8 +793,8 @@ export async function recoverLayoutTransactions({ environment = process.env, run
         transaction.journalPath = journalPath;
         if (transaction.stagingTabId) journaledStagingTabs.add(transaction.stagingTabId);
         if (workspaceId && transaction.workspaceId !== workspaceId) continue;
-        if (performance.now() >= deadline) throw new Error("15-second startup recovery budget exhausted");
-        await recoverLayoutTransaction({ run, herdr, transaction });
+        budget.remaining();
+        await recoverLayoutTransaction({ run, herdr, transaction, budget });
         recovered.push(journalPath);
       } catch (error) {
         if (transaction?.workspaceId) deferredWorkspaces.add(transaction.workspaceId);
@@ -662,10 +802,12 @@ export async function recoverLayoutTransactions({ environment = process.env, run
       }
     }
     try {
-      const { payload } = await commandJson(run, herdr, ["tab", "list"], {
-        timeoutMs: 1_000,
-        maxOutputBytes: 4 * 1_024 * 1_024,
-      });
+      const { payload } = await commandJson(
+        run,
+        herdr,
+        ["tab", "list"],
+        recoveryCommandOptions(budget, 4 * 1_024 * 1_024),
+      );
       for (const tab of responseItems(payload, "tabs")) {
         if (tab.label !== STAGING_LABEL || journaledStagingTabs.has(tab.tab_id)) continue;
         if (workspaceId && tab.workspace_id !== workspaceId) continue;
@@ -690,12 +832,13 @@ async function rebuildWithOuterRail({
   workspaceCwd,
   layout,
   exportedTree,
-  contentPaneIds,
+  contentPanes,
   existingRail,
   restoreFocusPaneId = "",
   sourcePaneId = "",
   environment = process.env,
 }) {
+  const contentPaneIds = contentPanes.map((pane) => pane.pane_id);
   const excluded = new Set((layout?.panes || [])
     .map((pane) => pane.pane_id)
     .filter((paneId) => !contentPaneIds.includes(paneId)));
@@ -715,6 +858,11 @@ async function rebuildWithOuterRail({
     tabId,
     entrypoint,
     recoveryTree: existingRail ? fullTree : contentTree,
+    paneTerminalIds: Object.fromEntries(
+      [...contentPanes, ...(existingRail ? [existingRail] : [])]
+        .filter((pane) => pane?.pane_id && pane?.terminal_id)
+        .map((pane) => [pane.pane_id, pane.terminal_id]),
+    ),
     restoreFocusPaneId,
     createdRail: !existingRail,
     railPaneId,
@@ -722,8 +870,32 @@ async function rebuildWithOuterRail({
     completedOperations: 0,
     phase: "prepared",
   };
+  const missingIdentity = treeLeaves(transaction.recoveryTree)
+    .find((paneId) => !transaction.paneTerminalIds[paneId]);
+  if (missingIdentity) {
+    throw new Error(`unable to capture the pane instance identity required to recover ${sanitizeTerminalText(missingIdentity)}`);
+  }
+  const abortController = new globalThis.AbortController();
+  Object.defineProperty(transaction, "commandOptions", {
+    configurable: true,
+    enumerable: false,
+    value: {
+      signal: abortController.signal,
+      waitForTermination: true,
+      killGraceMs: 250,
+    },
+  });
+  let settleLayout;
+  const layoutSettled = new Promise((resolve) => { settleLayout = resolve; });
+  activeLayoutAbort = abortController;
+  activeLayoutSettled = layoutSettled;
   await persistLayoutTransaction(transaction);
-  activeLayoutRecovery = () => recoverLayoutTransaction({ run, herdr, transaction });
+  activeLayoutRecovery = (budget = createRecoveryBudget(15_000)) => recoverLayoutTransaction({
+    run,
+    herdr,
+    transaction,
+    budget,
+  });
   try {
     transaction.stagingTabId = await stageContentPanes({ run, herdr, workspaceId, tabId, paneIds: stagedPaneIds, transaction });
     await persistLayoutTransaction(transaction);
@@ -733,10 +905,24 @@ async function rebuildWithOuterRail({
         "--label", STAGING_LABEL, "--no-focus",
       ], "a temporary GitRail pane tab");
     } else {
+      transaction.priorPaneIds = [...await workspacePaneIds(
+        run,
+        herdr,
+        workspaceId,
+        transaction.commandOptions,
+      )];
       transaction.pendingOperation = { kind: "open-rail" };
       await persistLayoutTransaction(transaction);
       const opened = await openRailInTab({
-        run, herdr, pluginId, entrypoint, workspaceId, sourceTabId: tabId, workspaceCwd, sourcePaneId,
+        run,
+        herdr,
+        pluginId,
+        entrypoint,
+        workspaceId,
+        sourceTabId: tabId,
+        workspaceCwd,
+        sourcePaneId,
+        commandOptions: transaction.commandOptions,
       });
       railPaneId = opened.paneId;
       openedStdout = opened.stdout;
@@ -757,19 +943,36 @@ async function rebuildWithOuterRail({
     await fs.rm(journalPath, { force: true });
     activeLayoutRecovery = null;
   } catch (error) {
+    if (layoutTerminationRequested) throw error;
     let recoveryError = null;
     try {
+      const recoveryBudget = createRecoveryBudget(15_000);
       if (railPaneId && !existingRail) {
-        const closed = await closeOwnedPane(run, herdr, railPaneId, { quiet: true });
-        if (!closed && await paneTabId(run, herdr, railPaneId) === tabId) {
+        const closed = await closeOwnedPane(run, herdr, railPaneId, {
+          quiet: true,
+          commandOptions: recoveryCommandOptions(recoveryBudget, 256 * 1_024),
+        });
+        if (!closed && await paneTabId(
+          run,
+          herdr,
+          railPaneId,
+          recoveryCommandOptions(recoveryBudget, 256 * 1_024),
+        ) === tabId) {
           await movePane(run, herdr, [
             railPaneId, "--new-tab", "--workspace", workspaceId,
             "--label", STAGING_LABEL, "--no-focus",
-          ], "a temporary GitRail recovery tab");
+          ], "a temporary GitRail recovery tab", recoveryCommandOptions(recoveryBudget, 2 * 1_024 * 1_024));
         }
       }
       const recoveryTree = existingRail ? fullTree : contentTree;
-      await stageTreeForRecovery({ run, herdr, workspaceId, tabId, tree: recoveryTree });
+      await stageTreeForRecovery({
+        run,
+        herdr,
+        workspaceId,
+        tabId,
+        tree: recoveryTree,
+        budget: recoveryBudget,
+      });
       await restoreContentTree({
         run,
         herdr,
@@ -777,6 +980,7 @@ async function rebuildWithOuterRail({
         contentTree: recoveryTree,
         restoreFocusPaneId,
         continueOnError: true,
+        budget: recoveryBudget,
       });
       await fs.rm(journalPath, { force: true });
       activeLayoutRecovery = null;
@@ -790,6 +994,10 @@ async function rebuildWithOuterRail({
       );
     }
     throw error;
+  } finally {
+    settleLayout();
+    if (activeLayoutAbort === abortController) activeLayoutAbort = null;
+    if (activeLayoutSettled === layoutSettled) activeLayoutSettled = null;
   }
   return { paneId: railPaneId, stdout: openedStdout };
 }
@@ -846,7 +1054,7 @@ async function placeExistingRail({
     workspaceCwd,
     layout,
     exportedTree,
-    contentPaneIds: contentPanes.map((pane) => pane.pane_id),
+    contentPanes,
     existingRail: rail,
     restoreFocusPaneId: contentPanes.find((pane) => pane.focused)?.pane_id || "",
     sourcePaneId: contentPanes.find((pane) => pane.pane_id === layout?.focused_pane_id)?.pane_id
@@ -984,7 +1192,7 @@ export async function openHerdrPanel({
       } catch (error) {
         console.error(`GitRail was adopted, but its sidebar placement could not be repaired: ${sanitizeTerminalText(error.message)}`);
       }
-      await writePaneState(statePath, keptRail.pane_id, adoptedCwd);
+      await writePaneState(statePath, keptRail.pane_id, adoptedCwd, keptRail.terminal_id || "");
       await removeLegacyPaneState({ workspaceId, entrypoint, environment });
       try {
         const { result } = await commandJson(run, herdr, ["pane", "get", keptRail.pane_id]);
@@ -999,7 +1207,12 @@ export async function openHerdrPanel({
     if (!layoutProbe && legacyRails.length > 0 && entrypoint === "git-tui") {
       const legacy = legacyRails[0];
       await run(herdr, ["pane", "rename", legacy.pane_id, RAIL_LABEL], { timeoutMs: 5_000, maxOutputBytes: 256 * 1_024 });
-      await writePaneState(statePath, legacy.pane_id, invocation.workspaceCwd || legacy.cwd || "");
+      await writePaneState(
+        statePath,
+        legacy.pane_id,
+        invocation.workspaceCwd || legacy.cwd || "",
+        legacy.terminal_id || "",
+      );
       await removeLegacyPaneState({ workspaceId, entrypoint, environment });
       return { paneId: legacy.pane_id, adopted: true };
     }
@@ -1067,7 +1280,7 @@ export async function openHerdrPanel({
         workspaceCwd: invocation.workspaceCwd,
         layout,
         exportedTree: await exportLayout(environment, invocation.tabId),
-        contentPaneIds: contentPanes.map((pane) => pane.pane_id),
+        contentPanes,
         existingRail: null,
         restoreFocusPaneId: contentPanes.find((pane) => pane.focused)?.pane_id || "",
         sourcePaneId: source.pane_id,
@@ -1077,7 +1290,20 @@ export async function openHerdrPanel({
       openedStdout = rebuilt.stdout;
     }
     writeOutput(openedStdout);
-    await writePaneState(statePath, paneId, invocation.workspaceCwd);
+    let terminalId = "";
+    try {
+      const { payload: openedPanePayload } = await commandJson(run, herdr, ["pane", "get", paneId], {
+        timeoutMs: 3_000,
+        maxOutputBytes: 256 * 1_024,
+      });
+      const openedPane = openedPanePayload?.result?.pane;
+      if (openedPane?.pane_id === paneId && openedPane.workspace_id === workspaceId) {
+        terminalId = openedPane.terminal_id || "";
+      }
+    } catch (error) {
+      console.error(`GitRail opened, but its pane instance identity could not be recorded: ${sanitizeTerminalText(error.message)}`);
+    }
+    await writePaneState(statePath, paneId, invocation.workspaceCwd, terminalId);
     await removeLegacyPaneState({ workspaceId, entrypoint, environment });
     try {
       await resize({ paneId, workspaceCwd: invocation.workspaceCwd, environment });
@@ -1109,15 +1335,28 @@ if (invokedDirectly) {
   const recoverAndExit = async () => {
     if (terminating) return;
     terminating = true;
-    if (activeLayoutRecovery) {
+    layoutTerminationRequested = true;
+    const budget = createRecoveryBudget(4_000);
+    activeLayoutAbort?.abort();
+    let transactionSettled = true;
+    if (activeLayoutSettled) {
+      let timer;
+      transactionSettled = await Promise.race([
+        activeLayoutSettled.then(() => true),
+        new Promise((resolve) => {
+          timer = setTimeout(() => resolve(false), budget.remaining(4_000));
+        }),
+      ]);
+      clearTimeout(timer);
+    }
+    if (activeLayoutRecovery && transactionSettled) {
       try {
-        await Promise.race([
-          activeLayoutRecovery(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("four-second recovery budget expired")), 4_000)),
-        ]);
+        await activeLayoutRecovery(budget);
       } catch (error) {
         console.error(`GitRail layout recovery remains journaled: ${sanitizeTerminalText(error.message)}`);
       }
+    } else if (!transactionSettled) {
+      console.error("GitRail layout recovery remains journaled: active mutation did not stop within the four-second recovery budget");
     }
     process.exit(1);
   };

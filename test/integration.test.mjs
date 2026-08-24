@@ -52,14 +52,26 @@ test("fixture state is derived by the production provider", async (t) => {
   assert.ok(files.every((file) => file.descriptor.commitHash === state.commits[0].hash));
 });
 
-test("read-only refresh does not rewrite the Git index", async (t) => {
+test("inspection leaves HEAD, refs, index, status, and worktree bytes unchanged", async (t) => {
   const root = await createFixtureRepository();
   t.after(() => removeFixtureRepository(root));
   const indexPath = path.join(root, ".git", "index");
-  const before = await fs.stat(indexPath, { bigint: true });
-  await repositoryState(t, root);
-  const after = await fs.stat(indexPath, { bigint: true });
-  assert.equal(after.mtimeNs, before.mtimeNs);
+  const capture = async () => ({
+    head: (await runGit(root, ["rev-parse", "HEAD"])).stdout,
+    refs: (await runGit(root, ["show-ref"])).stdout,
+    status: (await runGit(root, ["status", "--porcelain=v2", "-z"])).stdout,
+    index: await fs.readFile(indexPath),
+    indexMtime: (await fs.stat(indexPath, { bigint: true })).mtimeNs,
+    worktree: await Promise.all(["README.md", "src/rail.mjs", "src/status.mjs", "docs/usage.md", "docs/preview.md", "assets/binary.dat", "notes/production ready.md"]
+      .map(async (file) => [file, await fs.readFile(path.join(root, file))])),
+  });
+  const before = await capture();
+  const state = await repositoryState(t, root);
+  await getCommitFiles(root, state.commits[0].hash);
+  await loadRaw({ repoRoot: root, filePath: "src/status.mjs", descriptor: state.workspaceDescriptor, metadata: {}, maxFileBytes: 1024 * 1024 });
+  await loadDiff({ repoRoot: root, filePath: "src/status.mjs", descriptor: state.workspaceDescriptor, maxOutputBytes: 1024 * 1024 });
+  const after = await capture();
+  assert.deepEqual(after, before);
 });
 
 test("refresh and commit details use one exact-copy diff scan per comparison", async (t) => {

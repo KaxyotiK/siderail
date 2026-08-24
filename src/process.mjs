@@ -20,9 +20,14 @@ export function runCommand(command, args = [], options = {}) {
     stdinInput,
     killGraceMs = 250,
     waitForTermination = false,
+    signal,
   } = options;
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new ProcessError(`${command} was cancelled`, { kind: "aborted", command, args }));
+      return;
+    }
     const startedAt = Date.now();
     const child = spawn(command, args, {
       cwd,
@@ -38,12 +43,14 @@ export function runCommand(command, args = [], options = {}) {
     let timer;
     let forceKillTimer;
     let termination;
+    let abortListener;
 
     const finish = (callback) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (waitForTermination) clearTimeout(forceKillTimer);
+      if (abortListener) signal?.removeEventListener("abort", abortListener);
       callback();
     };
     const resultSoFar = (exitCode = null, signal = null) => {
@@ -93,6 +100,11 @@ export function runCommand(command, args = [], options = {}) {
       }
       target.push(chunk);
     };
+    if (signal) {
+      abortListener = () => terminate("aborted", `${command} was cancelled`);
+      signal.addEventListener("abort", abortListener, { once: true });
+      if (signal.aborted) abortListener();
+    }
     child.stdout.on("data", capture(stdout));
     child.stderr.on("data", capture(stderr));
     child.on("error", (cause) => finish(() => reject(new ProcessError(

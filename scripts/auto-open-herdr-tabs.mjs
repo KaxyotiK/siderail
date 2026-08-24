@@ -67,10 +67,10 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
   });
 }
 
-async function gitWorkspaceRoot(cwd, run = runCommand) {
+async function gitWorkspaceRoot(cwd, run = runCommand, timeoutMs = 2_000) {
   try {
     const result = await run("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
-      timeoutMs: 2_000,
+      timeoutMs: Math.max(1, Math.min(2_000, timeoutMs)),
       maxOutputBytes: 64 * 1_024,
     });
     return result.stdout.trim() || null;
@@ -83,10 +83,24 @@ export function autoOpenEnabled(environment = process.env) {
   return loadConfig(environment).config.herdr.autoOpen;
 }
 
-async function openTarget(target, { herdr, pluginRoot, environment, run = runCommand, timeoutMs = 35_000 }) {
-  const repoRoot = await gitWorkspaceRoot(target.cwd, run);
+async function openTarget(target, {
+  herdr,
+  pluginRoot,
+  environment,
+  run = runCommand,
+  timeoutMs = 35_000,
+  now = () => performance.now(),
+}) {
+  const startedAt = now();
+  const repoRoot = await gitWorkspaceRoot(target.cwd, run, timeoutMs);
   const enabled = repoRoot ? autoOpenEnabled(environment) : false;
   if (!enabled) return false;
+  const remainingMs = Math.floor(timeoutMs - (now() - startedAt));
+  if (remainingMs <= 0) {
+    const error = new Error("GitRail auto-open deadline expired while detecting the repository");
+    error.kind = "timeout";
+    throw error;
+  }
   await run("/bin/bash", [path.join(pluginRoot, "scripts/open-herdr-panel.sh"), "git-tui", "ensure"], {
     cwd: pluginRoot,
     env: {
@@ -99,7 +113,7 @@ async function openTarget(target, { herdr, pluginRoot, environment, run = runCom
       GIT_RAIL_WORKSPACE_CWD: target.cwd,
       GIT_RAIL_NODE_PATH: process.execPath,
     },
-    timeoutMs,
+    timeoutMs: remainingMs,
     killGraceMs: 5_000,
     waitForTermination: true,
     maxOutputBytes: 256 * 1_024,
@@ -111,9 +125,9 @@ export async function runBoundedSweep(targets, job, {
   concurrency = 4,
   deadlineMs = 35_000,
   now = () => performance.now(),
+  deadlineAt = null,
 } = {}) {
-  const startedAt = now();
-  const deadline = startedAt + deadlineMs;
+  const deadline = deadlineAt ?? now() + deadlineMs;
   const summary = { opened: [], skipped: [], failed: [], deadlineCancelled: [] };
   let cursor = 0;
   const worker = async () => {
@@ -147,6 +161,8 @@ function pluginContext(environment) {
 
 export async function autoOpenHerdrTabs(environment = process.env, dependencies = {}) {
   const run = dependencies.run || runCommand;
+  const now = dependencies.now || (() => performance.now());
+  const deadlineAt = now() + 35_000;
   const herdr = environment.HERDR_BIN_PATH || "herdr";
   const pluginRoot = environment.HERDR_PLUGIN_ROOT || path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   if (environment.HERDR_PLUGIN_EVENT === "tab.closed") {
@@ -167,9 +183,9 @@ export async function autoOpenHerdrTabs(environment = process.env, dependencies 
     ? tabTargetFromContext(pluginContext(environment), environment)
     : null;
   const [workspaceResult, tabResult, paneResult] = await Promise.all([
-    run(herdr, ["workspace", "list"], { timeoutMs: 8_000, maxOutputBytes: 4 * 1_024 * 1_024 }),
-    run(herdr, ["tab", "list"], { timeoutMs: 8_000, maxOutputBytes: 8 * 1_024 * 1_024 }),
-    run(herdr, ["pane", "list"], { timeoutMs: 8_000, maxOutputBytes: 16 * 1_024 * 1_024 }),
+    run(herdr, ["workspace", "list"], { timeoutMs: Math.max(1, Math.min(8_000, deadlineAt - now())), maxOutputBytes: 4 * 1_024 * 1_024 }),
+    run(herdr, ["tab", "list"], { timeoutMs: Math.max(1, Math.min(8_000, deadlineAt - now())), maxOutputBytes: 8 * 1_024 * 1_024 }),
+    run(herdr, ["pane", "list"], { timeoutMs: Math.max(1, Math.min(8_000, deadlineAt - now())), maxOutputBytes: 16 * 1_024 * 1_024 }),
   ]);
   const targets = lifecycleEvent && !eventTarget
     ? []
@@ -191,8 +207,15 @@ export async function autoOpenHerdrTabs(environment = process.env, dependencies 
 
   const summary = await runBoundedSweep(
     targets,
-    dependencies.openTarget || ((target, timeoutMs) => openTarget(target, { herdr, pluginRoot, environment, run, timeoutMs })),
-    { now: dependencies.now },
+    dependencies.openTarget || ((target, timeoutMs) => openTarget(target, {
+      herdr,
+      pluginRoot,
+      environment,
+      run,
+      timeoutMs,
+      now,
+    })),
+    { now, deadlineAt },
   );
   if (summary.failed.length || summary.deadlineCancelled.length) {
     const failed = summary.failed.map((item) => `${item.tabId}: ${item.message}`).join("; ");

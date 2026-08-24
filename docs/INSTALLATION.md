@@ -5,6 +5,7 @@
 ```bash
 git clone https://github.com/KaxyotiK/herdr-gitrail.git
 cd herdr-gitrail
+npm ci --ignore-scripts
 npm run check
 herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
@@ -40,13 +41,16 @@ and the viewer rule can be disabled or replaced in configuration. When Glow is
 not on `PATH`, GitRail keeps wrapped Raw open with an installation hint.
 
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the
-checkout, run `npm run check`, relink with `herdr plugin link .`, and reopen it.
+checkout, run `npm ci --ignore-scripts` and `npm run check`, relink with
+`herdr plugin link .`, and reopen it.
 Use a tagged release in production rather than an arbitrary moving branch.
 
 ## Uninstall
 
-Use Herdr's plugin unlink/remove command for `local.git-rail`, then remove the
-checkout. Optional pane ownership state lives in
+From the linked checkout, run `npm run uninstall:herdr`. It closes only panes
+whose live process and terminal-instance identity prove that GitRail owns them,
+then unlinks `local.git-rail`. Restart Herdr and remove the checkout only after
+`herdr plugin list` reports that GitRail is absent. Optional pane ownership state lives in
 `~/.cache/herdr-gitrail/panes/` and contains only Herdr pane identifiers.
 
 ## Configuration
