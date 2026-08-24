@@ -9,7 +9,12 @@ export function validateArchiveMembers(text) {
     || member === "schema" || member.startsWith("schema/")
     || member === "node_modules" || member.startsWith("node_modules/"));
   if (forbidden.length) throw new Error(`forbidden release archive members: ${forbidden.join(", ")}`);
-  for (const required of ["herdr-plugin.toml", "package.json", "scripts/uninstall-herdr-plugin.mjs"]) {
+  for (const required of [
+    "herdr-plugin.toml",
+    "package.json",
+    "scripts/run-isolated-live-smoke.sh",
+    "scripts/uninstall-herdr-plugin.mjs",
+  ]) {
     if (!members.includes(required)) throw new Error(`release archive is missing ${required}`);
   }
   return members;

@@ -62,17 +62,20 @@ function snapshot(checkout, width, environmentRoot) {
 export function verifyScreenshotMetadata({ candidate = "HEAD", resolveCommits = true } = {}) {
   const readme = fs.readFileSync(path.join(repositoryRoot, "docs", "screenshots", "README.md"), "utf8");
   const visualSource = readme.match(/^- Visual source: `([0-9a-f]{40,64})`$/m)?.[1];
+  const captureSource = readme.match(/^- Capture source: `([0-9a-f]{40,64})`$/m)?.[1];
   if (!visualSource) throw new Error("screenshot README must name a full visual-source SHA");
+  if (!captureSource) throw new Error("screenshot README must name a full capture-source SHA");
   if (!/^- Herdr: `0\.8\.\d+`$/m.test(readme)) throw new Error("screenshot README must name exact Herdr 0.8.x");
   const candidateSha = resolveCommits ? fullCommit(candidate, "candidate") : null;
   const visualSourceSha = resolveCommits ? fullCommit(visualSource, "visual source") : visualSource;
+  const captureSourceSha = resolveCommits ? fullCommit(captureSource, "capture source") : captureSource;
   for (const [width, expected] of expectedImages) {
     const file = path.join(repositoryRoot, "docs", "screenshots", `gitrail-${width}.png`);
     const bytes = fs.readFileSync(file);
     assert.ok(bytes.length > 10_000, `${path.basename(file)} is unexpectedly small`);
     assert.deepEqual(pngDimensions(bytes), expected, `${path.basename(file)} dimensions changed`);
   }
-  return { candidateSha, visualSourceSha };
+  return { candidateSha, visualSourceSha, captureSourceSha };
 }
 
 export function verifyScreenshotSnapshots({ candidate = "HEAD" } = {}) {
@@ -80,10 +83,18 @@ export function verifyScreenshotSnapshots({ candidate = "HEAD" } = {}) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-screenshot-proof-"));
   try {
     const sourceRoot = path.join(temporaryRoot, "source");
+    const captureRoot = path.join(temporaryRoot, "capture");
     const candidateRoot = path.join(temporaryRoot, "candidate");
     extractCommit(metadata.visualSourceSha, sourceRoot);
+    extractCommit(metadata.captureSourceSha, captureRoot);
     extractCommit(metadata.candidateSha, candidateRoot);
     for (const width of expectedImages.keys()) {
+      const screenshotPath = path.join("docs", "screenshots", `gitrail-${width}.png`);
+      assert.deepEqual(
+        fs.readFileSync(path.join(candidateRoot, screenshotPath)),
+        fs.readFileSync(path.join(captureRoot, screenshotPath)),
+        `candidate ${width}-column screenshot bytes differ from the recorded capture source`,
+      );
       const sourceOutput = snapshot(sourceRoot, width, path.join(temporaryRoot, `source-${width}`));
       const candidateOutput = snapshot(candidateRoot, width, path.join(temporaryRoot, `candidate-${width}`));
       assert.deepEqual(candidateOutput, sourceOutput, `candidate ${width}-column output differs from screenshot visual source`);

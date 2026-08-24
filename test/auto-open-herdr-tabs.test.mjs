@@ -64,7 +64,7 @@ test("event reconciliation filters to the created tab", () => {
   ]);
 });
 
-test("temporary layout staging tabs never trigger auto-open", () => {
+test("legacy layout-staging tabs never trigger auto-open", () => {
   const workspaces = { result: { workspaces: [{ workspace_id: "w1" }] } };
   const tabs = { result: { tabs: [{
     workspace_id: "w1",

@@ -1,331 +1,179 @@
 # Releasing
 
-Validate one immutable candidate commit before tagging. Any change to code,
-manifest, dependencies, documentation, screenshots, or packaged files creates a
-new candidate and invalidates every cell below.
+GitRail does not use GitHub Actions. Release validation runs locally against one
+immutable candidate commit and records hashed logs. Any change to code,
+documentation, screenshots, dependencies, the manifest, or packaged files
+creates a new candidate and invalidates all evidence.
 
-## Freeze and initialize evidence
+The sole post-validation exception is a follow-up commit that changes only the
+completion status and evidence references in `PRODUCTION-HARDENING.md` and
+`PRODUCTION-READINESS.md`. That record does not change the candidate or enter
+the release archive. Any behavioral documentation edit still creates a new
+candidate.
 
-From a clean `main` worktree:
+Run every command block below in Bash. Each block enables strict mode so an
+intermediate failure cannot be followed by a passing evidence record.
 
-Run every command block below in Bash. Each block enables strict mode so a
-failed intermediate command cannot be followed by a passing evidence record.
+## Freeze the candidate
+
+Start from a clean `main` worktree and continue in the same Bash shell for all
+blocks:
 
 ```bash
 set -euo pipefail
 candidate_sha=$(git rev-parse HEAD)
+test -z "$(git status --porcelain)"
 evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-gitrail/releases/0.1.0/$candidate_sha"
 evidence_file="$evidence_root/evidence.json"
 mkdir -p "$evidence_root"
-test ! -e "$evidence_file" # never overwrite evidence for the same candidate
+test ! -e "$evidence_file"
 npm run release:evidence -- init --file "$evidence_file" --sha "$candidate_sha"
-local_log="$evidence_root/local.log"
+```
+
+Every later command must use that full SHA. `record-file` hashes an existing log
+and records an explicit result. `verify` rejects missing, failed, changed, or
+mismatched evidence.
+
+## Node 22 and Node 24
+
+Run this block twice: once from a shell using Node 22 and once using Node 24.
+It refuses other major versions and records separate `local-node-22` and
+`local-node-24` cells.
+
+```bash
+set -euo pipefail
+node_major=$(node -p 'process.versions.node.split(".")[0]')
+case "$node_major" in 22|24) ;; *) echo "activate Node 22 or 24" >&2; exit 1 ;; esac
+cell="local-node-$node_major"
+log="$evidence_root/$cell.log"
 {
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
   npm ci --ignore-scripts
   npm run check
-  npm run test:coverage
   npm run snapshot
   npm run artifact:verify
   test "$(node -p 'require("./package.json").version')" = "$(sed -n 's/^version = "\([^"]*\)"/\1/p' herdr-plugin.toml)"
   test -z "$(git status --porcelain)"
   node --version
-} 2>&1 | tee "$local_log"
+} 2>&1 | tee "$log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
-  --cell local --command "npm ci; check; coverage; snapshot; artifact" \
-  --status pass --evidence-file "$local_log" --node "$(node --version)"
+  --cell "$cell" --command "npm ci; check; snapshot; artifact" \
+  --status pass --evidence-file "$log" --node "$(node --version)"
 ```
 
-Every later record uses the same full SHA. `record-ci` queries GitHub and refuses
-a run from another SHA. `record-file` hashes an existing log and requires an
-explicit pass/fail result. `verify` refuses missing, failed, changed, mismatched,
-or unsupported evidence.
+`npm run check` includes the coverage floors: 95% lines, 86% branches, and 95%
+functions.
 
-## Automated matrix and dependency audit
+## Poisoned parent environment
 
-Push `candidate_sha`, wait for the CI workflow on that exact commit, and record
-the workflow/run URL for these cells:
-
-- `ci-macos-15-node-22`, `ci-macos-15-node-24`
-- `ci-ubuntu-24.04-node-22`, `ci-ubuntu-24.04-node-24`
-- `poisoned-environment`, `demo-snapshot`, `ci-archive`
-
-Each OS/Node cell runs `npm ci --ignore-scripts`, `npm run check`, coverage,
-snapshots, and artifact verification. The archive job examines `tar -tf` before
-extraction, rejects `node_modules/`, `schema/`, and root `.git-rail.json`, then
-installs and checks only the extracted candidate.
+This proves the test helpers cannot inherit a live Herdr pane or executable.
 
 ```bash
 set -euo pipefail
-ci_run=$(gh run list --workflow ci.yml --commit "$candidate_sha" --limit 1 \
-  --json databaseId --jq '.[0].databaseId')
-for cell in ci-macos-15-node-22 ci-macos-15-node-24 \
-  ci-ubuntu-24.04-node-22 ci-ubuntu-24.04-node-24 \
-  poisoned-environment demo-snapshot ci-archive \
-  live-macos-15 uninstall-macos-15 live-ubuntu-24.04 \
-  uninstall-ubuntu-24.04 development-migration; do
-  npm run release:evidence -- record-ci --file "$evidence_file" --sha "$candidate_sha" \
-    --cell "$cell" --command "CI workflow $ci_run: $cell" --run "$ci_run"
-done
+poison_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-poison.XXXXXX")
+trap 'rm -rf -- "$poison_root"' EXIT
+printf '%s\n' '#!/bin/sh' 'echo "poisoned Herdr escaped the test helper" >&2' 'exit 97' > "$poison_root/herdr"
+chmod 700 "$poison_root/herdr"
+poison_log="$evidence_root/poisoned-environment.log"
+HERDR_PANE_ID=hostile-pane-id HERDR_BIN_PATH="$poison_root/herdr" npm run check 2>&1 | tee "$poison_log"
+npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+  --cell poisoned-environment --command "npm run check with hostile HERDR_*" \
+  --status pass --evidence-file "$poison_log"
 ```
 
-`record-ci` applies a built-in contract for each cell. It rejects the wrong
-workflow or event, a missing/failed matrix job, and every missing, skipped, or
-failed required step. Platform, Node, and Herdr metadata for live cells come
-from that contract rather than operator-supplied labels. The live job runs the
-walkthrough once with filesystem watchers isolated and once with only the
-recovery poll enabled, so either invalidation path can fail independently.
+## Exact archive
 
-GitHub's dependency-review API is unavailable for this private repository
-without GitHub Advanced Security. The executable replacement records the exact
-lockfile diff, proves the head checkout, performs a clean install, retains zero
-runtime dependencies, and fails on high/critical npm advisories. Dispatch it
-against the reviewed development base and exact candidate:
+Validate only files committed in the candidate:
 
 ```bash
 set -euo pipefail
-gh workflow run dependency-audit.yml --ref main \
-  -f base_ref=6c7d9ac -f head_ref="$candidate_sha"
-dependency_run=$(gh run list --workflow dependency-audit.yml --commit "$candidate_sha" \
-  --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
-gh run watch "$dependency_run" --exit-status
-npm run release:evidence -- record-ci --file "$evidence_file" --sha "$candidate_sha" \
-  --cell dependency-review --command "dependency audit 6c7d9ac..$candidate_sha" --run "$dependency_run"
-```
-
-The last command is `record-ci` (not `record-file`); it queries the run and
-accepts it only when its conclusion is successful and its head SHA is the
-candidate. A workflow for another commit is not evidence.
-
-## Independent archive witness
-
-```bash
-set -euo pipefail
-archive_file=$(mktemp)
-archive_root=$(mktemp -d)
+archive_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-archive.XXXXXX")
+trap 'rm -rf -- "$archive_root"' EXIT
+git archive --format=tar --output "$archive_root/candidate.tar" "$candidate_sha"
+tar -tf "$archive_root/candidate.tar" | node scripts/verify-archive-members.mjs
+mkdir "$archive_root/worktree"
+tar -xf "$archive_root/candidate.tar" -C "$archive_root/worktree"
 archive_log="$evidence_root/archive.log"
-cleanup_archive() {
-  rm -f -- "$archive_file"
-  rm -rf -- "$archive_root"
-}
-trap cleanup_archive EXIT
-{
-  git archive --format=tar --output "$archive_file" "$candidate_sha"
-  tar -tf "$archive_file" | node scripts/verify-archive-members.mjs
-  tar -xf "$archive_file" -C "$archive_root"
-  (
-    cd "$archive_root"
-    npm ci --ignore-scripts
-    npm run artifact:verify
-    npm run check
-  )
-} 2>&1 | tee "$archive_log"
-npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
-  --cell archive --command "git archive $candidate_sha; verify members; npm ci; artifact; check" \
-  --status pass --evidence-file "$archive_log"
-cleanup_archive
-trap - EXIT
-```
-
-## Clean install and live Herdr walkthrough
-
-Run on both macOS 15 and Ubuntu 24.04 with a recorded Node 22 or 24 version and
-Herdr 0.8.x version. Use an isolated Herdr session and configuration root. Link
-a detached candidate checkout so the plugin cannot drift:
-
-```bash
-set -euo pipefail
-release_runtime=$(mktemp -d)
-export HERDR_SESSION="gitrail-release-$(date +%s)-$$"
-export XDG_CONFIG_HOME="$release_runtime/config"
-export XDG_CACHE_HOME="$release_runtime/cache"
-export XDG_STATE_HOME="$release_runtime/state"
-export HERDR_BIN_PATH="$(command -v herdr)"
-mkdir -p "$release_runtime/bin"
-ln -s "$(command -v git)" "$release_runtime/bin/git"
-export GIT_RAIL_LIVE_GIT_SHIM="$release_runtime/bin/git"
-export PATH="$release_runtime/bin:$PATH"
-server_pid=""
-candidate_parent=""
-candidate_checkout=""
-start_server() {
-  env GIT_RAIL_NODE_PATH="$(command -v node)" "$HERDR_BIN_PATH" server \
-    >> "$release_runtime/herdr-server.log" 2>&1 &
-  server_pid=$!
-  for _ in $(seq 1 100); do
-    if "$HERDR_BIN_PATH" status server >/dev/null 2>&1; then return 0; fi
-    sleep 0.1
-  done
-  return 1
-}
-cleanup_live() {
-  set +e
-  if test -n "$candidate_checkout" && test -d "$candidate_checkout"; then
-    (cd "$candidate_checkout" && npm run uninstall:herdr) >/dev/null 2>&1
-  fi
-  "$HERDR_BIN_PATH" session stop "$HERDR_SESSION" --json >/dev/null 2>&1
-  if test -n "$server_pid"; then wait "$server_pid" >/dev/null 2>&1; fi
-  if test -n "$candidate_checkout" && git worktree list --porcelain | grep -F "worktree $candidate_checkout" >/dev/null; then
-    git worktree remove --force "$candidate_checkout"
-  fi
-  if test -n "$candidate_parent"; then
-    node -e 'require("node:fs").rmSync(process.argv[1], { recursive: true, force: true })' "$candidate_parent"
-  fi
-  node -e 'require("node:fs").rmSync(process.argv[1], { recursive: true, force: true })' "$release_runtime"
-}
-trap cleanup_live EXIT
-start_server
-case "$(uname -s)" in
-  Darwin) platform_version="macOS $(sw_vers -productVersion)"; live_cell=live-macos-15 ;;
-  Linux) platform_version="Ubuntu $(lsb_release -rs)"; live_cell=live-ubuntu-24.04 ;;
-  *) echo "unsupported release platform" >&2; exit 1 ;;
-esac
-node_version=$(node --version)
-herdr_version=$(herdr --version)
-live_log="$evidence_root/$live_cell.log"
-candidate_parent=$(mktemp -d)
-candidate_checkout="$candidate_parent/candidate"
-git worktree add --detach "$candidate_checkout" "$candidate_sha"
-{
-  cd "$candidate_checkout"
-  printf 'candidate=%s\nplatform=%s\nnode=%s\nherdr=%s\n' \
-    "$candidate_sha" "$platform_version" "$node_version" "$herdr_version"
+(
+  cd "$archive_root/worktree"
   npm ci --ignore-scripts
+  npm run artifact:verify
   npm run check
-  herdr plugin link .
-  npm run live:herdr:smoke
-} 2>&1 | tee "$live_log"
-```
-
-The walkthrough must observe:
-
-1. Exactly one unfocused rail auto-opens in a Git tab, and none in a non-Git or
-   preview tab.
-2. Open and Toggle do not close an unrelated pane.
-3. Staged, Unstaged, and Untracked are separate; Untracked uses `?`.
-4. Markdown actions `1 Diff`, `2 Raw`, and `3 Rendered` all describe the same
-   exact revision; action 3 renders with embedded Glow.
-5. Preview replacement is scoped to its workspace and source tab.
-6. Auto-open skips an unsafe layout and explicit Open completes the journaled
-   rebuild. The H2 fault-injection suite run earlier in the same cell proves
-   recovery after every journaled mutation; the live observation does not claim
-   to inject a process failure.
-7. Manual refresh, filesystem invalidation, and recovery polling each converge
-   while preserving the last usable state after a failed refresh. The CI job
-   runs separate `watch-only` and `poll-only` sessions.
-8. Git status, HEAD, refs, index bytes/mtime, and worktree bytes are unchanged
-   by inspection.
-9. The real demo pane renders, and the screenshot gate proves that the
-   candidate's deterministic 36/52/100-column output is byte-identical to the
-   recorded visual-source commit.
-
-Append a `PASS` or `FAIL` line for each numbered observation, including the
-Herdr commands or screenshots that establish it, to `live_log`. Do not record
-the cell as passing if any observation failed.
-
-Uninstall from the candidate checkout. This command first closes only panes
-whose current terminal instance, workspace, label, cwd, and argv prove they
-belong to that checkout, then unlinks the plugin:
-
-```bash
-set -euo pipefail
-{
-  cd "$candidate_checkout"
-  npm run uninstall:herdr
-  herdr plugin list
-} 2>&1 | tee -a "$live_log"
-"$HERDR_BIN_PATH" session stop "$HERDR_SESSION" --json
-wait "$server_pid"
-server_pid=""
-start_server
-test "$("$HERDR_BIN_PATH" plugin list)" = "No plugins installed."
-unlink_proof=$("$HERDR_BIN_PATH" workspace create --cwd "$candidate_checkout" --label "GitRail unlink proof" --no-focus)
-unlink_proof_tab=$(printf '%s' "$unlink_proof" | jq -r '.result.tab.tab_id')
-sleep 1
-if "$HERDR_BIN_PATH" pane list | jq -e --arg tab "$unlink_proof_tab" \
-  '.result.panes[] | select(.tab_id == $tab and .label == "HERDER GITRAIL")' >/dev/null; then
-  echo "GitRail startup/event action remained after uninstall" >&2
-  exit 1
-fi
-```
-
-Restart the isolated Herdr session. Confirm no restored GitRail-labelled pane
-remains and a newly created Git tab receives no rail. The local log is diagnostic;
-the release cells are recorded from the successful candidate-bound macOS and
-Ubuntu CI jobs by the automated-matrix commands above. Clean up only after the
-local witness has finished:
-
-```bash
-set -euo pipefail
-printf 'PASS uninstall restart: no restored or new GitRail pane\n' >> "$live_log"
-"$HERDR_BIN_PATH" session stop "$HERDR_SESSION" --json
-wait "$server_pid"
-server_pid=""
-git worktree remove "$candidate_checkout"
-candidate_checkout=""
-node -e 'require("node:fs").rmSync(process.argv[1], { recursive: true, force: true })' "$candidate_parent"
-candidate_parent=""
-trap - EXIT
-node -e 'require("node:fs").rmSync(process.argv[1], { recursive: true, force: true })' "$release_runtime"
-```
-
-## Development migration and pane-state continuity
-
-There is no public upgrade cell for 0.1.0. The development-only witness starts
-from `6c7d9ac`:
-
-1. In isolated user config, set `baseRef` to a valid `user-base`; in the old
-   checkout's `.git-rail.json`, set it to a distinct valid `repo-base`.
-2. Link `6c7d9ac` and prove it resolves `repo-base`.
-3. Remove `$schema` from the same user file without otherwise rewriting it,
-   then link the candidate over `local.git-rail`.
-4. Prove the candidate displays `Against user-base`, never `repo-base`, and
-   leaves the user-config hash unchanged.
-5. Prove the existing per-tab pane-state record continues to track the newly
-   opened candidate rail. This is continuity, not a migration feature.
-6. Run the ownership-safe uninstall/restart proof and record the
-   `development-migration` cell.
-
-GitRail never edits user configuration. The `live-herdr-ubuntu` CI job performs
-these exact steps, captures the old/candidate SHAs, configuration hashes, pane
-and terminal ids, and restart result, and is therefore recorded as the verified
-`development-migration` GitHub Actions cell in the automated-matrix loop. A
-local rerun is diagnostic evidence, not a substitute for that candidate-bound
-successful job.
-
-## Verify and seal durable evidence
-
-Record `screenshots` with their visual-source SHA, then verify all 16 required
-cells. The screenshot verifier checks PNG structure and dimensions and compares
-the candidate's deterministic output at all three widths with the recorded
-visual-source commit.
-
-```bash
-set -euo pipefail
-screenshots_log="$evidence_root/screenshots.log"
-visual_source_sha=$(sed -n 's/^- Visual source: `\([0-9a-f]*\)`/\1/p' docs/screenshots/README.md)
-{
-  npm run screenshots:verify -- --sha "$candidate_sha"
-  cat docs/screenshots/README.md
-  shasum -a 256 docs/screenshots/*.png
-} > "$screenshots_log"
+) 2>&1 | tee "$archive_log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
-  --cell screenshots --command "verify screenshot README and PNG hashes" --status pass \
-  --evidence-file "$screenshots_log" --visual-source-sha "$visual_source_sha"
+  --cell archive --command "git archive; verify members; npm ci; artifact; check" \
+  --status pass --evidence-file "$archive_log"
+```
+
+## Dependency audit
+
+The project must retain zero runtime dependencies and no high- or
+critical-severity advisory in its exact lockfile:
+
+```bash
+set -euo pipefail
+dependency_log="$evidence_root/dependency-audit.log"
+{
+  node -e 'const p=require("./package.json");if(p.dependencies&&Object.keys(p.dependencies).length)throw new Error("runtime dependencies must remain empty")'
+  npm ci --ignore-scripts
+  npm audit --audit-level=high
+} 2>&1 | tee "$dependency_log"
+npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+  --cell dependency-audit --command "zero runtime dependencies; npm ci; npm audit" \
+  --status pass --evidence-file "$dependency_log"
+```
+
+## Isolated live Herdr smoke
+
+Run the checked-in wrapper once on macOS and once on Linux with Herdr 0.8.x,
+Node 22 or 24, and Glow available. The wrapper creates private temporary Herdr configuration, state,
+cache, and named sessions. It never links or unlinks the operator's normal Herdr
+installation. It exercises watch-only and poll-only refresh separately, action-3
+Glow TUI rendering, preview replacement, read-only repository invariants, and
+uninstall/restart proof.
+
+```bash
+set -euo pipefail
+case "$(uname -s)" in
+  Darwin) live_cell=live-macos; platform="macOS $(sw_vers -productVersion)" ;;
+  Linux) live_cell=live-linux; platform="Linux $(. /etc/os-release && printf '%s' "$PRETTY_NAME")" ;;
+  *) echo "live release smoke requires macOS or Linux" >&2; exit 1 ;;
+esac
+live_log="$evidence_root/$live_cell.log"
+HERDR_BIN_PATH=$(command -v herdr) npm run live:release:smoke 2>&1 | tee "$live_log"
+npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+  --cell "$live_cell" --command "isolated watch/poll live smoke and uninstall proof" \
+  --status pass --evidence-file "$live_log" --platform "$platform" \
+  --node "$(node --version)" --herdr "$(herdr --version)"
+```
+
+## Screenshots
+
+The verifier checks PNG dimensions, requires exact PNG-byte equality with the
+recorded capture-source commit, and byte-compares deterministic 36/52/100-column
+output from the candidate and the recorded visual-source commit.
+
+```bash
+set -euo pipefail
+visual_source_sha=$(sed -n 's/^- Visual source: `\([0-9a-f]*\)`/\1/p' docs/screenshots/README.md)
+capture_source_sha=$(sed -n 's/^- Capture source: `\([0-9a-f]*\)`/\1/p' docs/screenshots/README.md)
+screenshots_log="$evidence_root/screenshots.log"
+npm run screenshots:verify -- --sha "$candidate_sha" 2>&1 | tee "$screenshots_log"
+npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+  --cell screenshots --command "verify capture bytes and candidate/source output" \
+  --status pass --evidence-file "$screenshots_log" --visual-source-sha "$visual_source_sha" \
+  --capture-source-sha "$capture_source_sha"
+```
+
+## Verify and seal
+
+All eight required cells must pass before evidence can be sealed:
+
+```bash
+set -euo pipefail
 npm run release:evidence -- verify --file "$evidence_file" --sha "$candidate_sha"
 test "$(git rev-parse HEAD)" = "$candidate_sha"
 test -z "$(git status --porcelain)"
-```
-
-The source manifest deliberately lives outside the candidate while validation
-runs. After it verifies, seal its file evidence into a portable bundle and make
-one evidence-only direct-child commit on `main`. This commit does not change the
-candidate and durably retains the manifest and logs. Creating and
-pushing this evidence commit requires the ordinary separate commit/push
-authorization. The generated bundle and the checklist's L2b status are the only
-permitted post-candidate changes in that commit.
-
-```bash
-set -euo pipefail
 bundle_path="release-evidence/0.1.0/$candidate_sha"
 test ! -e "$bundle_path"
 npm run release:evidence -- seal --file "$evidence_file" --sha "$candidate_sha" \
@@ -336,19 +184,17 @@ git diff --cached --check
 git commit -m "Archive v0.1.0 candidate evidence"
 evidence_commit=$(git rev-parse HEAD)
 test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
-git push origin main
-git fetch origin main
-test "$(git rev-parse origin/main)" = "$evidence_commit"
 npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
   --evidence-commit "$evidence_commit" \
   --repository-url "https://github.com/KaxyotiK/herdr-gitrail" \
   --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
 ```
 
-The tag message contains only candidate-bound GitHub job URLs and paths under
-the pushed evidence commit; it contains no machine-local path. L2b is complete
-after the bundle commit is present on `origin/main` and the commands above pass.
-Only after a separate explicit authorization to create `v0.1.0`, run L2c:
+The evidence-only direct-child commit contains the manifest and all eight hashed
+logs. L2b is complete only after that commit is reviewed and retained in the
+repository. A subsequent status-only documentation commit may mark L2b and the
+readiness rows complete while naming both immutable SHAs. Creating or pushing
+`v0.1.0` requires separate explicit authorization:
 
 ```bash
 set -euo pipefail
@@ -357,6 +203,4 @@ git tag -a v0.1.0 "$candidate_sha" -F "$evidence_root/tag-message.txt"
 git show --no-patch v0.1.0
 ```
 
-The tag contains the candidate SHA, SHA-256 of the complete evidence manifest,
-and each durable evidence reference. Do not move an existing tag. Pushing the
-tag or publishing a release remains a separate operation.
+Do not move an existing tag.

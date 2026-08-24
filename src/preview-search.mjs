@@ -4,7 +4,7 @@ export const MAX_SEARCH_QUERY_SCALARS = 256;
 export const MAX_SEARCH_CACHE_BYTES = 8 * 1024 * 1024;
 
 function candidateBytes(candidates) {
-  return candidates.length * 16;
+  return candidates.length * 32;
 }
 
 export class PreviewSearchIndex {
@@ -17,7 +17,7 @@ export class PreviewSearchIndex {
     this.normalized = lines.map((line) => stripTerminalAnsi(line).toLocaleLowerCase());
     this.prefixes = new Map();
     this.cacheBytes = 0;
-    this.operations = { normalizations: lines.length, examined: 0, recomputations: 0 };
+    this.operations = { normalizations: lines.length, examined: 0, positions: 0, recomputations: 0 };
   }
 
   clampQuery(value) {
@@ -41,10 +41,10 @@ export class PreviewSearchIndex {
     const query = this.clampQuery(rawQuery).toLocaleLowerCase();
     if (!query) return [];
     const cached = this.prefixes.get(query);
-    if (cached) return this.#positions(query, cached);
+    if (cached) return cached;
     const scalars = [...query];
     let prefix = "";
-    let candidates = this.normalized.map((_line, row) => row);
+    let candidates = this.normalized.map((_line, row) => ({ row, column: 0 }));
     for (const scalar of scalars) {
       prefix += scalar;
       const existing = this.prefixes.get(prefix);
@@ -54,16 +54,16 @@ export class PreviewSearchIndex {
       }
       this.operations.examined += candidates.length;
       this.operations.recomputations += 1;
-      candidates = candidates.filter((row) => this.normalized[row].includes(prefix));
+      const next = [];
+      for (const { row } of candidates) {
+        const index = this.normalized[row].indexOf(prefix);
+        if (index < 0) continue;
+        this.operations.positions += 1;
+        next.push({ row, column: terminalColumns(this.normalized[row].slice(0, index)) });
+      }
+      candidates = next;
       this.#remember(prefix, candidates);
     }
-    return this.#positions(query, candidates);
-  }
-
-  #positions(query, candidates) {
-    return candidates.map((row) => {
-      const index = this.normalized[row].indexOf(query);
-      return { row, column: terminalColumns(this.normalized[row].slice(0, index)) };
-    });
+    return candidates;
   }
 }

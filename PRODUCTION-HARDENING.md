@@ -16,27 +16,27 @@ Legend: `[ ]` open · `[x]` done · **(Dn)** blocked on a decision below.
 | D2 | May GitRail add development-only verification dependencies while retaining zero runtime dependencies? | accepted | Yes. Pin development tooling in `package-lock.json`; runtime entrypoints must not import it. The exact linter and rules are an engineering choice. |
 | D3 | Add an Untracked section, or correct the docs? | accepted | Add a distinct, expanded-by-default Untracked section immediately after Unstaged. Use `?` as its section and row glyph, matching Git's status notation. |
 | D4 | Does GitRail ship JSON Schema/editor integration for configuration? | accepted | No. Remove `$schema` from the example and runtime contract, delete the standalone schema and schema-specific tests/docs, and keep `validateConfig` as the single configuration authority. |
-| D5 | Keep unprompted layout surgery on the auto-open path? | accepted | No. Auto-open may perform a safe outer-right split or skip the tab. Only explicit invocation may rebuild layout, and only through the journaled transaction defined under H2. |
+| D5 | May GitRail reconstruct a user's pane layout to force an outer-right rail? | accepted | No. Automatic and explicit opening may create only a directly safe outer-right split; otherwise they leave the tab unchanged and report the skip. Existing full-height rails may be swapped to the right edge without reconstructing split topology. |
 | D6 | Tag `v0.1.0` now, or after Phase 1? | accepted | Tag only after all three phases, automated release gates, the real-Herdr walkthrough, and release documentation are complete. Phase 1 is necessary but not sufficient for the first release tag. |
 | D7 | What consistency does one Git refresh promise? | accepted | Eventual consistency. A refresh may briefly combine adjacent repository states while Git is changing; filesystem invalidation and the recovery poll converge on the next state. Do not add extra Git work or claim atomicity. |
+| D8 | Does GitRail use GitHub Actions? | accepted | No. Remove every workflow and hosted-evidence contract. Validation is local, candidate-bound, fail-closed, and retained as hashed file evidence. |
 
 ## Outcome and constraints
 
 The target is a production-ready private `v0.1.0` candidate for Herdr users on
-macOS 15 and Ubuntu 24.04, with Node 22 or 24 and Herdr 0.8.x. A user
+macOS and Linux, with Node 22 or 24 and Herdr 0.8.x. A user
 must be able to install GitRail, inspect Git and filesystem state, open exact
 Raw/Diff/Rendered previews, and remove the plugin without GitRail mutating Git,
-closing panes it cannot prove it owns, or moving user panes automatically or
-outside the explicit recoverable transaction.
+closing panes it cannot prove it owns, or reconstructing user pane layouts.
 
 The release candidate must remain responsive at the documented repository and
-preview limits, restore the terminal and recover its own layout transaction on
-failure, ignore repository-controlled configuration, and expose honest errors,
+preview limits, restore the terminal on failure, ignore repository-controlled
+configuration, and expose honest errors,
 consistency, security-support, and platform claims. Runtime dependencies remain
 zero; development-only verification dependencies are allowed. User config,
 explicit environment overrides, eventual Git consistency, and a read-only Git
 contract are retained. Repository config, JSON Schema/editor integration,
-unprompted layout rebuild, invented security contact/SLA, and automatic user-file
+layout rebuild, invented security contact/SLA, and automatic user-file
 migration are non-goals.
 
 This checklist and its implementation contracts are the delivery source of
@@ -53,15 +53,15 @@ operations.
 - [x] **B1c** Regression test: hostile `.git-rail.json` + file preview must not spawn the executable
 - [x] **B2** Shared test helper that spawns with a scrubbed environment (`HOME`/`XDG_*` → temp; delete all `HERDR_*` and `GIT_RAIL_*`)
 - [x] **B2a** Move `snapshot.test.mjs`, `terminal-ui.test.mjs`, `config.test.mjs`, `integration.test.mjs` onto it
-- [x] **B2b** CI job running the suite with `HERDR_PANE_ID` and `HERDR_BIN_PATH` poisoned, so the leak cannot return
+- [x] **B2b** Local release gate running the suite with `HERDR_PANE_ID` and `HERDR_BIN_PATH` poisoned, so the leak cannot return **(D8 accepted)**
 - [x] **B3** Virtualize the Files viewport — flatten rows once per state change, slice the window per frame (`scripts/git-rail.mjs:440`)
-- [x] **B3a** Structural 20k-path test proving each frame styles/materializes only the viewport; keep timing as a reported benchmark, not a wall-clock CI gate
+- [x] **B3a** Structural 20k-path test proving each frame styles/materializes only the viewport; keep timing as a reported benchmark, not a wall-clock gate
 - [x] **B4** Verify pane ownership (`pane get` + label + `process-info` argv) before closing the stale preview pane; use `plugin pane close` (`scripts/git-rail.mjs:623`)
 - [x] **B4a** Tests for `openPreview` — currently 0% covered (lines 564–633)
 - [x] **H1** Render `state.error` distinctly from "not a Git repository" (`scripts/git-rail.mjs:444`)
-- [x] **H2** Journal explicit layout transactions and make SIGTERM/SIGINT run the same ownership-safe recovery path
-- [x] **H2a** Recover journaled `GitRail Layout Staging` transactions at startup; report unjournaled staging tabs without moving or closing them
-- [x] **H2b** Restrict layout surgery to explicit invocation **(D5 accepted)**
+- [x] **H2** Remove explicit and automatic pane-layout rebuilding; open only through a directly safe outer-right split **(D5 accepted)**
+- [x] **H2a** Delete layout staging, transaction journals, startup recovery, and signal-time recovery machinery
+- [x] **H2b** Regression-test that automatic and manual opening skip unsafe layouts without moving, swapping, or opening panes
 - [x] **H3** `exit` / `uncaughtException` / `unhandledRejection` handlers in `scripts/git-rail.mjs` that restore the terminal and remove the fixture
 - [x] **H3a** Keep all post-M2 preview state-path computation and state-store I/O inside the guarded preview lifecycle
 
@@ -77,21 +77,21 @@ operations.
 - [x] **M5** Route every manifest Node entrypoint through one launcher that resolves and validates an absolute Node executable before any GitRail script starts
 - [x] **M6** Document the accepted eventual-consistency model for multi-command Git refreshes **(D7 accepted)**
 - [x] **M7** Cap the auto-open sweep at four concurrent tabs and 35 seconds globally, with process-group cancellation and explicit partial-result reporting
-- [x] **M8** Cache normalized preview content and incrementally filter matches as a search query grows instead of rescanning and renormalizing all content per keystroke
+- [x] **M8** Cache normalized preview content, candidates, and display-column positions; incrementally filter matches as a search query grows without repeating position work on cache hits
 
 ## Phase 3 — process
 
 - [x] **L1** Add `.gitignore`
 - [x] **L2** Rewrite the `CHANGELOG.md` 0.1.0 entry as consumable release notes
-- [x] **L2a** Define the candidate-SHA install / upgrade / uninstall matrix and real-Herdr walkthrough in `docs/RELEASING.md`
-- [ ] **L2b** Run the candidate-SHA matrix and walkthrough and complete every pre-tag gate **(D6 accepted)**
+- [x] **L2a** Define the candidate-SHA local checks and isolated real-Herdr walkthrough in `docs/RELEASING.md`
+- [ ] **L2b** Run all eight candidate-SHA evidence cells and complete every pre-tag gate **(D6 and D8 accepted)**
 - [ ] **L2c** After L2b passes, create annotated `v0.1.0` only under a separate explicit tagging authorization
 - [x] **L3** Prune stale local branches (10 local, all merged)
-- [x] **L4** Add pinned lint rules for discarded promises and unused production exports; remove four unused parser helpers and make two active helpers private **(D2 accepted)**
-- [ ] **L5** CI: Node 22 + 24 matrix; enforced 95% line / 86% branch / 95% function coverage floors; demo/snapshot job; dependency audit
-- [x] **L6** Capture the 36 / 52 / 100-column screenshots `CONTRIBUTING.md` already mandates
+- [x] **L4** Add pinned lint rules for prohibited `void` expressions, unused locals, and unused production exports; use explicit handled async boundaries; remove four unused parser helpers and make two active helpers private **(D2 accepted)**
+- [x] **L5** Local release checks: Node 22 + 24; enforced 95% line / 86% branch / 95% function coverage floors; poisoned environment; snapshot; archive; dependency audit **(D8 accepted)**
+- [x] **L6** Capture the 36 / 52 / 100-column screenshots, bind their exact bytes to a capture-source commit, and compare candidate output with the visual-source commit
 - [x] **L7** Remove nonexistent private-contact and response-time promises from `SECURITY.md`; add a reporting channel only before external distribution
-- [x] **P1** Rewrite `PRODUCTION-READINESS.md` as a checklist where each line cites the test or CI job that proves it
+- [x] **P1** Rewrite `PRODUCTION-READINESS.md` as a checklist where each line cites the test or local release step that proves it
 
 ## Implementation contracts
 
@@ -157,14 +157,14 @@ and the stated acceptance evidence still passes.
 - Remove local one-off `HOME` and missing-`HERDR_BIN_PATH` workarounds after the
   shared helper covers them.
 
-**B2b — poisoned-environment CI gate**
+**B2b — poisoned-environment local gate** *(D8 accepted)*
 
-- Add a CI step that sets `HERDR_PANE_ID` and `HERDR_BIN_PATH` to valid-looking
-  hostile values before running the full suite.
+- Add a release command that sets `HERDR_PANE_ID` and `HERDR_BIN_PATH` to
+  valid-looking hostile values before running the full suite.
 - Make the fake Herdr executable fail loudly if any test not explicitly about
-  Herdr calls it; the job passes only when all unrelated child environments are
+  Herdr calls it; the check passes only when all unrelated child environments are
   scrubbed.
-- Keep the ordinary clean-environment job as a separate gate so the helper is
+- Keep the ordinary clean-environment run as a separate gate so the helper is
   tested in both directions.
 
 **B3 — virtualized Files viewport**
@@ -186,11 +186,11 @@ and the stated acceptance evidence still passes.
   instrumentation that counts rows styled/materialized by one frame.
 - At 36, 52, and 100 columns, assert that per-frame styled/materialized work is
   bounded by viewport height plus fixed chrome and overscan, independent of the
-  total path count. This structural assertion is the CI performance gate.
+  total path count. This structural assertion is the performance gate.
 - Assert that model regeneration occurs only on the invalidations named in B3
   and that the first, middle, and final paths remain keyboard reachable.
-- Retain a warmed repeated-frame benchmark in CI output to reveal regressions,
-  but do not fail CI on machine-dependent wall-clock timing.
+- Retain a warmed repeated-frame benchmark in local release output to reveal
+  regressions, but do not fail on machine-dependent wall-clock timing.
 
 **B4 — verify stale preview ownership before closing**
 
@@ -225,43 +225,18 @@ and the stated acceptance evidence still passes.
 - Add snapshots for missing Git, timed-out Git, invalid cwd, and an ordinary
   non-repository directory at narrow and standard widths.
 
-**H2/H2a/H2b — ownership-safe layout transaction and recovery** *(D5 accepted)*
+**H2/H2a/H2b — no pane-layout reconstruction** *(D5 accepted)*
 
-- Remove `rebuildWithOuterRail` from the automatic startup/event path.
-  Auto-open may create an outer-right split only when the existing safe-split
-  check passes; otherwise it leaves the tab unchanged, records a debug reason,
-  and continues the sweep.
-- Explicit invocation may rebuild only after atomically writing a versioned
-  transaction journal under GitRail's state directory. The journal records the
-  workspace, source tab, staging tab, affected pane ids and terminal-instance
-  ids, their original tab and
-  ordering/layout metadata, completed moves, and transaction phase. If the
-  state required for recovery cannot be captured, abort before the first move.
-- Before each mutation, durably replace the journal with the intended operation;
-  after success, durably mark that operation complete. Recovery re-reads live
-  workspace/tab/pane state, verifies every referenced pane and the staging-tab
-  label, reconciles an operation whose completion record may be missing, replays
-  only the missing inverse operations, and is safe to run repeatedly. Delete the
-  journal only after the original layout is verified restored or the explicit
-  rebuild commits successfully.
-- SIGINT and SIGTERM handlers stop new mutations, run the same bounded recovery
-  routine with a four-second monotonic budget and at most one second per Herdr
-  command, and then exit nonzero. If the budget expires, retain the journal and
-  diagnostic for startup recovery. The auto-open supervisor allows the matching
-  five-second shutdown grace defined under M7.
-- At startup, recover transactions that have valid journals before opening new
-  rails. Serialize recovery with an ownership-recorded global recovery lock in
-  the state directory so concurrent startup/event processes cannot replay the
-  same journal. Bound the startup recovery sweep to 15 seconds; if an affected
-  workspace still has a valid unrecovered journal, skip new rail/layout work in
-  that workspace and report it for the next startup or explicit retry. A
-  staging-labelled tab without a valid journal is reported with ids and left
-  untouched; a label alone is never authority to move or close panes.
-- Test interruption after every journaled mutation, repeated recovery, missing
-  and reused pane ids, changed labels/workspaces, corrupt journals, Herdr
-  command failure during recovery, concurrent recovery contenders, stale lock
-  reclamation, safe auto-split, and auto-open skip. Assert that no ambiguous case
-  mutates a user-owned pane.
+- Delete `rebuildWithOuterRail`, layout export/reconstruction, staging-tab
+  creation, transaction journals, startup recovery, and signal-time recovery.
+- Automatic and explicit opening may split only beside a full-height outer pane.
+  If that predicate fails, report the skipped tab and leave every pane untouched.
+- Automatic ensure adopts an existing rail without rearranging it. Explicit
+  opening may swap an existing full-height rail with the full-height rightmost
+  pane, which preserves split topology; it never stages or rebuilds content.
+- Test safe outer-right creation, automatic adoption without rearrangement, and
+  automatic/manual skip on an unsafe vertical layout. Assert skipped cases issue
+  no plugin open, pane move, or pane swap command.
 
 **H3/H3a — crash-safe rail cleanup**
 
@@ -388,8 +363,8 @@ and the stated acceptance evidence still passes.
   process group, allow a five-second recovery grace, and then force-kill any
   survivor. Configure this grace only for auto-open children instead of changing
   every command timeout. The 35-second deadline stops work; total shutdown may
-  therefore take at most 40 seconds. H2 recovery remains responsible for an
-  explicit layout transaction interrupted during shutdown.
+  therefore take at most 40 seconds. H2 ensures cancellation cannot interrupt a
+  pane-layout reconstruction because GitRail performs no such reconstruction.
 - Preserve rails that completed successfully; do not roll them back because a
   later tab failed. Return a structured summary of opened, skipped, failed, and
   deadline-cancelled tab ids and emit one actionable aggregate error/debug
@@ -410,16 +385,17 @@ and the stated acceptance evidence still passes.
   prefix-candidate storage at 8 MiB; evict oldest prefix sets when the cap would
   be exceeded and recompute an evicted prefix from normalized content if the
   user backspaces to it. Release the cache when content/mode changes.
-- Derive navigation positions from the candidate set without styling or
-  wrapping non-visible rows. Preserve current Unicode-safe input, next-match,
-  no-match, horizontal navigation, and selection behavior.
+- Cache each prefix's display-column position alongside its matching row, so a
+  cache hit returns the retained match objects without another `indexOf`,
+  grapheme segmentation, styling, or wrapping pass. Preserve current Unicode-
+  safe input, next-match, no-match, horizontal navigation, and selection behavior.
 - Add operation-count tests proving normalization is content-scoped and each
   appended character examines no more than the previous candidate set. Cover
   append, paste, backspace, clear, no matches, all lines matching, Unicode, mode
   change, cache eviction/recomputation, and the 100,000-line safety limit. Assert
   retained candidate storage never exceeds 8 MiB on the all-lines-matching
   fixture. Keep a fixed-fixture latency benchmark as reported evidence, not a
-  machine-dependent CI threshold.
+  machine-dependent threshold.
 
 **M3/M3a — remove JSON Schema/editor integration** *(D4 accepted)*
 
@@ -460,48 +436,39 @@ and the stated acceptance evidence still passes.
 - Before freezing a candidate, rewrite `docs/RELEASING.md` so every validation
   command occurs before tagging. It must give exact candidate-SHA checkout/link,
   version capture, unlink, expected-result, failure-cleanup, and evidence-record
-  commands rather than referring to an undefined “matrix” or “walkthrough.”
+  commands rather than referring to undefined checks or a walkthrough.
 - Every public clean-install path must run `npm ci --ignore-scripts` and
   `npm run check` before `herdr plugin link .`; uninstall must run the candidate's
   ownership-verifying `npm run uninstall:herdr`, close verified persisted panes,
   restart Herdr, and prove both restored and newly created Git tabs stay rail-free.
-- Define automated cells for macOS 15 and Ubuntu 24.04 on Node
-  22 and 24: clean checkout, `npm ci --ignore-scripts`, `npm run check`, demo and
-  snapshot gates, and manifest/launcher smoke tests. Build a `git archive` from
-  the candidate SHA, inspect its member list before extraction, and assert every
-  manifest-referenced runtime file plus the uninstall entrypoint is present,
-  removed schema/root-repository-config artifacts are absent, and no untracked
-  local file or `node_modules/` content enters the install artifact.
-- Define live-Herdr cells on macOS 15 and Ubuntu 24.04 using an exact Herdr
-  0.8.x release and Node 22 or 24. Each clean-install walkthrough must
+- Define local Node 22 and Node 24 cells that run `npm ci --ignore-scripts`,
+  `npm run check`, demo/snapshot verification, and artifact verification. Build
+  a `git archive` from the candidate SHA, inspect its member list before
+  extraction, and assert every manifest-referenced runtime file plus the
+  uninstall entrypoint is present, removed schema/root-repository-config
+  artifacts are absent, and no untracked local file or `node_modules/` content
+  enters the install artifact.
+- Define isolated live-Herdr cells on macOS and Linux using Herdr 0.8.x and Node
+  22 or 24. Each clean-install walkthrough must
   observe: one unfocused auto-open rail in a Git tab; no rail in a non-Git or
   preview tab; manual open/toggle; Staged, Unstaged, and Untracked separation;
-  Raw, Diff, and action-3 Rendered Markdown; per-source-tab preview replacement;
+  Raw, Diff, and action-3 Glow TUI rendering; per-source-tab preview replacement;
   safe auto-open skip; manual refresh/recovery-poll convergence; and successful
-  unlink with no remaining startup/event action.
-- Because 0.1.0 has no earlier public release, mark public upgrade as not
-  applicable. Add a separate development-migration cell that starts from
-  `6c7d9ac`, first proves distinct user/repository values resolve with the old
-  repository precedence, removes `$schema` from that same user file, links the
-  candidate over the existing plugin id, and verifies user-only configuration,
-  pane-state continuity, launch, and uninstall. Never edit user configuration
-  automatically and do not describe continuity as a migration feature.
+  unlink with no remaining startup/event action. The wrapper must create its own
+  temporary Herdr config, cache, state, and named sessions so cleanup cannot
+  unlink the developer's installed plugin.
+- Because 0.1.0 has no earlier public release, public upgrade and migration
+  validation are not applicable. Never edit user configuration automatically.
 - Prepare code, docs, and screenshot assets before the final candidate commit.
-  Screenshots record the exact visual-source SHA they depict. After the candidate
-  commit, run every automated and live cell against that SHA and store CI links,
-  environment versions, commands, and pass/fail results in a versioned evidence
-  manifest outside the worktree. Every required record names the full candidate
-  SHA. CI evidence must bind the exact workflow event, matrix job, and required
-  successful steps, deriving supported platform/Node/Herdr metadata from that
-  contract rather than operator labels. Local evidence names an existing log and
-  records its SHA-256; every command block runs in fail-closed shell strict mode.
-  Verification re-hashes logs and rejects missing, failed, stale, mismatched, or
-  unsupported cells. After all 16 cells pass, seal the manifest and logs into an
-  evidence-only direct-child commit on `main`; this generated bundle and the L2b
-  status are exempt from candidate invalidation because neither changes the
-  candidate. The annotated tag embeds the bundle manifest SHA-256, evidence
-  commit, and portable candidate-bound job/file URLs. No machine-local path may
-  appear in the tag, and validation before sealing must not dirty the candidate.
+  Screenshots record the exact visual-source and capture-source SHAs. After the candidate
+  commit, run all eight local cells against that SHA and record environment
+  versions, commands, pass/fail results, and SHA-256 hashes in a versioned
+  evidence manifest outside the worktree. Every command block runs in fail-closed
+  shell strict mode. Verification re-hashes logs and rejects missing, failed,
+  stale, mismatched, or malformed cells. Seal the complete manifest and logs into
+  an evidence-only direct-child commit only after every cell passes. The annotated
+  tag embeds the bundle manifest SHA-256, evidence commit, and portable file URLs;
+  no machine-local path may appear in the tag.
 - If code, manifest, dependencies, release inputs, or packaged artifacts change,
   invalidate all affected cells and rerun them. Verify a clean worktree,
   version/config agreement, artifact contents, and release-note links; only then
@@ -514,50 +481,49 @@ and the stated acceptance evidence still passes.
 - Delete only those verified local refs with Git's non-force branch deletion;
   do not delete remote branches as part of this item.
 
-**L4 — semantic linting and parser cleanup** *(D2 accepted)*
+**L4 — explicit async boundaries and parser cleanup** *(D2 accepted)*
 
 - Add pinned development-only lint tooling; keep `dependencies` empty and
   prohibit runtime entrypoints from importing development packages.
-- Enforce that every promise is awaited, returned, or terminated with an
-  explicit error handler. Replace bare `void asyncCall()` sites with deliberate
-  propagation or `.catch(...)` behavior appropriate to the UI action.
+- Ban `void` expressions so they cannot disguise ignored async work. At
+  interactive boundaries, route async actions through `reportAsync`, which
+  installs the visible error handler; elsewhere await, return, or attach an
+  explicit rejection handler. Do not claim whole-program promise type analysis
+  from untyped JavaScript linting.
 - Enforce unused production exports across `src/` and `scripts/`, not merely
   unused local variables.
 - Delete the production-unused `parseNameStatusZ`, `parseLsFilesZ`,
   `parseRawDiffZ`, and `mergeMetadata` helpers and their tests. Keep
   `parseNumstatZ` and `mergeStats` as private helpers used by
   `parseRawNumstatZ` rather than exporting them.
-- Run semantic linting from `npm run lint` and therefore from `npm run check` in
-  every CI matrix cell.
+- Run ESLint and Knip from `npm run lint` and therefore from every local
+  `npm run check`.
 
-**L5 — CI and coverage gates**
+**L5 — local verification and coverage gates** *(D8 accepted)*
 
-- Pin the OS jobs to macOS 15 and Ubuntu 24.04, expand each to a Node 22/24
-  matrix, and run both
-  `npm ci --ignore-scripts` and `npm run check` on every cell.
+- Keep GitHub Actions absent. Run the full candidate check locally under Node 22
+  and Node 24 and retain hashed logs for both runs.
 - Enforce floors of 95% lines, 86% branches, and 95% functions, rounded down
-  from the candidate's measured 95.75% / 86.49% / 95.51% coverage.
-- Add a deterministic demo/snapshot job, an exact-archive job, the
-  poisoned-environment job from B2b, and a read-only dependency audit. Because
-  this private repository has no GitHub Advanced Security dependency-review API,
-  the audit must show the exact base/candidate lockfile diff, enforce zero runtime
-  dependencies, perform `npm ci --ignore-scripts`, and fail on high/critical npm
-  advisories. It must be dispatchable against explicit base/candidate SHAs.
-- Require evidence recording to verify the exact CI workflow, event, job, and
-  named successful steps for every matrix, poisoned, demo, archive, live,
-  uninstall, development-migration, and dependency-audit cell. Overall run
-  success alone is not evidence for a named cell.
+  from the candidate's measured 95.75% / 86.49% / 95.51% coverage. Coverage is
+  part of the default `npm run check`, not a separate hosted-only command.
+- Retain separate local evidence for the poisoned environment, deterministic
+  snapshot/artifact check, exact archive, and dependency audit. The dependency
+  gate enforces zero runtime dependencies, performs `npm ci --ignore-scripts`,
+  and fails on high/critical npm advisories.
+- Record only hashed file evidence. No workflow, job, hosted runner, or external
+  check result is part of the release contract.
 
 **L6 — required screenshots**
 
 - Capture the same realistic demo state at 36, 52, and 100 terminal columns in
   a real Herdr pane, without cropping away the pane boundary or footer.
-- Store consistently named PNGs under `docs/screenshots/`, record the visual-source
-  SHA and Herdr version in its README, and link the current images from the main
-  README. Add all screenshot assets before freezing the candidate commit.
-- Parse and validate the PNG dimensions and byte-compare deterministic
-  36/52/100-column output from the candidate with the recorded visual-source
-  commit, so unchanged captures cannot silently drift from release behavior.
+- Store consistently named PNGs under `docs/screenshots/`; record the visual-
+  source SHA, capture-source SHA, and Herdr version in its README; and link the
+  current images from the main README. Add all assets before freezing the candidate.
+- Parse and validate PNG dimensions, require exact PNG-byte equality with the
+  capture-source commit, and byte-compare deterministic 36/52/100-column output
+  from the candidate with the visual-source commit. This detects both asset drift
+  and UI-output drift without a runtime image-rendering dependency.
 
 **L7 — honest security reporting policy**
 
@@ -565,21 +531,22 @@ and the stated acceptance evidence still passes.
   remove promised acknowledgement/fix timelines that the project cannot staff.
 - State the supported-version policy and the repository-content/configuration
   trust boundary without inventing a contact channel.
-- Add a private reporting address or security-advisory workflow, and document a
-  response policy, only as a prerequisite to future external distribution. It
-  is not a prerequisite for this private pre-release hardening run.
+- Add a real private reporting channel and document a response policy only as a
+  prerequisite to future external distribution. It is not a prerequisite for
+  this private pre-release hardening run.
 - Add a documentation assertion that `SECURITY.md` contains no placeholder
   address, nonexistent channel, or unsupported response-time promise.
 
 **P1 — evidence-backed readiness checklist**
 
 - Replace prose guarantees with a table containing requirement id, user-visible
-  guarantee, proving test or CI job, supported platform, and current status.
-- Require every “ready” row to name an executable test or manual release-matrix
+  guarantee, proving test or local release step, supported platform, and current
+  status.
+- Require every “ready” row to name an executable test or manual release
   step; move unsupported aspirations back into this hardening checklist.
-- Cross-reference the security boundary, install matrix, screenshots, coverage
+- Cross-reference the security boundary, local install checks, screenshots, coverage
   gate, and pre-tag release gate instead of restating them without proof. The
-  checklist names the command/job that will verify a tag but does not claim a tag
+  checklist names the command that will verify a tag but does not claim a tag
   exists until the separately authorized tag operation succeeds.
 - Include explicit rows for exact-descriptor Raw/Diff/Rendered behavior, the
   before/after read-only Git invariant, and ownership-safe uninstall.
@@ -597,31 +564,33 @@ criteria. Keep the worktree testable after each numbered group.
    documentation never describe an intermediate configuration contract.
 3. Implement B4/M2 together because ownership verification and the new preview
    state key share one lifecycle. Then implement H1 and H3 independently.
-4. Implement H2's transaction/recovery module and its fault-injection suite
-   before enabling explicit layout rebuild through it. Only afterward apply M7
-   cancellation to the auto-open supervisor.
+4. Implement H2 by deleting layout reconstruction and its transaction/recovery
+   surface, then prove automatic and explicit unsafe-layout skips before applying
+   M7 cancellation to the auto-open supervisor.
 5. Implement B3/B3a and M8 as separate bounded-work changes, preserving a green
    full suite between them. Then implement H4/H4a, M1, M4, M5, and M6.
-6. Add L4 tooling after production cleanup is stable, then enable the L5 matrix
-   and coverage floors. CI must pass in clean and poisoned environments before
+6. Add L4 tooling after production cleanup is stable, then enable the L5 local
+   checks and coverage floors. Clean and poisoned local runs must pass before
    release documentation can claim those guarantees.
 7. Perform L3 only after re-listing exact deletion candidates. Complete L2,
    L2a, L7, and P1 from verified behavior, capture L6, then freeze the release
    candidate with all release inputs present.
-8. Run the L2b install/development-migration/uninstall matrix and real-Herdr
-   walkthrough on that exact commit. Mark the pre-tag gate complete only if all
-   16 evidence cells remain current and the candidate worktree is clean. Seal and
-   push the portable evidence-only direct-child commit under the separately
-   required ordinary commit/push authorization. Under a separate explicit tag
+8. Run all eight L2b local and isolated real-Herdr evidence cells on that exact
+   commit. Mark the pre-tag gate complete only if all eight cells remain current
+   and the candidate worktree is clean. Seal and push the portable evidence-only
+   direct-child commit under the separately required ordinary commit/push
+   authorization. A following status-only commit may update this checklist and
+   `PRODUCTION-READINESS.md` with the immutable candidate and evidence SHAs; it
+   does not redefine the release candidate. Under a separate explicit tag
    authorization, L2c may then tag the validated candidate without moving an
    existing tag.
 
 Phase 1 exits only when all B/H items in that phase pass their unit,
-integration, negative, and recovery witnesses. Phase 2 exits only when its
+integration, and negative witnesses. Phase 2 exits only when its
 observable behavior is documented and the full Node 22/24 suite passes. Phase
-3 exits only when CI evidence, the real-Herdr walkthrough, screenshots, release
-matrix, readiness traceability, and release artifacts refer to the candidate or
-the explicitly recorded visual-source SHA as specified above, and the portable
+3 exits only when local evidence, the isolated real-Herdr walkthrough,
+screenshots, readiness traceability, and release artifacts refer to the candidate,
+visual-source SHA, or capture-source SHA as specified above, and the portable
 evidence bundle exists on `origin/main`. No step in this document authorizes
 pushing, publishing, or tagging without a separate explicit request.
 
@@ -720,6 +689,9 @@ whose `rect.height` is half the area, so `canSplitAtOuterRight` is false and
 panes in the staging tab. Nothing reclaims one; `collectTabTargets` only skips
 them.
 
+Resolution: the rebuild, staging, journal, recovery, layout-export, and pane-move
+paths were deleted. Unsafe automatic and manual opens now return a tested skip.
+
 ### H3 — no crash safety in the rail
 
 `scripts/git-rail.mjs` registers only SIGTERM and SIGINT — no `exit`,
@@ -783,6 +755,11 @@ parseNameStatusZ, parseLsFilesZ, parseRawDiffZ, mergeMetadata
 exported. Multiple `void asyncFn()` call sites exist; most catch internally, but
 `requestPreview` does not (see H3). L4 requires semantic analysis rather than a
 hard-coded occurrence count.
+
+Resolution: the unused exports were removed, async UI boundaries now use
+explicit visible-error handlers, and lint bans `void`, unused locals, and unused
+production exports. Readiness deliberately does not claim typed whole-program
+promise analysis for this JavaScript project.
 
 ### L5 — coverage today
 

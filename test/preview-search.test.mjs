@@ -17,6 +17,19 @@ test("preview search normalizes content once and narrows prior candidates", () =
   assert.equal(index.operations.normalizations, 4);
 });
 
+test("cached search results retain display columns without another position pass", () => {
+  const index = new PreviewSearchIndex(["🙂 the first", "plain the second", "missing"]);
+  const first = index.matches("the");
+  const positions = index.operations.positions;
+  const cached = index.matches("the");
+  assert.strictEqual(cached, first);
+  assert.equal(index.operations.positions, positions);
+  assert.deepEqual(cached, [
+    { row: 0, column: 3 },
+    { row: 1, column: 6 },
+  ]);
+});
+
 test("preview search restores cached prefixes, handles Unicode, and resets by content", () => {
   const index = new PreviewSearchIndex(["CAFÉ", "cafe", "λ-value"]);
   assert.deepEqual(index.matches("café").map((match) => match.row), [0]);

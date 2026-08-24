@@ -11,12 +11,12 @@ intentional configuration changes documented here.
   Herdr tab, with exact Against-base, Commit, Staged, Unstaged, Untracked, and
   clean-file preview semantics.
 - Adds descriptor-aware Diff and Raw views plus bounded in-preview search.
-  Markdown files expose action `3 Rendered`, which renders exact revision bytes
-  through Glow inside the preview viewport.
+  Markdown files expose action `3 Rendered`, which opens exact revision bytes
+  in Glow's terminal UI and returns to the GitRail preview when Glow exits.
 - Separates Untracked from Unstaged with Git's `?` marker and makes all file
   rows keyboard reachable while materializing only the visible viewport.
-- Auto-opens one unfocused rail per Git-backed tab, skips unsafe automatic
-  layout changes, and keeps manual open/toggle actions available.
+- Auto-opens one unfocused rail per Git-backed tab. Automatic and manual opening
+  skip layouts that cannot accept a safe outer-right split without reconstruction.
 
 ### Security
 
@@ -24,7 +24,7 @@ intentional configuration changes documented here.
   viewer executables. Configuration is limited to built-in defaults, the user
   configuration file, and explicit process environment overrides.
 - Verifies workspace, label, and process identity before closing a cached rail
-  or preview pane. Explicit layout rebuilds use a durable recovery journal.
+  or preview pane. GitRail never stages or reconstructs a user's pane layout.
 - Bounds Git commands, preview bytes, output, search memory, directory scans,
   and auto-open work; sanitizes terminal control sequences and avoids shells for
   repository-derived arguments.
@@ -40,6 +40,10 @@ intentional configuration changes documented here.
   from authorizing destructive closes.
 - Uses one global 35-second, four-worker auto-open sweep with process-group
   cancellation and partial-result diagnostics.
+- Caches Markdown-preview search positions with prefix candidates, eliminating
+  the repeated full-result grapheme pass on every rendered search frame.
+- Binds documentation PNG bytes to their capture commit and removes the unused
+  Pillow/macOS-only screenshot renderer.
 
 ### Configuration
 
@@ -54,12 +58,11 @@ intentional configuration changes documented here.
 
 ### Installation and upgrade
 
-- Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS 15 and Ubuntu
-  24.04. Newer Node and Herdr versions are accepted by the launcher but are not
-  part of the 0.1.0 release matrix.
+- Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS and Linux through
+  reproducible local release checks. The project does not use GitHub Actions.
 - Routes all manifest entrypoints through a launcher that resolves an absolute
   Node executable and rejects unsupported versions before layout or terminal
   mutation.
-- This is the first release, so no public upgrade path exists. Developers
-  migrating from commit `6c7d9ac` should follow the development migration in
-  `docs/RELEASING.md`.
+- This is the first release, so no public upgrade or migration path exists.
+  Pre-release checkouts should be unlinked and installed again from the release
+  candidate.

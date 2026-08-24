@@ -111,7 +111,8 @@ test("viewer actions resolve conditionally by selected filename", () => {
   const markdown = resolveViewer(DEFAULT_CONFIG, "docs/README.md");
   assert.equal(markdown.client, "glow");
   assert.equal(markdown.label, "Rendered");
-  assert.equal(markdown.mode, "embedded");
+  assert.equal(markdown.mode, "terminal");
+  assert.deepEqual(markdown.args, ["--tui", "--style", "dark"]);
   assert.equal(markdown.autoOpen, true);
   assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.md").map(({ key, viewer }) => [key, viewer.label]), [
     ["3", "Rendered"], ["o", "Open"],

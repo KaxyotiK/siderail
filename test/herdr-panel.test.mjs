@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { openHerdrPanel, recoverLayoutTransactions, rightmostPaneId } from "../scripts/open-herdr-panel.mjs";
+import { openHerdrPanel, rightmostPaneId } from "../scripts/open-herdr-panel.mjs";
 import {
   acquirePaneStateLock,
   cleanupTabPaneState,
@@ -29,322 +29,6 @@ function environment(root, overrides = {}) {
     ...overrides,
   };
 }
-
-test("startup reports an unjournaled staging tab without mutating it", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-layout-audit-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const calls = [];
-  const messages = [];
-  const originalError = console.error;
-  console.error = (message) => messages.push(message);
-  t.after(() => { console.error = originalError; });
-  await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    run: async (_command, args) => {
-      calls.push(args);
-      return { stdout: JSON.stringify({ result: { tabs: [{ tab_id: "w1:t-stale", workspace_id: "w1", label: "GitRail Layout Staging" }] } }) };
-    },
-  });
-  assert.deepEqual(calls, [["tab", "list"]]);
-  assert.match(messages.join("\n"), /w1:t-stale.*left untouched/);
-});
-
-async function writeLayoutJournal(root, overrides = {}) {
-  const directory = path.join(root, "herdr-gitrail", "layout-transactions");
-  await fs.mkdir(directory, { recursive: true });
-  const journalPath = path.join(directory, "w1-w1_t1.json");
-  await fs.writeFile(journalPath, JSON.stringify({
-    version: 2,
-    workspaceId: "w1",
-    tabId: "w1:t1",
-    entrypoint: "git-tui",
-    recoveryTree: { type: "pane", paneId: "w1:p1" },
-    paneTerminalIds: { "w1:p1": "term-original" },
-    createdRail: false,
-    pendingOperation: null,
-    completedOperations: 0,
-    phase: "prepared",
-    ...overrides,
-  }));
-  return journalPath;
-}
-
-test("startup recovery fails closed when a pane id belongs to a different terminal instance", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-reused-pane-");
-  const journalPath = await writeLayoutJournal(root);
-  const calls = [];
-  const result = await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    run: async (_command, args) => {
-      calls.push(args);
-      if (args[0] === "tab") {
-        return { stdout: JSON.stringify({ result: { tabs: [{ workspace_id: "w1", tab_id: "w1:t1" }] } }) };
-      }
-      if (args[0] === "pane" && args[1] === "get") {
-        return { stdout: JSON.stringify({ result: { pane: {
-          workspace_id: "w1",
-          tab_id: "w1:t1",
-          pane_id: "w1:p1",
-          terminal_id: "term-reused",
-        } } }) };
-      }
-      throw new Error(`unexpected mutation: ${args.join(" ")}`);
-    },
-  });
-  assert.deepEqual(result.deferredWorkspaces, ["w1"]);
-  assert.equal(calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
-  assert.equal((await fs.stat(journalPath)).isFile(), true);
-});
-
-test("startup recovery enforces one-second commands and its shared 15-second budget", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-budget-");
-  const journalPath = await writeLayoutJournal(root);
-  const timeouts = [];
-  let clock = 0;
-  const result = await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    now: () => clock,
-    run: async (_command, args, options) => {
-      timeouts.push(options.timeoutMs);
-      clock += 8_000;
-      if (args[0] === "tab") {
-        return { stdout: JSON.stringify({ result: { tabs: [{ workspace_id: "w1", tab_id: "w1:t1" }] } }) };
-      }
-      return { stdout: JSON.stringify({ result: { pane: {
-        workspace_id: "w1",
-        tab_id: "w1:t1",
-        pane_id: "w1:p1",
-        terminal_id: "term-original",
-      } } }) };
-    },
-  });
-  assert.ok(timeouts.every((timeout) => timeout <= 1_000));
-  assert.deepEqual(result.deferredWorkspaces, ["w1"]);
-  assert.equal((await fs.stat(journalPath)).isFile(), true);
-});
-
-test("startup recovery closes a proven rail created during an interrupted open", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-interrupted-open-");
-  const journalPath = await writeLayoutJournal(root, {
-    createdRail: true,
-    priorPaneIds: ["w1:p1"],
-    pendingOperation: { kind: "open-rail" },
-  });
-  const calls = [];
-  const panes = [
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-original" },
-    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p9", terminal_id: "term-new", label: "HERDER GITRAIL" },
-  ];
-  const result = await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    run: async (_command, args) => {
-      calls.push(args);
-      if (args[0] === "tab") return { stdout: JSON.stringify({ result: { tabs: [
-        { workspace_id: "w1", tab_id: "w1:t1" },
-        { workspace_id: "w1", tab_id: "w1:t2" },
-      ] } }) };
-      if (args[0] === "pane" && args[1] === "get") {
-        return { stdout: JSON.stringify({ result: { pane: panes.find((pane) => pane.pane_id === args[2]) } }) };
-      }
-      if (args[0] === "pane" && args[1] === "list") {
-        return { stdout: JSON.stringify({ result: { panes } }) };
-      }
-      if (args[0] === "pane" && args[1] === "process-info") {
-        return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{
-          argv: ["node", "scripts/git-rail.mjs"], cwd: PROJECT_ROOT,
-        }] } } }) };
-      }
-      return { stdout: JSON.stringify({ result: { type: "ok" } }) };
-    },
-  });
-  assert.deepEqual(result.recovered, [journalPath]);
-  assert.equal(calls.some((args) => args.join(" ") === "plugin pane close w1:p9"), true);
-  await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
-});
-
-for (const [name, pane, tabs] of [
-  ["a missing pane", null, [{ workspace_id: "w1", tab_id: "w1:t1" }]],
-  ["a pane moved to another workspace", {
-    workspace_id: "w2", tab_id: "w2:t1", pane_id: "w1:p1", terminal_id: "term-original",
-  }, [{ workspace_id: "w1", tab_id: "w1:t1" }]],
-  ["a staging tab whose label changed", {
-    workspace_id: "w1", tab_id: "w1:t9", pane_id: "w1:p1", terminal_id: "term-original",
-  }, [
-    { workspace_id: "w1", tab_id: "w1:t1" },
-    { workspace_id: "w1", tab_id: "w1:t9", label: "User tab" },
-  ]],
-]) {
-  test(`startup recovery leaves user state untouched for ${name}`, async (t) => {
-    const root = await temporaryRoot(t, "gitrail-layout-ambiguous-");
-    const journalPath = await writeLayoutJournal(root);
-    const calls = [];
-    const result = await recoverLayoutTransactions({
-      environment: environment(root),
-      workspaceId: "w1",
-      herdr: "herdr-test",
-      run: async (_command, args) => {
-        calls.push(args);
-        if (args[0] === "tab") return { stdout: JSON.stringify({ result: { tabs } }) };
-        if (args[0] === "pane" && args[1] === "get") {
-          return { stdout: JSON.stringify({ result: pane ? { pane } : {} }) };
-        }
-        throw new Error(`unexpected mutation: ${args.join(" ")}`);
-      },
-    });
-    assert.deepEqual(result.deferredWorkspaces, ["w1"]);
-    assert.equal(calls.some((args) => args[0] === "pane" && ["move", "close"].includes(args[1])), false);
-    assert.equal((await fs.stat(journalPath)).isFile(), true);
-  });
-}
-
-test("startup recovery reports and retains a corrupt journal without mutating panes", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-corrupt-");
-  const directory = path.join(root, "herdr-gitrail", "layout-transactions");
-  await fs.mkdir(directory, { recursive: true });
-  const journalPath = path.join(directory, "corrupt.json");
-  await fs.writeFile(journalPath, "{not-json");
-  const calls = [];
-  const messages = [];
-  const originalError = console.error;
-  console.error = (message) => messages.push(message);
-  t.after(() => { console.error = originalError; });
-  const result = await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    run: async (_command, args) => {
-      calls.push(args);
-      if (args[0] === "tab") return { stdout: JSON.stringify({ result: { tabs: [] } }) };
-      throw new Error(`unexpected mutation: ${args.join(" ")}`);
-    },
-  });
-  assert.deepEqual(result.recovered, []);
-  assert.match(messages.join("\n"), /deferred.*corrupt\.json/);
-  assert.equal((await fs.stat(journalPath)).isFile(), true);
-  assert.deepEqual(calls, [["tab", "list"]]);
-});
-
-function twoPaneRecoveryJournal() {
-  return {
-    recoveryTree: {
-      type: "split",
-      direction: "down",
-      ratio: 0.5,
-      first: { type: "pane", paneId: "w1:p1" },
-      second: { type: "pane", paneId: "w1:p2" },
-    },
-    paneTerminalIds: { "w1:p1": "term-p1", "w1:p2": "term-p2" },
-  };
-}
-
-function recoveryRunner({ failMove = false } = {}) {
-  const calls = [];
-  const paneTabs = new Map([["w1:p1", "w1:t1"], ["w1:p2", "w1:t1"]]);
-  const run = async (_command, args) => {
-    calls.push(args);
-    if (args[0] === "tab") {
-      return { stdout: JSON.stringify({ result: { tabs: [
-        { workspace_id: "w1", tab_id: "w1:t1" },
-        { workspace_id: "w1", tab_id: "w1:t9", label: "GitRail Layout Staging" },
-      ] } }) };
-    }
-    if (args[0] === "pane" && args[1] === "get") {
-      const paneId = args[2];
-      return { stdout: JSON.stringify({ result: { pane: {
-        workspace_id: "w1",
-        tab_id: paneTabs.get(paneId),
-        pane_id: paneId,
-        terminal_id: paneId === "w1:p1" ? "term-p1" : "term-p2",
-      } } }) };
-    }
-    if (args[0] === "pane" && args[1] === "move") {
-      if (failMove) throw new Error("injected recovery command failure");
-      paneTabs.set(args[2], args.includes("--new-tab") ? "w1:t9" : args[args.indexOf("--tab") + 1]);
-      return { stdout: JSON.stringify({ result: { move_result: { changed: true, created_tab: args.includes("--new-tab") ? { tab_id: "w1:t9" } : undefined } } }) };
-    }
-    throw new Error(`unexpected command: ${args.join(" ")}`);
-  };
-  return { calls, paneTabs, run };
-}
-
-test("successful startup recovery is idempotent when repeated", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-repeat-");
-  const journalPath = await writeLayoutJournal(root, twoPaneRecoveryJournal());
-  const mocked = recoveryRunner();
-  const first = await recoverLayoutTransactions({ environment: environment(root), workspaceId: "w1", herdr: "herdr-test", run: mocked.run });
-  const moveCount = mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length;
-  const second = await recoverLayoutTransactions({ environment: environment(root), workspaceId: "w1", herdr: "herdr-test", run: mocked.run });
-  assert.deepEqual(first.recovered, [journalPath]);
-  assert.deepEqual(second.recovered, []);
-  assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, moveCount);
-  assert.deepEqual([...mocked.paneTabs.values()], ["w1:t1", "w1:t1"]);
-  await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
-});
-
-test("a Herdr command failure retains the journal for a later recovery", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-recovery-failure-");
-  const journalPath = await writeLayoutJournal(root, twoPaneRecoveryJournal());
-  const mocked = recoveryRunner({ failMove: true });
-  const result = await recoverLayoutTransactions({ environment: environment(root), workspaceId: "w1", herdr: "herdr-test", run: mocked.run });
-  assert.deepEqual(result.deferredWorkspaces, ["w1"]);
-  assert.equal((await fs.stat(journalPath)).isFile(), true);
-});
-
-test("concurrent startup recovery contender defers without entering the recovery sweep", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-concurrent-");
-  let held = false;
-  let releaseInspection;
-  const inspection = new Promise((resolve) => { releaseInspection = resolve; });
-  const acquireLock = async () => {
-    if (held) throw new Error("layout recovery already in progress");
-    held = true;
-    return async () => { held = false; };
-  };
-  const first = recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    acquireLock,
-    run: async () => {
-      await inspection;
-      return { stdout: JSON.stringify({ result: { tabs: [] } }) };
-    },
-  });
-  while (!held) await new Promise((resolve) => setImmediate(resolve));
-  const contender = await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    acquireLock,
-    run: async () => { throw new Error("contender must not inspect or mutate Herdr"); },
-  });
-  assert.deepEqual(contender, { recovered: [], deferredWorkspaces: ["w1"] });
-  releaseInspection();
-  await first;
-  assert.equal(held, false);
-});
-
-test("startup recovery reclaims a stale recovery lock", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-stale-lock-");
-  const lockPath = path.join(root, "herdr-gitrail", "layout-transactions", "recovery.lock");
-  await fs.mkdir(lockPath, { recursive: true });
-  await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify({ pid: 2_147_483_647, createdAt: 1, nonce: "dead" }));
-  await recoverLayoutTransactions({
-    environment: environment(root),
-    workspaceId: "w1",
-    herdr: "herdr-test",
-    run: async () => ({ stdout: JSON.stringify({ result: { tabs: [] } }) }),
-  });
-  await assert.rejects(fs.stat(lockPath), { code: "ENOENT" });
-});
 
 function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }) {
   panes = panes.map((pane) => ({ terminal_id: `term-${pane.pane_id}`, ...pane }));
@@ -642,47 +326,6 @@ test("rightmost placement is independent of pane listing order", () => {
   assert.equal(rightmostPaneId(layout, panes), "right");
 });
 
-test("vertical content is preserved beneath a full-height outer rail", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-vertical-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
-  const panes = [
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
-  ];
-  const layout = {
-    area: { x: 0, y: 0, width: 120, height: 40 },
-    focused_pane_id: "w1:p1",
-    panes: [
-      { pane_id: "w1:p1", focused: true, rect: { x: 0, y: 0, width: 120, height: 20 } },
-      { pane_id: "w1:p2", focused: false, rect: { x: 0, y: 20, width: 120, height: 20 } },
-    ],
-    splits: [{ direction: "down", ratio: 0.5, rect: { x: 0, y: 0, width: 120, height: 40 } }],
-  };
-  const mocked = mockRun({ panes, layout, openedPaneId: "w1:p9" });
-  const resized = [];
-  await openHerdrPanel({
-    entrypoint: "git-tui",
-    environment: env,
-    run: mocked.run,
-    resize: async ({ paneId }) => resized.push(paneId),
-    exportLayout: async () => ({
-      type: "split",
-      direction: "down",
-      ratio: 0.5,
-      first: { type: "pane", paneId: "w1:p1" },
-      second: { type: "pane", paneId: "FOREIGN:pane" },
-    }),
-    writeOutput: () => {},
-  });
-  const moves = mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move");
-  assert.ok(moves.some((args) => args.includes("w1:p2") && args.includes("--new-tab")));
-  assert.ok(moves.some((args) => args.includes("w1:p9") && args.includes("--tab") && args.includes("right")));
-  assert.ok(moves.some((args) => args.includes("w1:p2") && args.includes("down") && args.includes("--no-focus")));
-  assert.equal(moves.some((args) => args.includes("--focus")), false);
-  assert.equal(mocked.calls.some((args) => args.includes("FOREIGN:pane")), false);
-  assert.deepEqual(resized, ["w1:p9"]);
-});
-
 test("automatic ensure skips an unsafe vertical layout without staging or opening", async (t) => {
   const root = await temporaryRoot(t, "gitrail-vertical-ensure-");
   const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
@@ -705,185 +348,33 @@ test("automatic ensure skips an unsafe vertical layout without staging or openin
   assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
 });
 
-test("layout staging rolls content back when opening the rail fails", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-layout-rollback-");
+test("manual open also skips an unsafe vertical layout without rearranging user panes", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-vertical-manual-");
   const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
-  const paneTabs = new Map([["w1:p1", "w1:t1"], ["w1:p2", "w1:t1"]]);
   const panes = [
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-p1", cwd: "/repo", focused: true },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", terminal_id: "term-p2", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
   ];
-  const layout = {
-    area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1",
-    panes: [
-      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
-      { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
-    ],
-    splits: [{ direction: "down", ratio: 0.5, rect: { x: 0, y: 0, width: 120, height: 40 } }],
-  };
-  const calls = [];
-  const run = async (_command, args) => {
-    calls.push(args);
-    if (args[0] === "pane" && args[1] === "list") return { stdout: JSON.stringify({ result: { panes } }) };
-    if (args[0] === "pane" && args[1] === "layout") return { stdout: JSON.stringify({ result: { layout } }) };
-    if (args[0] === "pane" && args[1] === "get") {
-      return { stdout: JSON.stringify({ result: { pane: { pane_id: args[2], tab_id: paneTabs.get(args[2]) } } }) };
-    }
-    if (args[0] === "pane" && args[1] === "move") {
-      const paneId = args[2];
-      if (args.includes("--new-tab")) {
-        paneTabs.set(paneId, "w1:t9");
-        return { stdout: JSON.stringify({ result: { move_result: { changed: true, created_tab: { tab_id: "w1:t9" } } } }) };
-      }
-      paneTabs.set(paneId, args[args.indexOf("--tab") + 1]);
-      return { stdout: JSON.stringify({ result: { move_result: { changed: true } } }) };
-    }
-    if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") throw new Error("injected open failure");
-    return { stdout: JSON.stringify({ result: { type: "ok" } }) };
-  };
-  await assert.rejects(openHerdrPanel({
-    entrypoint: "git-tui", environment: env, run, resize: async () => {}, exportLayout: async () => null, writeOutput: () => {},
-  }), /injected open failure/);
-  assert.equal(paneTabs.get("w1:p2"), "w1:t1");
-  assert.ok(calls.some((args) => args[0] === "pane" && args[1] === "move" && args.includes("w1:p2") && args.includes("--tab")));
-});
-
-test("partial staging failure replays the complete nested content layout", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-nested-rollback-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
-  const paneTabs = new Map(["w1:p1", "w1:p2", "w1:p3", "w1:p4"].map((paneId) => [paneId, "w1:t1"]));
-  const panes = [...paneTabs.keys()].map((paneId) => ({
-    workspace_id: "w1", tab_id: "w1:t1", pane_id: paneId, terminal_id: `term-${paneId}`, cwd: "/repo",
-  }));
   const layout = {
     area: { x: 0, y: 0, width: 120, height: 40 },
     focused_pane_id: "w1:p1",
     panes: [
-      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 60, height: 20 } },
-      { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 60, height: 20 } },
-      { pane_id: "w1:p3", rect: { x: 60, y: 0, width: 60, height: 20 } },
-      { pane_id: "w1:p4", rect: { x: 60, y: 20, width: 60, height: 20 } },
+      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
+      { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
     ],
   };
-  const exportedTree = {
-    type: "split", direction: "right", ratio: 0.5,
-    first: {
-      type: "split", direction: "down", ratio: 0.5,
-      first: { type: "pane", paneId: "w1:p1" },
-      second: { type: "pane", paneId: "w1:p2" },
-    },
-    second: {
-      type: "split", direction: "down", ratio: 0.5,
-      first: { type: "pane", paneId: "w1:p3" },
-      second: { type: "pane", paneId: "w1:p4" },
-    },
-  };
-  const calls = [];
-  let injected = false;
-  let failureCallIndex = -1;
-  const run = async (_command, args) => {
-    calls.push(args);
-    if (args[0] === "pane" && args[1] === "list") return { stdout: JSON.stringify({ result: { panes } }) };
-    if (args[0] === "pane" && args[1] === "layout") return { stdout: JSON.stringify({ result: { layout } }) };
-    if (args[0] === "pane" && args[1] === "get") {
-      return { stdout: JSON.stringify({ result: { pane: { pane_id: args[2], tab_id: paneTabs.get(args[2]) } } }) };
-    }
-    if (args[0] === "pane" && args[1] === "move") {
-      const paneId = args[2];
-      if (paneId === "w1:p4" && args.includes("--tab") && !injected) {
-        injected = true;
-        failureCallIndex = calls.length - 1;
-        throw new Error("injected partial staging failure");
-      }
-      paneTabs.set(paneId, args.includes("--new-tab") ? "w1:t9" : args[args.indexOf("--tab") + 1]);
-      return { stdout: JSON.stringify({ result: { move_result: { changed: true } } }) };
-    }
-    return { stdout: JSON.stringify({ result: { type: "ok" } }) };
-  };
-  await assert.rejects(openHerdrPanel({
+  const mocked = mockRun({ panes, layout });
+  const result = await openHerdrPanel({
     entrypoint: "git-tui",
+    openMode: "replace",
     environment: env,
-    run,
+    run: mocked.run,
     resize: async () => {},
-    exportLayout: async () => exportedTree,
     writeOutput: () => {},
-  }), /injected partial staging failure/);
-  assert.deepEqual([...paneTabs.values()], ["w1:t1", "w1:t1", "w1:t1", "w1:t1"]);
-  const recoveryMoves = calls.slice(failureCallIndex + 1)
-    .filter((args) => args[0] === "pane" && args[1] === "move");
-  assert.deepEqual(recoveryMoves.map((args) => [
-    args[2],
-    args[args.indexOf("--split") + 1],
-    args[args.indexOf("--target-pane") + 1],
-  ]), [
-    ["w1:p4", "right", "w1:p2"],
-    ["w1:p3", "right", "w1:p1"],
-    ["w1:p2", "down", "w1:p1"],
-    ["w1:p4", "down", "w1:p3"],
-  ]);
-});
-
-test("every journaled layout mutation can be interrupted and recovered", async (t) => {
-  for (const failAt of [1, 2, 3, 4]) {
-    await t.test(`after mutation ${failAt}`, async (subtest) => {
-      const root = await temporaryRoot(subtest, `gitrail-layout-interrupt-${failAt}-`);
-      const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
-      const panes = [
-        { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-p1", cwd: "/repo", focused: true },
-        { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", terminal_id: "term-p2", cwd: "/repo" },
-      ];
-      const layout = {
-        area: { x: 0, y: 0, width: 120, height: 40 },
-        focused_pane_id: "w1:p1",
-        panes: [
-          { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
-          { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
-        ],
-      };
-      const recoveryTree = {
-        type: "split",
-        direction: "down",
-        ratio: 0.5,
-        first: { type: "pane", paneId: "w1:p1" },
-        second: { type: "pane", paneId: "w1:p2" },
-      };
-      const journalPath = path.join(root, "herdr-gitrail", "layout-transactions", "w1-w1_t1.json");
-      let mutations = 0;
-      let interrupted = false;
-      const mocked = mockRun({
-        panes,
-        layout,
-        afterMutation: async (args) => {
-          mutations += 1;
-          if (interrupted) return;
-          const journal = JSON.parse(await fs.readFile(journalPath, "utf8"));
-          assert.ok(journal.pendingOperation, `mutation ${mutations} did not have a durable intent`);
-          if (args[0] === "pane" && args[1] === "move") {
-            assert.deepEqual(journal.pendingOperation.args, args.slice(2));
-          } else {
-            assert.equal(journal.pendingOperation.kind, "open-rail");
-          }
-          if (mutations === failAt) {
-            interrupted = true;
-            throw new Error(`simulated interruption after mutation ${failAt}`);
-          }
-        },
-      });
-      await assert.rejects(openHerdrPanel({
-        entrypoint: "git-tui",
-        environment: env,
-        run: mocked.run,
-        resize: async () => {},
-        exportLayout: async () => recoveryTree,
-        writeOutput: () => {},
-      }), new RegExp(`simulated interruption after mutation ${failAt}`));
-      assert.ok(mutations >= failAt);
-      assert.equal(mocked.paneTabs.get("w1:p1"), "w1:t1");
-      assert.equal(mocked.paneTabs.get("w1:p2"), "w1:t1");
-      assert.equal(mocked.openedPane(), null);
-      await assert.rejects(fs.stat(journalPath), { code: "ENOENT" });
-    });
-  }
+  });
+  assert.deepEqual(result, { paneId: "", adopted: false, openMode: "replace", skipped: true });
+  assert.equal(mocked.calls.some((args) => args[0] === "pane" && ["move", "swap"].includes(args[1])), false);
+  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
 });
 
 test("manual replace retargets an existing rail while ensure adopts it", async (t) => {
@@ -1079,10 +570,10 @@ test("an invalid plugin-open pane id is never moved into the target tab", async 
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
   ];
   const layout = {
-    area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1",
+    area: { x: 0, y: 0, width: 120, height: 20 }, focused_pane_id: "w1:p1",
     panes: [
-      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
-      { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
+      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 60, height: 20 } },
+      { pane_id: "w1:p2", rect: { x: 60, y: 0, width: 60, height: 20 } },
     ],
   };
   const mocked = mockRun({ panes, layout, openedPaneId: "FOREIGN:pane" });

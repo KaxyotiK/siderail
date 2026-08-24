@@ -16,7 +16,7 @@ assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
 const DEMO_LABEL = "GitRail Demo";
 const PREVIEW_LABEL = "GitRail Preview";
-const STAGING_LABEL = "GitRail Layout Staging";
+const LEGACY_STAGING_LABEL = "GitRail Layout Staging";
 
 function responseItems(payload, key) {
   const parsed = typeof payload === "string" ? JSON.parse(payload) : payload;
@@ -39,7 +39,7 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
   const panes = responseItems(panePayload, "panes");
   const workspaceById = new Map(workspaces.map((workspace) => [workspace.workspace_id, workspace]));
   return tabs.flatMap((tab) => {
-    if (tab.label === STAGING_LABEL) return [];
+    if (tab.label === LEGACY_STAGING_LABEL) return [];
     if (only.workspaceId && tab.workspace_id !== only.workspaceId) return [];
     if (only.tabId && tab.tab_id !== only.tabId) return [];
     const tabPanes = panes.filter((pane) => pane.tab_id === tab.tab_id);

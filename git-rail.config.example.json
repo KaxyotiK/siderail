@@ -9,8 +9,8 @@
     ".md": {
       "label": "Rendered",
       "client": "glow",
-      "args": ["--style", "dark", "--width", "{width}"],
-      "mode": "embedded",
+      "args": ["--tui", "--style", "dark"],
+      "mode": "terminal",
       "key": "3",
       "autoOpen": true
     },

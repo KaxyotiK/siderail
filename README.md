@@ -11,16 +11,16 @@ while Changes clearly reports that Git state is unavailable.
 - Node.js 22 or 24
 - Git 2.35 or newer
 - Herdr 0.8.x
-- macOS 15 or Ubuntu 24.04
+- macOS or Linux
 
-The launcher accepts newer Node and Herdr versions, but they are outside the
-0.1.0 release matrix until separately validated.
+The launcher rejects Node versions older than 22. Release validation covers
+Herdr 0.8.x; newer Herdr versions are outside the 0.1.0 validation target.
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
-editor configuration when provided. The installed defaults render `.md`,
-`.mdx`, and `.markdown` files with Glow inside GitRail's own scrollable preview.
-If Glow is unavailable, GitRail keeps the wrapped Raw view open with an
-installation hint; Diff and Raw do not require Glow.
+editor configuration when provided. The installed defaults open `.md`, `.mdx`,
+and `.markdown` files in Glow's terminal UI. Press `q` in Glow to return to the
+GitRail preview. If Glow is unavailable, GitRail keeps the wrapped Raw view open
+with an installation hint; Diff and Raw do not require Glow.
 
 ## Install and launch
 
@@ -109,9 +109,9 @@ scroll by a viewport, `Ctrl-U`/`Ctrl-D` scroll by half a viewport, and the mouse
 wheel scrolls. A gold marker at the right edge shows the current position.
 Configured filename and extension matches add actions with explicit key
 bindings. Installed defaults provide `o Open` for every file and `3 Rendered`
-for `.md`, `.mdx`, and `.markdown` files. Glow renders Markdown as bounded,
-sanitized output inside GitRail; it does not launch a nested TUI. `/` searches
-the current content and `n`/`N` moves through matches. `e` opens the configured
+for `.md`, `.mdx`, and `.markdown` files. Markdown previews automatically enter
+Glow's terminal UI; `q` returns to GitRail, and `3` opens Glow again. `/` searches
+the current in-preview Diff or Raw content and `n`/`N` moves through matches. `e` opens the configured
 editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
 the exact Raw revision. Binary and oversized content produce bounded,
@@ -194,6 +194,10 @@ matches the 34-column development rail; narrower layouts cap the rail at half
 the available split, and Herdr's minimum split ratio still applies on unusually
 wide layouts. Manual resizing after launch remains under Herdr's control:
 
+GitRail never reconstructs a tab to force this placement. Automatic and manual
+opening create a rail only beside a full-height outer pane; nested layouts that
+cannot accept that split are left unchanged with a visible skip diagnostic.
+
 ```json
 {
   "version": 1,
@@ -244,8 +248,8 @@ viewer actions. The built-in Markdown defaults use Glow:
     ".md": {
       "label": "Rendered",
       "client": "glow",
-      "args": ["--style", "dark", "--width", "{width}"],
-      "mode": "embedded",
+      "args": ["--tui", "--style", "dark"],
+      "mode": "terminal",
       "key": "3",
       "autoOpen": true
     }
@@ -279,8 +283,9 @@ and retain both filesystem invalidation and the recovery poll.
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`
 disables editing. External apps, including VS Code and Cursor, open outside
-Herdr. Explicit Glow `--tui` rules remain terminal actions; the built-in
-Markdown rule uses embedded rendering unless configuration overrides it.
+Herdr. The built-in Markdown rule launches Glow with `--tui` as a terminal
+action. Set an explicit `embedded` viewer only when bounded captured output is
+preferred over the viewer's own interface.
 
 Viewer and editor actions materialize the exact selected commit, Against-base,
 or staged revision with a bounded byte-preserving copy. This allows OS-default
@@ -297,7 +302,8 @@ npm run check
 ```
 
 The test suite builds disposable repositories and independently verifies each
-descriptor. CI runs the full check on macOS and Linux.
+descriptor. `npm run check` runs lint, the complete suite, and the enforced
+coverage floors locally. This repository does not use GitHub Actions.
 
 ## Documentation
 

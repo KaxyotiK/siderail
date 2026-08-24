@@ -516,7 +516,7 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
   assert.doesNotMatch(stdout, /Renderer returned no content/);
 });
 
-test("an explicit terminal Glow action opens the Glow TUI", async (t) => {
+test("the built-in Markdown action auto-opens Glow TUI and action 3 opens it again", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-glow-tui-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const renderer = path.join(root, "glow");
@@ -529,13 +529,7 @@ printf 'Glow TUI opened\n'
 `);
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n");
-  const { environment } = hermeticEnvironment(t);
-  await writeUserConfig(environment, {
-    version: 1,
-    viewers: {
-      ".md": { label: "View Markdown", client: renderer, args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
-    },
-  });
+  const { environment } = hermeticEnvironment(t, { PATH: `${root}${path.delimiter}${process.env.PATH || ""}` });
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
   const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
@@ -557,18 +551,18 @@ printf 'Glow TUI opened\n'
   child.stdout.on("data", (chunk) => { stdout += chunk; });
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   const readyDeadline = Date.now() + 5_000;
-  while (!stdout.includes("3 View Markdown") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  while (!stdout.includes("Glow TUI opened") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
   child.stdin.write("3");
   const launchDeadline = Date.now() + 5_000;
-  while (!stdout.includes("Glow TUI opened") && Date.now() < launchDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  while ((stdout.match(/Glow TUI opened/g) || []).length < 2 && Date.now() < launchDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
   child.stdin.write("q");
   const exitCode = await new Promise((resolve, reject) => {
     child.once("exit", resolve);
     child.once("error", reject);
   });
   assert.equal(exitCode, 0, stderr);
-  assert.match(stdout, /3 View Markdown/);
-  assert.match(stdout, /Glow TUI opened/);
+  assert.match(stdout, /3 Rendered/);
+  assert.equal((stdout.match(/Glow TUI opened/g) || []).length, 2);
   assert.match(stdout, /Returned from glow/);
 });
 

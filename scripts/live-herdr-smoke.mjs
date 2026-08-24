@@ -190,14 +190,14 @@ async function openFileFromRail(railPaneId, fileName) {
     const text = paneText(railPaneId);
     return text.includes(fileName) && !text.includes(`⌕ ${fileName}▏`);
   });
-  herdr(["pane", "send-text", railPaneId, "j"]);
-  await delay(100);
-  herdr(["pane", "send-text", railPaneId, "o"]);
+  herdr(["pane", "send-keys", railPaneId, "j"]);
+  await delay(250);
+  herdr(["pane", "send-keys", railPaneId, "enter"]);
   return eventually(`${fileName} preview`, () => {
     const pane = panes().find((candidate) => candidate.label === previewLabel && !existingPreviews.has(candidate.pane_id));
     if (!pane) return null;
     return tabs().find((tab) => tab.tab_id === pane.tab_id)?.label === fileName ? pane : null;
-  });
+  }, { timeout: 30_000 });
 }
 
 function assertPaneExists(paneId, expected = true) {
@@ -231,8 +231,8 @@ async function invokeAction(actionId) {
 
 function initializeFixture() {
   git(["init", "--initial-branch=main"]);
-  git(["config", "user.name", "GitRail CI"]);
-  git(["config", "user.email", "gitrail-ci@example.invalid"]);
+  git(["config", "user.name", "GitRail Smoke"]);
+  git(["config", "user.email", "gitrail-smoke@example.invalid"]);
   write("clean.md", "# Clean baseline\n\nGlow baseline marker.\n");
   write("modified.md", "tracked baseline\n");
   git(["add", "."]);
@@ -253,6 +253,10 @@ async function main() {
   const beforeGitEvents = pluginLogCount();
   const sourceA = createWorkspace(fixtureRoot, "GitRail live Git");
   await waitForPluginEvents(beforeGitEvents);
+  // Herdr can deliver workspace.created before the root pane is queryable. The
+  // startup/event supervisor is intentionally idempotent, so reconcile once
+  // after both lifecycle commands have completed before inspecting the result.
+  run(process.execPath, ["scripts/auto-open-herdr-tabs.mjs"], { timeout: 45_000 });
   const railA = await railFor(sourceA.tabId);
   const initialPanes = tabPanes(sourceA.tabId);
   assert.equal(initialPanes.filter((pane) => pane.label === railLabel).length, 1);
@@ -290,10 +294,16 @@ async function main() {
 
   focusTab(sourceA.tabId);
   await invokeAction("open-git-rail");
-  const rebuiltRailA = await railFor(sourceA.tabId);
+  assert.equal(tabPanes(sourceA.tabId).some((pane) => pane.label === railLabel), false, "manual open changed an unsafe layout");
   assertPaneExists(sourceA.paneId);
   assertPaneExists(unrelatedPaneId);
-  observations.push("manual Toggle/Open and safe automatic layout skip");
+  herdr(["pane", "close", unrelatedPaneId]);
+  assertPaneExists(unrelatedPaneId, false);
+  focusTab(sourceA.tabId);
+  await invokeAction("open-git-rail");
+  const rebuiltRailA = await railFor(sourceA.tabId);
+  assertPaneExists(sourceA.paneId);
+  observations.push("manual Toggle and automatic/manual unsafe-layout skips without pane reconstruction");
 
   focusTab(sourceA.tabId);
   const previewA1 = await openFileFromRail(rebuiltRailA.pane_id, "untracked.md");
@@ -302,22 +312,29 @@ async function main() {
   assert.equal(tabPanes(previewA1.tab_id)[0].label, previewLabel);
   assert.ok(previewTabsBefore.some((tab) => tab.tab_id === previewA1.tab_id));
 
-  await eventually("preview controls", () => /1 Diff\s+2 Raw\s+3 Rendered/.test(paneText(previewA1.pane_id)));
-  await eventually("automatic Rendered action", () => paneText(previewA1.pane_id).includes("Rendered · Untracked"), { timeout: 20_000 });
+  await eventually("automatic Glow TUI", () => {
+    const text = paneText(previewA1.pane_id);
+    return text.includes("Glow rendered marker") && !text.includes("HERDR GITRAIL PREVIEW");
+  }, { timeout: 20_000 });
+  herdr(["pane", "send-text", previewA1.pane_id, "q"]);
+  await eventually("preview controls after Glow", () => /1 Diff\s+2 Raw\s+3 Rendered/.test(paneText(previewA1.pane_id)));
   herdr(["pane", "send-text", previewA1.pane_id, "1"]);
   await eventually("Diff action", () => paneText(previewA1.pane_id).includes("Untracked · index → worktree") || paneText(previewA1.pane_id).includes("Untracked · new file"));
   herdr(["pane", "send-text", previewA1.pane_id, "2"]);
   await eventually("Raw action", () => paneText(previewA1.pane_id).includes("Glow rendered marker"));
   herdr(["pane", "send-text", previewA1.pane_id, "3"]);
-  await eventually("Rendered action", () => {
+  await eventually("Glow TUI action", () => {
     const text = paneText(previewA1.pane_id);
-    return text.includes("Rendered · Untracked") && text.includes("Glow rendered marker");
+    return text.includes("Glow rendered marker") && !text.includes("HERDR GITRAIL PREVIEW");
   }, { timeout: 20_000 });
-  observations.push("Diff/Raw/action-3 Rendered Markdown and preview-tab exclusion");
+  herdr(["pane", "send-text", previewA1.pane_id, "q"]);
+  await eventually("return from Glow TUI", () => paneText(previewA1.pane_id).includes("Returned from glow"));
+  observations.push("Diff/Raw/action-3 Glow TUI and preview-tab exclusion");
 
   const beforeSourceBEvents = pluginLogCount();
   const sourceB = createTab(sourceA.workspaceId, fixtureRoot, "source-b");
   await waitForPluginEvents(beforeSourceBEvents, 1);
+  run(process.execPath, ["scripts/auto-open-herdr-tabs.mjs"], { timeout: 45_000 });
   const railB = await railFor(sourceB.tabId);
   focusTab(sourceB.tabId);
   const previewB1 = await openFileFromRail(railB.pane_id, "staged.md");
@@ -325,7 +342,7 @@ async function main() {
 
   focusTab(sourceA.tabId);
   const previewA2 = await openFileFromRail(rebuiltRailA.pane_id, "modified.md");
-  await eventually("source-A preview replacement", () => !panes().some((pane) => pane.pane_id === previewA1.pane_id));
+  await eventually("source-A preview replacement", () => !panes().some((pane) => pane.pane_id === previewA1.pane_id), { timeout: 30_000 });
   assertPaneExists(previewA2.pane_id);
   assertPaneExists(previewB1.pane_id);
   observations.push("per-source-tab preview replacement");

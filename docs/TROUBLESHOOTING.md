@@ -19,6 +19,11 @@ GitRail adopts an existing rail instead of opening a duplicate. If an earlier
 process was interrupted during pane creation, the next attempt automatically
 recovers its orphaned lock.
 
+GitRail opens only when Herdr can create a direct outer-right split beside a
+full-height pane. On top/bottom or otherwise nested layouts where that is not
+safe, both automatic and manual opening report a skip and leave every pane
+untouched. Rearrange the tab manually if you want to make room for the rail.
+
 ## GitRail opened at the wrong width
 
 Set `herdr.sidebarWidth` to an integer from 20 to 200. GitRail applies this only
@@ -51,9 +56,10 @@ Patterns beginning with `.` match filename suffixes; other patterns match an
 exact basename. Glob-shaped keys such as `*.md` are rejected. Set a matching
 viewer to `{ "client": "none" }` to disable an inherited built-in action.
 The `*` rule matches every filename. No viewer auto-opens unless its rule sets
-`autoOpen: true`; the installed Markdown rules enable embedded Glow rendering
-by default. Embedded viewers return bounded, sanitized terminal output to
-GitRail, which retains control of wrapping, scrolling, searching, and resizing.
+`autoOpen: true`; the installed Markdown rules open Glow's terminal UI by
+default. Press `q` to return to GitRail. Explicit embedded viewers instead return
+bounded, sanitized terminal output to GitRail, which retains control of wrapping,
+scrolling, searching, and resizing.
 If Glow is missing, GitRail does not attempt to spawn it repeatedly: the preview
 stays usable in Diff or wrapped Raw and reports how to disable auto-open.
 
