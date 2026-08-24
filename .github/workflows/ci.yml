@@ -86,7 +86,7 @@ jobs:
             --output "$RUNNER_TEMP/glow.tar.gz"
           printf '%s  %s\n' "$GLOW_SHA256" "$RUNNER_TEMP/glow.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/glow.tar.gz" -C "$RUNNER_TEMP/gitrail-live-glow"
-          install -m 755 "$RUNNER_TEMP/gitrail-live-glow/glow" "$RUNNER_TEMP/gitrail-live-bin/glow"
+          install -m 755 "$RUNNER_TEMP/gitrail-live-glow/glow_2.1.2_Linux_x86_64/glow" "$RUNNER_TEMP/gitrail-live-bin/glow"
           ln -s /usr/bin/git "$RUNNER_TEMP/gitrail-live-bin/git"
           ln -s "$(command -v node)" "$RUNNER_TEMP/gitrail-live-bin/node"
           ln -s /bin/bash "$RUNNER_TEMP/gitrail-live-bin/bash"
