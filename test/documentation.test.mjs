@@ -59,3 +59,9 @@ test("sealed release logs are not hidden by the general log ignore", async () =>
   assert.match(ignore, /^\*\.log$/m);
   assert.match(ignore, /^!release-evidence\/\*\*\/\*\.log$/m);
 });
+
+test("sealed evidence is excluded from later archives and preserves terminal bytes", async () => {
+  const attributes = await fs.readFile(".gitattributes", "utf8");
+  assert.match(attributes, /^\/release-evidence\/ export-ignore$/m);
+  assert.match(attributes, /^\/release-evidence\/\*\*\/\*\.log -whitespace$/m);
+});

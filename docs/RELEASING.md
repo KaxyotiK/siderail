@@ -5,6 +5,10 @@ immutable candidate commit and records hashed logs. Any change to code,
 documentation, screenshots, dependencies, the manifest, or packaged files
 creates a new candidate and invalidates all evidence.
 
+Committed evidence is not part of the distributable archive. Its terminal logs
+are byte-preserved evidence and are exempt from source-code whitespace checks;
+the manifest and bundle verifier authenticate every log instead.
+
 The sole post-validation exception is a follow-up commit that changes only the
 completion status and evidence references in `PRODUCTION-HARDENING.md` and
 `PRODUCTION-READINESS.md`. That record does not change the candidate or enter
