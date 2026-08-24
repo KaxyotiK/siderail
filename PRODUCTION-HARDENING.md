@@ -87,7 +87,7 @@ operations.
 - [ ] **L2b** Run the matrix and walkthrough, complete all gates, then tag `v0.1.0` **(D6 accepted)**
 - [x] **L3** Prune stale local branches (10 local, all merged)
 - [x] **L4** Add pinned lint rules for discarded promises and unused production exports; remove four unused parser helpers and make two active helpers private **(D2 accepted)**
-- [ ] **L5** CI: Node 22 + 24 matrix; coverage threshold at the current 88% line / 78% branch; demo/snapshot job; dependency review
+- [ ] **L5** CI: Node 22 + 24 matrix; coverage threshold at the current 88% line / 78% branch; demo/snapshot job; dependency audit
 - [x] **L6** Capture the 36 / 52 / 100-column screenshots `CONTRIBUTING.md` already mandates
 - [x] **L7** Remove nonexistent private-contact and response-time promises from `SECURITY.md`; add a reporting channel only before external distribution
 - [x] **P1** Rewrite `PRODUCTION-READINESS.md` as a checklist where each line cites the test or CI job that proves it
@@ -527,10 +527,11 @@ and the stated acceptance evidence still passes.
 - Add enforced initial floors of 88% lines, 78% branches, and 86% functions;
   raise them when preview, refresh, and watcher lifecycle tests land.
 - Add a deterministic demo/snapshot job, an exact-archive job, the
-  poisoned-environment job from B2b, and GitHub dependency review with pinned
-  action SHAs and read-only permissions. Dependency review must be dispatchable
-  against explicit base/candidate SHAs so the first-release gate is runnable
-  without a pull request.
+  poisoned-environment job from B2b, and a read-only dependency audit. Because
+  this private repository has no GitHub Advanced Security dependency-review API,
+  the audit must show the exact base/candidate lockfile diff, enforce zero runtime
+  dependencies, perform `npm ci --ignore-scripts`, and fail on high/critical npm
+  advisories. It must be dispatchable against explicit base/candidate SHAs.
 
 **L6 — required screenshots**
 

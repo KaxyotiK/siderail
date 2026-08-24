@@ -29,7 +29,7 @@ npm run release:evidence -- record --file "$evidence_file" --sha "$candidate_sha
 Every later record uses the same form and full SHA. `record` refuses unknown
 cells or a different SHA; `verify` refuses a missing or failed cell.
 
-## Automated matrix and dependency review
+## Automated matrix and dependency audit
 
 Push `candidate_sha`, wait for the CI workflow on that exact commit, and record
 the workflow/run URL for these cells:
@@ -43,18 +43,21 @@ snapshots, and artifact verification. The archive job examines `tar -tf` before
 extraction, rejects `node_modules/`, `schema/`, and root `.git-rail.json`, then
 installs and checks only the extracted candidate.
 
-The first release has no pull request comparison, so dispatch dependency review
+GitHub's dependency-review API is unavailable for this private repository
+without GitHub Advanced Security. The executable replacement records the exact
+lockfile diff, proves the head checkout, performs a clean install, retains zero
+runtime dependencies, and fails on high/critical npm advisories. Dispatch it
 against the reviewed development base and exact candidate:
 
 ```bash
-gh workflow run dependency-review.yml --ref "$candidate_sha" \
+gh workflow run dependency-audit.yml --ref "$candidate_sha" \
   -f base_ref=6c7d9ac -f head_ref="$candidate_sha"
-dependency_run=$(gh run list --workflow dependency-review.yml --commit "$candidate_sha" \
+dependency_run=$(gh run list --workflow dependency-audit.yml --commit "$candidate_sha" \
   --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
 gh run watch "$dependency_run" --exit-status
 dependency_url=$(gh run view "$dependency_run" --json url --jq .url)
 npm run release:evidence -- record --file "$evidence_file" --sha "$candidate_sha" \
-  --cell dependency-review --command "dependency review 6c7d9ac..$candidate_sha" \
+  --cell dependency-review --command "dependency audit 6c7d9ac..$candidate_sha" \
   --evidence "$dependency_url"
 ```
 

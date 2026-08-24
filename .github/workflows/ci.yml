@@ -222,7 +222,7 @@ jobs:
           done
           test -n "$candidate_rail"
           for _ in $(seq 1 100); do
-            candidate_text=$("$HERDR_BIN_PATH" pane read "$candidate_rail" --source viewport --format text --raw || true)
+            candidate_text=$("$HERDR_BIN_PATH" pane read "$candidate_rail" --source visible --format text --raw || true)
             if grep -F "Against user-base" <<<"$candidate_text" >/dev/null; then break; fi
             sleep 0.1
           done
