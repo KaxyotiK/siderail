@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const CONFIG_VERSION = 1;
+const CONFIG_VERSION = 1;
 const RESERVED_VIEWER_KEYS = new Set(["1", "2", "e", "q", "j", "k", "g", "G", "n", "N", "w"]);
 const LEGACY_VIEWER_KEYS = ["3", "4", "5", "6", "7", "8", "9", "0"];
 export const DEFAULT_CONFIG = deepFreeze({
@@ -89,9 +89,8 @@ function validateViewer(value, label, errors) {
 export function validateConfig(config) {
   const errors = [];
   if (!isObject(config)) return ["configuration must be a JSON object"];
-  const allowed = new Set(["$schema", "version", "baseRef", "herdr", "editor", "viewers", "refresh", "limits"]);
+  const allowed = new Set(["version", "baseRef", "herdr", "editor", "viewers", "refresh", "limits"]);
   for (const key of Object.keys(config)) if (!allowed.has(key)) errors.push(`unknown configuration key: ${key}`);
-  if (config.$schema !== undefined && typeof config.$schema !== "string") errors.push("$schema must be a string");
   if (config.version !== CONFIG_VERSION) errors.push(`version must be ${CONFIG_VERSION}`);
   if (config.baseRef !== undefined && (typeof config.baseRef !== "string" || !config.baseRef.trim())) errors.push("baseRef must be a non-empty string");
   if (config.herdr !== undefined) {
@@ -111,6 +110,13 @@ export function validateConfig(config) {
     if (!isObject(config.viewers)) errors.push("viewers must be an object");
     else for (const [pattern, value] of Object.entries(config.viewers)) {
       if (!pattern) errors.push("viewer patterns must not be empty");
+      else if (pattern !== "*" && (
+        /[\\/]/.test(pattern)
+        || /[*?\[\]{}]/.test(pattern)
+        || pattern.startsWith(".") && pattern.length === 1
+      )) {
+        errors.push(`viewer pattern ${JSON.stringify(pattern)} must be *, a dot-prefixed suffix, or an exact basename without glob metacharacters or path separators`);
+      }
       validateViewer(value, `viewers[${JSON.stringify(pattern)}]`, errors);
     }
   }
@@ -150,17 +156,17 @@ function readConfig(filePath) {
   }
 }
 
-export function loadConfig(repoRoot, env = process.env) {
-  const userPath = path.join(os.homedir(), ".config", "git-rail", "config.json");
-  const repoPath = repoRoot ? path.join(repoRoot, ".git-rail.json") : "";
+export function loadConfig(env = process.env) {
+  const homeDirectory = env.HOME || os.homedir();
+  const configDirectory = env.XDG_CONFIG_HOME || path.join(homeDirectory, ".config");
+  const userPath = path.join(configDirectory, "git-rail", "config.json");
   const user = readConfig(userPath);
-  const project = repoPath ? readConfig(repoPath) : { value: {}, errors: [] };
-  let config = merge(merge(DEFAULT_CONFIG, user.value), project.value);
-  const errors = [...user.errors, ...project.errors];
+  let config = merge(DEFAULT_CONFIG, user.value);
+  const errors = [...user.errors];
 
   const editorVariable = env.GIT_RAIL_CLIENT !== undefined
     ? "GIT_RAIL_CLIENT"
-    : !project.value.editor && !user.value.editor && env.EDITOR !== undefined ? "EDITOR" : "";
+    : !user.value.editor && env.EDITOR !== undefined ? "EDITOR" : "";
   if (editorVariable) {
     const editorText = String(env[editorVariable] ?? "").trim();
     if (!editorText) errors.push(`${editorVariable}: expected a non-empty command`);
@@ -211,7 +217,7 @@ export function resolveViewers(config, filePath) {
       || right.pattern.length - left.pattern.length
       || left.patternOrder - right.patternOrder
       || left.ruleOrder - right.ruleOrder)
-    .map(({ patternOrder, ruleOrder, ...viewer }) => viewer);
+    .map(({ patternOrder: _patternOrder, ruleOrder: _ruleOrder, ...viewer }) => viewer);
 }
 
 export function resolveViewer(config, filePath) {

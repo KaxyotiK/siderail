@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export function descriptorKey(descriptor) {
+function descriptorKey(descriptor) {
   return JSON.stringify(descriptor || { kind: "clean" });
 }
 
@@ -8,7 +8,7 @@ export function selectionKey(repoRoot, file) {
   return `${repoRoot}\0${file.path}\0${descriptorKey(file.descriptor)}`;
 }
 
-export function buildPathIndex({ tracked = [], againstBase = [], staged = [], unstaged = [] }) {
+export function buildPathIndex({ tracked = [], againstBase = [], staged = [], unstaged = [], untracked = [] }) {
   const byPath = new Map();
   const ensure = (filePath) => {
     if (!byPath.has(filePath)) {
@@ -32,7 +32,7 @@ export function buildPathIndex({ tracked = [], againstBase = [], staged = [], un
       entry.mode ||= trackedFile.mode;
     }
   }
-  for (const [scope, files] of [["against", againstBase], ["staged", staged], ["unstaged", unstaged]]) {
+  for (const [scope, files] of [["against", againstBase], ["staged", staged], ["unstaged", unstaged], ["untracked", untracked]]) {
     for (const file of files) {
       const entry = ensure(file.path);
       entry.clean = false;

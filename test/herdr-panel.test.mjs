@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { openHerdrPanel, rightmostPaneId } from "../scripts/open-herdr-panel.mjs";
+import { openHerdrPanel, recoverLayoutTransactions, rightmostPaneId } from "../scripts/open-herdr-panel.mjs";
 import {
   acquirePaneStateLock,
   cleanupTabPaneState,
@@ -26,6 +26,27 @@ function environment(root, overrides = {}) {
     ...overrides,
   };
 }
+
+test("startup reports an unjournaled staging tab without mutating it", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-layout-audit-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const calls = [];
+  const messages = [];
+  const originalError = console.error;
+  console.error = (message) => messages.push(message);
+  t.after(() => { console.error = originalError; });
+  await recoverLayoutTransactions({
+    environment: environment(root),
+    workspaceId: "w1",
+    herdr: "herdr-test",
+    run: async (_command, args) => {
+      calls.push(args);
+      return { stdout: JSON.stringify({ result: { tabs: [{ tab_id: "w1:t-stale", workspace_id: "w1", label: "GitRail Layout Staging" }] } }) };
+    },
+  });
+  assert.deepEqual(calls, [["tab", "list"]]);
+  assert.match(messages.join("\n"), /w1:t-stale.*left untouched/);
+});
 
 function mockRun({ panes, layout, openedPaneId = "w1:p9" }) {
   const calls = [];
@@ -247,7 +268,7 @@ test("legacy rails are replaced at the right edge using the tab-focused source c
   assert.ok(open.includes("GIT_RAIL_REPO_ROOT=/repo/two/sub"));
 });
 
-test("an adopted middle rail is moved to the right edge and resized", async (t) => {
+test("automatic ensure adopts a middle rail without rearranging user panes", async (t) => {
   const root = await temporaryRoot(t, "gitrail-repair-");
   const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
@@ -270,11 +291,8 @@ test("an adopted middle rail is moved to the right edge and resized", async (t) 
     resize: async (options) => resized.push(options.paneId),
     writeOutput: () => {},
   });
-  const swap = mocked.calls.find((args) => args[0] === "pane" && args[1] === "swap");
-  assert.deepEqual(swap, [
-    "pane", "swap", "--source-pane", "w1:p2", "--target-pane", "w1:p3",
-  ]);
-  assert.deepEqual(resized, ["w1:p2"]);
+  assert.equal(mocked.calls.some((args) => args[0] === "pane" && ["swap", "move"].includes(args[1])), false);
+  assert.deepEqual(resized, []);
 });
 
 test("rightmost placement is independent of pane listing order", () => {
@@ -326,6 +344,28 @@ test("vertical content is preserved beneath a full-height outer rail", async (t)
   assert.equal(moves.some((args) => args.includes("--focus")), false);
   assert.equal(mocked.calls.some((args) => args.includes("FOREIGN:pane")), false);
   assert.deepEqual(resized, ["w1:p9"]);
+});
+
+test("automatic ensure skips an unsafe vertical layout without staging or opening", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-vertical-ensure-");
+  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
+  ];
+  const layout = {
+    area: { x: 0, y: 0, width: 120, height: 40 },
+    focused_pane_id: "w1:p1",
+    panes: [
+      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
+      { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
+    ],
+  };
+  const mocked = mockRun({ panes, layout });
+  const result = await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env, run: mocked.run, resize: async () => {}, writeOutput: () => {} });
+  assert.deepEqual(result, { paneId: "", adopted: false, openMode: "ensure", skipped: true });
+  assert.equal(mocked.calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
+  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
 });
 
 test("layout staging rolls content back when opening the rail fails", async (t) => {

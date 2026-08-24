@@ -1,28 +1,15 @@
 #!/usr/bin/env node
-import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../src/config.mjs";
+import { assertSupportedNode } from "../src/node-version.mjs";
 import { resizeSidebarPane } from "../src/herdr-layout.mjs";
-import { runGit } from "../src/process.mjs";
 
-async function repositoryRoot(cwd) {
-  if (!cwd) return "";
-  try {
-    const root = (await runGit(cwd, ["rev-parse", "--show-toplevel"], {
-      timeoutMs: 2_000,
-      maxOutputBytes: 64 * 1024,
-    })).stdout.trim();
-    return root ? await fs.realpath(root) : "";
-  } catch {
-    return "";
-  }
-}
+assertSupportedNode();
 
-export async function resizeConfiguredSidebar({ paneId, workspaceCwd, environment = process.env }) {
+export async function resizeConfiguredSidebar({ paneId, environment = process.env }) {
   if (!paneId) return null;
-  const repoRoot = await repositoryRoot(workspaceCwd);
-  const { config } = loadConfig(repoRoot, environment);
+  const { config } = loadConfig(environment);
   return resizeSidebarPane({
     herdr: environment.HERDR_BIN_PATH || "herdr",
     paneId,

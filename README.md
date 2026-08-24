@@ -28,7 +28,7 @@ herdr plugin action invoke local.git-rail.open-git-rail
 
 GitRail also declares `local.git-rail.toggle-git-rail`, which opens or closes
 the verified plugin-owned sidebar in the current tab. Key bindings belong to
-Herdr rather than GitRail's repository configuration. For example:
+Herdr rather than GitRail configuration. For example:
 
 ```toml
 [[keys.command]]
@@ -74,7 +74,10 @@ signal.
 - Folder expanders and **Show more** rows in Changes are currently mouse
   controls; commit expansion and file opening remain fully keyboard-accessible.
 
-Against-base and Commits begin collapsed; Staged and Unstaged begin expanded.
+Against-base and Commits begin collapsed; Staged, Unstaged, and Untracked begin
+expanded. Untracked is a separate section immediately after Unstaged and uses
+Git's `?` marker, so a staged addition (`⊞`) cannot be confused with a file Git
+has not begun tracking.
 Files renders every discovered path immediately. Large Changes sections and
 commit history expose explicit **Show more** rows, so displayed totals never
 refer to unreachable content.
@@ -123,6 +126,13 @@ ls-files formats. Renames and copies retain old/new path pairs, while symlinks,
 submodules, and type changes retain revision-specific mode metadata. The Files
 model keeps all applicable states rather than selecting one ambiguous status.
 
+A refresh is intentionally eventually consistent. GitRail assembles a frame
+from several bounded Git commands rather than claiming an atomic snapshot of
+HEAD, the index, and the worktree. A repository changing during refresh can
+briefly show adjacent states or counts; filesystem invalidation and the recovery
+poll converge on the next refresh. A failed refresh keeps the last usable state,
+and `r` always requests an immediate retry.
+
 ## Configuration
 
 Configuration merges by key in this order, with later entries taking
@@ -130,14 +140,13 @@ precedence:
 
 1. built-in defaults;
 2. `~/.config/git-rail/config.json`;
-3. `<repository>/.git-rail.json`;
-4. `$EDITOR` when no editor is configured;
-5. `GIT_RAIL_*` environment overrides.
+3. `$EDITOR` when no editor is configured;
+4. `GIT_RAIL_*` environment overrides.
 
 Use [git-rail.config.example.json](git-rail.config.example.json) as a starting
 point. Configuration version 1 is validated; malformed JSON and invalid values
-are shown in the rail instead of being ignored. Repository configuration is
-trusted local configuration because it may choose executables.
+are shown in the rail instead of being ignored. Repository contents are never
+read as configuration and cannot choose editor or viewer executables.
 
 `version` identifies the configuration format, not the GitRail release. It lets
 GitRail reject a future incompatible format instead of interpreting changed
@@ -147,7 +156,7 @@ should use explicit `key` values.
 
 GitRail opens automatically, without taking focus, in every Git-backed Herdr
 tab when Herdr starts or a workspace or tab is created. Disable that globally in
-`~/.config/git-rail/config.json`, or for one repository in `.git-rail.json`:
+`~/.config/git-rail/config.json`:
 
 ```json
 {
@@ -161,6 +170,14 @@ GitRail** actions remain available when automatic opening is disabled.
 Once open, each rail follows the focused content pane in its own tab. Changing
 that pane's directory updates the repository name and branch on refresh or the
 recovery poll, including transitions into and out of Git worktrees.
+
+Filesystem events are a refresh optimization. GitRail watches the worktree, its
+absolute per-worktree Git directory, and the shared Git directory when the
+platform supports recursive watching. The jittered recovery poll remains the
+authoritative fallback when a watcher cannot be installed. It defaults to 10
+seconds, accepts 1–300 seconds, and varies each interval by ±10% to avoid refresh
+storms. Set `refresh.pollIntervalMs` in user configuration or
+`GIT_RAIL_POLL_INTERVAL_MS` for the process.
 
 New rails open at the configured terminal-column width. The installed default
 matches the 34-column development rail; narrower layouts cap the rail at half

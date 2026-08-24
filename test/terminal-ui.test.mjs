@@ -30,6 +30,7 @@ import {
   wrapAnsiTerminalLines,
 } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
+import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const exec = promisify(execFile);
 
@@ -199,15 +200,16 @@ test("sidebar snapshots cannot emit OSC52 from repository and filename data", as
   await runGit(root, ["init", "--initial-branch=main"]);
   await fs.writeFile(path.join(root, "\u001b]52;c;file-secret\u0007.txt"), "safe\n");
   const script = path.resolve("scripts/git-rail.mjs");
-  const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root });
+  const { environment } = hermeticEnvironment(t);
+  const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root, env: environment });
   assert.doesNotMatch(stdout, /\u001b\]|(?:repo|file)-secret/);
   assert.match(stdout, /�\.txt/);
 });
 
 test("recovery polling follows repository transitions in either direction", async () => {
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
-  assert.match(rail, /if \(\(state\.repoRoot \|\| state\.cwd\) !== invalidationRepoRoot\) startInvalidation\(\)/);
-  assert.match(rail, /if \(invalidationRepoRoot === watchRoot && refreshTimer\) return;/);
+  assert.match(rail, /resolveGitWatchRoots\(state\.repoRoot\)/);
+  assert.match(rail, /if \(invalidationSignature === signature && refreshTimer\) return;/);
   assert.match(rail, /currentProviderCwd = fixtureRoot \|\| await liveProviderCwd\(\)/);
   assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
   assert.match(rail, /createCoalescedScheduler/);

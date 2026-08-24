@@ -6,16 +6,17 @@ Security fixes are provided for the latest tagged release of Herdr GitRail.
 
 ## Reporting a vulnerability
 
-Do not open a public issue containing exploit details, repository contents, or
-secrets. Send a private report to the repository owner with the affected
-version, operating system, reproduction steps, and impact. Expect an initial
-acknowledgement within five business days.
+This private pre-release repository does not currently advertise a security
+reporting channel or response-time commitment. Do not put exploit details,
+repository contents, or secrets in a public issue. A private reporting channel
+and response policy must be published before GitRail is distributed externally.
 
 ## Trust boundary
 
-GitRail is read-only with respect to Git, but repository `.git-rail.json` files
-are trusted local configuration and may select editor or viewer executables.
-Review repository configuration before opening an untrusted checkout. GitRail
-passes arguments without a shell, resolves selected paths through `realpath`,
-bounds file and Git output, and does not log source, diffs, secrets, or command
+Repository contents never control GitRail configuration or select an executable.
+Configuration comes only from built-in defaults, the user's
+`~/.config/git-rail/config.json`, and explicit process environment overrides.
+GitRail is read-only with respect to Git, passes executable arguments without a
+shell, resolves selected paths through `realpath`, bounds file and Git output,
+sanitizes terminal text, and does not log source, diffs, secrets, or command
 arguments by default.

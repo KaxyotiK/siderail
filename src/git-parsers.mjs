@@ -99,26 +99,7 @@ export function parsePorcelainV2Z(output) {
   return entries;
 }
 
-export function parseNameStatusZ(output) {
-  const tokens = splitNul(output);
-  const files = [];
-  for (let index = 0; index < tokens.length;) {
-    const codeToken = tokens[index++];
-    if (!codeToken) continue;
-    const code = codeToken[0];
-    if (code === "R" || code === "C") {
-      const oldPath = tokens[index++] || "";
-      const filePath = tokens[index++] || "";
-      if (filePath) files.push({ path: filePath, oldPath, status: statusName(code), score: codeToken.slice(1) });
-    } else {
-      const filePath = tokens[index++] || "";
-      if (filePath) files.push({ path: filePath, status: statusName(code) });
-    }
-  }
-  return files;
-}
-
-export function parseNumstatZ(output) {
+function parseNumstatZ(output) {
   const tokens = splitNul(output);
   const stats = new Map();
   for (let index = 0; index < tokens.length; index += 1) {
@@ -145,21 +126,12 @@ export function parseNumstatZ(output) {
   return stats;
 }
 
-export function parseLsFilesZ(output) {
-  return splitNul(output);
-}
-
 export function parseLsFilesStageZ(output) {
   return splitNul(output).map((record) => {
     const tab = record.indexOf("\t");
     const metadata = record.slice(0, tab).split(" ");
     return { path: record.slice(tab + 1), mode: metadata[0], objectId: metadata[1], stage: Number(metadata[2]) };
   }).filter((entry) => entry.path);
-}
-
-export function parseRawDiffZ(output) {
-  const tokens = splitNul(output);
-  return parseRawDiffTokens(tokens).metadata;
 }
 
 function parseRawDiffTokens(tokens) {
@@ -211,13 +183,9 @@ export function parseRawNumstatZ(output) {
   return mergeStats([...metadata.values()], stats);
 }
 
-export function mergeStats(files, stats) {
+function mergeStats(files, stats) {
   return files.map((file) => ({
     ...file,
     ...(stats.get(file.path) || { additions: 0, deletions: 0, binary: false }),
   }));
-}
-
-export function mergeMetadata(files, metadata) {
-  return files.map((file) => ({ ...file, ...(metadata.get(file.path) || {}) }));
 }

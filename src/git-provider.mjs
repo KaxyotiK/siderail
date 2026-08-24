@@ -287,7 +287,12 @@ async function workingFiles(repoRoot, maxFileBytes) {
       });
     }
   }
-  return { staged, unstaged, untrackedStatsLimited };
+  return {
+    staged,
+    unstaged: unstaged.filter((file) => file.descriptor.kind !== "untracked"),
+    untracked: unstaged.filter((file) => file.descriptor.kind === "untracked"),
+    untrackedStatsLimited,
+  };
 }
 
 async function trackingState(repoRoot) {
@@ -354,7 +359,7 @@ export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 *
 export async function getRepositoryState(cwd, options = {}) {
   const repoRoot = await resolveRepository(cwd);
   if (!repoRoot) {
-    const { config, errors: configErrors } = loadConfig("", options.env || process.env);
+    const { config, errors: configErrors } = loadConfig(options.env || process.env);
     const directory = await scanDirectory(cwd, options.directoryScan);
     const workspaceDescriptor = { kind: "filesystem" };
     const state = {
@@ -369,6 +374,7 @@ export async function getRepositoryState(cwd, options = {}) {
       workspaceDescriptor,
       staged: [],
       unstaged: [],
+      untracked: [],
       commits: [],
       totalCommits: 0,
       commitPathIndex: new Map(),
@@ -386,7 +392,7 @@ export async function getRepositoryState(cwd, options = {}) {
       configErrors,
     };
   }
-  const { config, errors: loadedConfigErrors } = loadConfig(repoRoot, options.env || process.env);
+  const { config, errors: loadedConfigErrors } = loadConfig(options.env || process.env);
   const [branch, resolvedBase] = await Promise.all([resolveBranch(repoRoot), resolveBase(repoRoot, config.baseRef)]);
   const { baseRef } = resolvedBase;
   const configErrors = [...loadedConfigErrors, ...(resolvedBase.error ? [resolvedBase.error] : [])];
@@ -422,6 +428,7 @@ export async function getRepositoryState(cwd, options = {}) {
     ...workspace,
     staged: working.staged,
     unstaged: working.unstaged,
+    untracked: working.untracked,
     untrackedStatsLimited: working.untrackedStatsLimited,
     tracked: trackedData.paths,
     tracking,
@@ -436,7 +443,7 @@ export async function getRepositoryState(cwd, options = {}) {
     symlink: entry.mode === "120000",
     executable: entry.mode === "100755",
   }]));
-  for (const list of [state.againstBase, state.workspaceChanges, state.staged, state.unstaged]) {
+  for (const list of [state.againstBase, state.workspaceChanges, state.staged, state.unstaged, state.untracked]) {
     for (const file of list) {
       const tracked = trackedMetadata.get(file.path);
       if (!tracked) continue;

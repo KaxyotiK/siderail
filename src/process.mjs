@@ -18,6 +18,8 @@ export function runCommand(command, args = [], options = {}) {
     allowExitCodes = [0],
     stdoutEncoding = "utf8",
     stdinInput,
+    killGraceMs = 250,
+    waitForTermination = false,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -34,11 +36,14 @@ export function runCommand(command, args = [], options = {}) {
     let outputBytes = 0;
     let settled = false;
     let timer;
+    let forceKillTimer;
+    let termination;
 
     const finish = (callback) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (waitForTermination) clearTimeout(forceKillTimer);
       callback();
     };
     const resultSoFar = (exitCode = null, signal = null) => {
@@ -61,11 +66,20 @@ export function runCommand(command, args = [], options = {}) {
           else child.kill(signal);
         } catch { try { child.kill(signal); } catch {} }
       };
+      termination = { kind, message };
       signalTree("SIGTERM");
       child.stdout.destroy();
       child.stderr.destroy();
-      setTimeout(() => signalTree("SIGKILL"), 250).unref();
-      finish(() => {
+      forceKillTimer = setTimeout(() => {
+        signalTree("SIGKILL");
+        if (waitForTermination) finish(() => {
+          const result = resultSoFar(null, "SIGKILL");
+          debugLog(command, { durationMs: result.durationMs, exitCode: null, signal: "SIGKILL", outcome: kind });
+          reject(new ProcessError(message, { kind, ...result }));
+        });
+      }, killGraceMs);
+      forceKillTimer.unref();
+      if (!waitForTermination) finish(() => {
         const result = resultSoFar();
         debugLog(command, { durationMs: result.durationMs, exitCode: null, signal: "SIGTERM", outcome: kind });
         reject(new ProcessError(message, { kind, ...result }));
@@ -87,6 +101,11 @@ export function runCommand(command, args = [], options = {}) {
     ))));
     child.on("close", (exitCode, signal) => finish(() => {
       const result = resultSoFar(exitCode, signal);
+      if (termination) {
+        debugLog(command, { durationMs: result.durationMs, exitCode, signal, outcome: termination.kind });
+        reject(new ProcessError(termination.message, { kind: termination.kind, ...result }));
+        return;
+      }
       debugLog(command, { durationMs: result.durationMs, exitCode, signal, outcome: allowExitCodes.includes(exitCode) ? "ok" : "error" });
       if (!allowExitCodes.includes(exitCode)) {
         reject(new ProcessError(

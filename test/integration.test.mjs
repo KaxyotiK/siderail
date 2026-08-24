@@ -7,6 +7,12 @@ import { createFixtureRepository, removeFixtureRepository } from "../src/fixture
 import { getCommitFiles, getRepositoryState, scanDirectory } from "../src/git-provider.mjs";
 import { diffArguments, loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand, runGit } from "../src/process.mjs";
+import { hermeticEnvironment } from "./helpers/environment.mjs";
+
+function repositoryState(t, root, options = {}) {
+  const { environment } = hermeticEnvironment(t, options.env || {});
+  return getRepositoryState(root, { ...options, env: environment });
+}
 
 async function traceGitCommands(t, run) {
   const traceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-command-trace-"));
@@ -32,12 +38,13 @@ async function traceGitCommands(t, run) {
 test("fixture state is derived by the production provider", async (t) => {
   const root = await createFixtureRepository();
   t.after(() => removeFixtureRepository(root));
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   assert.equal(state.branch, "feature/sidebar");
   assert.equal(state.baseRef, "main");
   assert.equal(state.againstBase.length, 2);
   assert.equal(state.staged.length, 1);
-  assert.equal(state.unstaged.length, 3);
+  assert.equal(state.unstaged.length, 1);
+  assert.equal(state.untracked.length, 2);
   assert.equal(state.files.find((file) => file.path === "src/status.mjs").states.length, 2);
   assert.equal(state.files.find((file) => file.path === "assets/binary.dat").binary, true);
   assert.ok(state.commits[0].hash.length === 40);
@@ -50,7 +57,7 @@ test("read-only refresh does not rewrite the Git index", async (t) => {
   t.after(() => removeFixtureRepository(root));
   const indexPath = path.join(root, ".git", "index");
   const before = await fs.stat(indexPath, { bigint: true });
-  await getRepositoryState(root);
+  await repositoryState(t, root);
   const after = await fs.stat(indexPath, { bigint: true });
   assert.equal(after.mtimeNs, before.mtimeNs);
 });
@@ -60,11 +67,11 @@ test("refresh and commit details use one exact-copy diff scan per comparison", a
   t.after(() => removeFixtureRepository(root));
   let state;
   const refreshCommands = await traceGitCommands(t, async () => {
-    state = await getRepositoryState(root);
+    state = await repositoryState(t, root);
   });
   const refreshDiffs = refreshCommands.filter(([command]) => command === "diff");
   // Base-ref discovery can take a different number of cheap rev-parse calls
-  // depending on repository configuration; the expensive diff count is exact.
+  // depending on the user's configured limits; the expensive diff count is exact.
   assert.ok(refreshCommands.length <= 17);
   assert.equal(refreshDiffs.length, 4);
   for (const args of refreshDiffs) {
@@ -96,7 +103,7 @@ test("non-repository directories provide a bounded filesystem Files state", asyn
   await fs.writeFile(path.join(root, ".git", "private"), "not a repository\n");
   await fs.symlink("README.md", path.join(root, "current"));
 
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   assert.equal(state.repoRoot, "");
   assert.equal(state.branch, "—");
   assert.equal(state.workspaceDescriptor.kind, "filesystem");
@@ -136,7 +143,7 @@ test("configured bases must resolve to commits and never silently fall back", as
   await runGit(root, ["commit", "-m", "base"], { env: identity });
 
   for (const requested of ["HEAD:README.md", "refs/heads/definitely-missing"]) {
-    const state = await getRepositoryState(root, { env: { ...process.env, GIT_RAIL_BASE: requested } });
+    const state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: requested } });
     assert.equal(state.baseRef, "");
     assert.equal(state.againstBase.length, 0);
     assert.match(state.configErrors.join("\n"), new RegExp(`does not resolve to a commit: ${requested.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
@@ -160,7 +167,7 @@ test("Against Raw uses the same merge base as its diff after branches diverge", 
   await runGit(root, ["commit", "-am", "advance main"], { env: identity });
   await runGit(root, ["switch", "feature/delete"]);
 
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const deleted = state.againstBase.find((file) => file.path === "gone.txt");
   assert.equal(deleted.descriptor.mergeBase, mergeBase);
   const diff = await loadDiff({ repoRoot: root, filePath: deleted.path, descriptor: deleted.descriptor, metadata: deleted, maxOutputBytes: 1024 * 1024 });
@@ -184,7 +191,7 @@ test("staged copy identity and colon-prefixed index paths remain exact", async (
   await fs.writeFile(path.join(root, "0:foo"), "RIGHT colon file\n");
   await runGit(root, ["add", "copy.txt", "0:foo"]);
 
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const copy = state.staged.find((file) => file.path === "copy.txt");
   assert.equal(copy.status, "copied");
   assert.equal(copy.oldPath, "source.txt");
@@ -211,7 +218,7 @@ test("exact-revision materialization preserves bounded binary bytes for viewers"
 test("staged, unstaged, against, commit, untracked, and clean descriptors are independent", async (t) => {
   const root = await createFixtureRepository();
   t.after(() => removeFixtureRepository(root));
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const options = { repoRoot: root, maxOutputBytes: 1024 * 1024 };
   const staged = await loadDiff({ ...options, filePath: "src/status.mjs", descriptor: { kind: "staged" } });
   const unstaged = await loadDiff({ ...options, filePath: "src/status.mjs", descriptor: { kind: "unstaged" } });
@@ -284,7 +291,7 @@ test("provider handles unborn and detached repositories plus unusual renamed pat
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-matrix-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=trunk"]);
-  const unborn = await getRepositoryState(root);
+  const unborn = await repositoryState(t, root);
   assert.equal(unborn.branch, "trunk");
   assert.equal(unborn.baseRef, "");
   const oldPath = " leading - tab\tand ünicode.txt";
@@ -293,12 +300,12 @@ test("provider handles unborn and detached repositories plus unusual renamed pat
   await runGit(root, ["add", "--", oldPath]);
   await runGit(root, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "seed"]);
   await runGit(root, ["mv", "--", oldPath, newPath]);
-  const renamed = await getRepositoryState(root);
+  const renamed = await repositoryState(t, root);
   assert.equal(renamed.staged[0].status, "renamed");
   assert.equal(renamed.staged[0].oldPath, oldPath);
   await runGit(root, ["commit", "-m", "rename"], { env: { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" } });
   await runGit(root, ["switch", "--detach"]);
-  const detached = await getRepositoryState(root);
+  const detached = await repositoryState(t, root);
   assert.match(detached.branch, /^detached [0-9a-f]+$/);
 });
 
@@ -329,7 +336,7 @@ test("rename and copy previews retain Git identity across against, workspace, co
   await runGit(root, ["commit", "-m", "rename and copy"], { env: identity });
   await runGit(root, ["mv", "staged-old.txt", "staged-new.txt"]);
 
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const options = { repoRoot: root, maxOutputBytes: 1024 * 1024 };
   const againstRename = state.againstBase.find((file) => file.path === "rename-new.txt");
   const againstCopy = state.againstBase.find((file) => file.path === "copy-target.txt");
@@ -369,7 +376,7 @@ test("commit history and file details use one explicit first-parent comparison",
   await runGit(root, ["merge", "--no-ff", "side", "-m", "merge subject \x1f \x1e remains one record"], { env: identity });
   const mergeHash = (await runGit(root, ["rev-parse", "HEAD"])).stdout.trim();
 
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   assert.equal(state.totalCommits, 1);
   assert.equal(state.commits[0].hash, mergeHash);
   assert.equal(state.commits[0].message, "merge subject \x1f \x1e remains one record");
@@ -396,14 +403,14 @@ test("untracked text line counts match Git numstat semantics", async (t) => {
   await fs.writeFile(path.join(root, "unterminated.txt"), "one");
   await fs.writeFile(path.join(root, "mixed.txt"), "one\ntwo");
   await fs.symlink("../outside-target", path.join(root, "link.txt"));
-  const state = await getRepositoryState(root);
-  const counts = new Map(state.unstaged.map((file) => [file.path, file.additions]));
+  const state = await repositoryState(t, root);
+  const counts = new Map(state.untracked.map((file) => [file.path, file.additions]));
   assert.equal(counts.get("empty.txt"), 0);
   assert.equal(counts.get("terminated.txt"), 1);
   assert.equal(counts.get("unterminated.txt"), 1);
   assert.equal(counts.get("mixed.txt"), 2);
   assert.equal(counts.get("link.txt"), 1);
-  const link = state.unstaged.find((file) => file.path === "link.txt");
+  const link = state.untracked.find((file) => file.path === "link.txt");
   assert.equal(link.symlink, true);
   const raw = await loadRaw({ repoRoot: root, filePath: link.path, descriptor: link.descriptor, metadata: link, maxFileBytes: 1024 });
   assert.equal(raw.text, "../outside-target");
@@ -417,10 +424,10 @@ test("untracked statistics stop at an aggregate inspection budget", async (t) =>
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await Promise.all(Array.from({ length: 260 }, (_, index) => fs.writeFile(path.join(root, `file-${String(index).padStart(3, "0")}.txt`), "")));
-  const state = await getRepositoryState(root);
-  assert.equal(state.unstaged.length, 260);
+  const state = await repositoryState(t, root);
+  assert.equal(state.untracked.length, 260);
   assert.equal(state.untrackedStatsLimited, true);
-  assert.ok(state.unstaged.filter((file) => file.statsUnavailable).length >= 4);
+  assert.ok(state.untracked.filter((file) => file.statsUnavailable).length >= 4);
 });
 
 test("clean tracked files retain symlink and executable metadata", async (t) => {
@@ -433,7 +440,7 @@ test("clean tracked files retain symlink and executable metadata", async (t) => 
   await fs.symlink("target.txt", path.join(root, "link"));
   await runGit(root, ["add", "--all"]);
   await runGit(root, ["commit", "-m", "modes"], { env: identity });
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const files = new Map(state.files.map((file) => [file.path, file]));
   assert.equal(files.get("link").clean, true);
   assert.equal(files.get("link").symlink, true);
@@ -456,7 +463,7 @@ test("unstaged type changes use worktree mode rather than index mode", async (t)
   await fs.writeFile(path.join(root, "value"), "regular in worktree\n");
   await fs.unlink(path.join(root, "other"));
   await fs.symlink("target.txt", path.join(root, "other"));
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const regular = state.unstaged.find((file) => file.path === "value");
   const symlink = state.unstaged.find((file) => file.path === "other");
   assert.equal(regular.status, "type-changed");
@@ -489,7 +496,7 @@ test("against-base model retains deletion, rename, copy, executable, and symlink
   await fs.symlink("copy-source.txt", path.join(root, "source-link"));
   await runGit(root, ["add", "--all"]);
   await runGit(root, ["commit", "-m", "exercise statuses"], { env: identity });
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const statuses = new Map(state.againstBase.map((file) => [file.path, file]));
   assert.equal(statuses.get("delete.txt").status, "deleted");
   assert.equal(statuses.get("rename-new.txt").status, "renamed");
@@ -526,7 +533,7 @@ test("unmerged porcelain state remains an explicit conflict in both scopes", asy
   await fs.writeFile(path.join(root, "conflict.txt"), "main\n");
   await runGit(root, ["commit", "-am", "main"], { env: identity });
   await runGit(root, ["merge", "side"], { env: identity, allowExitCodes: [0, 1] });
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   assert.equal(state.staged.find((file) => file.path === "conflict.txt").status, "conflicted");
   assert.equal(state.unstaged.find((file) => file.path === "conflict.txt").status, "conflicted");
   assert.equal(state.files.find((file) => file.path === "conflict.txt").conflict, true);
@@ -562,7 +569,7 @@ test("historical and index blobs receive bounded binary and UTF-8 validation wit
   await fs.rm(path.join(root, "deleted.txt"));
   await runGit(root, ["add", "--all"]);
   await runGit(root, ["commit", "-m", "hostile blobs"], { env: identity });
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const files = new Map(state.againstBase.map((file) => [file.path, file]));
   await assert.rejects(
     () => loadRaw({ repoRoot: root, filePath: "binary.dat", descriptor: files.get("binary.dat").descriptor, metadata: files.get("binary.dat"), maxFileBytes: 1024 }),
@@ -618,7 +625,7 @@ test("commit history is bounded while retaining an exact total", async (t) => {
   for (let index = 0; index < 205; index += 1) {
     await runGit(root, ["commit", "--allow-empty", "-m", `history ${index}`], { env: identity });
   }
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   assert.equal(state.totalCommits, 205);
   assert.equal(state.commits.length, 200);
   assert.equal(state.historyLimit, 200);
@@ -649,7 +656,7 @@ test("submodule gitlinks remain first-class canonical metadata", async (t) => {
   await runGit(path.join(root, "deps/sample"), ["checkout", first]);
   await runGit(root, ["add", "--all"]);
   await runGit(root, ["commit", "-m", "base submodule"], { env: identity });
-  const cleanState = await getRepositoryState(root);
+  const cleanState = await repositoryState(t, root);
   const cleanSubmodule = cleanState.files.find((file) => file.path === "deps/sample");
   assert.equal(cleanSubmodule.clean, true);
   assert.equal(cleanSubmodule.submodule, true);
@@ -657,7 +664,7 @@ test("submodule gitlinks remain first-class canonical metadata", async (t) => {
   await runGit(path.join(root, "deps/sample"), ["checkout", second]);
   await runGit(root, ["add", "deps/sample"]);
   await runGit(root, ["commit", "-m", "advance submodule"], { env: identity });
-  const state = await getRepositoryState(root);
+  const state = await repositoryState(t, root);
   const submodule = state.againstBase.find((file) => file.path === "deps/sample");
   assert.equal(submodule.submodule, true);
   assert.equal(state.files.find((file) => file.path === "deps/sample").submodule, true);

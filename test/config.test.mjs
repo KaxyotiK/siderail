@@ -4,6 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { clientMode, DEFAULT_CONFIG, executableAvailable, launchExecutable, loadConfig, resolveViewer, resolveViewerActions, resolveViewers, validateConfig } from "../src/config.mjs";
+import { hermeticEnvironment } from "./helpers/environment.mjs";
+
+async function writeUserConfig(environment, value) {
+  const directory = path.join(environment.XDG_CONFIG_HOME, "git-rail");
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(path.join(directory, "config.json"), JSON.stringify(value));
+}
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
@@ -32,7 +39,7 @@ test("file previews open in a dedicated Herdr tab", async () => {
   assert.match(rail, /oldSubmodule: file\.oldSubmodule/);
   assert.match(rail, /oldSymlink: file\.oldSymlink/);
   assert.match(rail, /createLatestSerialQueue\(openPreview\)/);
-  assert.match(rail, /if \(paneId && stalePaneId/);
+  assert.match(rail, /openOwnedPreview/);
 });
 
 test("preview scrolling repaints in place without clearing the screen", async () => {
@@ -71,17 +78,10 @@ test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);
 });
 
-test("published schema exposes labels only on viewer rules", async () => {
-  const schema = JSON.parse(await fs.readFile("schema/v1/git-rail.schema.json", "utf8"));
-  assert.equal(schema.properties.herdr.properties.sidebarWidth.default, 34);
-  assert.equal(schema.$defs.launch.properties.label, undefined);
-  assert.deepEqual(schema.$defs.viewer.properties.label, { type: "string", pattern: "\\S" });
-  assert.ok(schema.$defs.viewer.properties.mode.enum.includes("embedded"));
-  assert.equal(schema.$defs.viewer.properties.order.deprecated, true);
-  assert.equal(schema.$defs.viewer.properties.key.pattern, "^[A-Za-z0-9]$");
-  assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].type, "array");
-  assert.equal(schema.properties.viewers.additionalProperties.oneOf[1].minItems, 1);
-  assert.equal(schema.properties.viewers.propertyNames.minLength, 1);
+test("the shipped example is governed by runtime validation alone", async () => {
+  const example = JSON.parse(await fs.readFile("git-rail.config.example.json", "utf8"));
+  assert.deepEqual(validateConfig(example), []);
+  assert.ok(validateConfig({ ...example, $schema: "removed" }).includes("unknown configuration key: $schema"));
 });
 
 test("configuration requires a version and rejects nested unknown keys", () => {
@@ -100,6 +100,9 @@ test("configuration requires a version and rejects nested unknown keys", () => {
   assert.deepEqual(validateConfig({ version: 1, viewers: { "*": [{ client: "system", key: "o" }, { client: "code", key: "9" }] } }), []);
   assert.ok(validateConfig({ version: 1, viewers: { "*": [] } }).includes('viewers["*"] must contain at least one viewer action'));
   assert.ok(validateConfig({ version: 1, viewers: { "": { client: "open" } } }).includes("viewer patterns must not be empty"));
+  for (const pattern of ["*.md", "docs/*.md", "file?.txt", "[ab].txt", "{a,b}.txt", "."]) {
+    assert.ok(validateConfig({ version: 1, viewers: { [pattern]: { client: "open" } } }).some((error) => error.includes("dot-prefixed suffix")));
+  }
   assert.ok(validateConfig({ version: 1, refresh: { intervalMs: 5000 } }).includes("unknown refresh key: intervalMs"));
   assert.ok(validateConfig({ version: 1, limits: { maxFilesBytes: 4096 } }).includes("unknown limits key: maxFilesBytes"));
 });
@@ -166,20 +169,10 @@ test("configuration rejects mistyped structured values", () => {
   }
 });
 
-test("project configuration without a version is rejected instead of merged", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-version-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({ editor: { client: "hx" } }));
-  const { config, errors } = loadConfig(root, {});
-  assert.ok(errors.some((error) => error.includes("version must be 1")));
-  assert.equal(config.editor.client, "none");
-});
-
-test("repository config merges by key and environment wins", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({ version: 1, editor: { client: "hx", mode: "terminal" }, refresh: { pollIntervalMs: 7000 } }));
-  const { config, errors } = loadConfig(root, { GIT_RAIL_BASE: "upstream/trunk", GIT_RAIL_CLIENT: "nvim" });
+test("user configuration merges by key and environment wins", async (t) => {
+  const { environment } = hermeticEnvironment(t, { GIT_RAIL_BASE: "upstream/trunk", GIT_RAIL_CLIENT: "nvim" });
+  await writeUserConfig(environment, { version: 1, editor: { client: "hx", mode: "terminal" }, refresh: { pollIntervalMs: 7000 } });
+  const { config, errors } = loadConfig(environment);
   assert.deepEqual(errors, []);
   assert.equal(config.baseRef, "upstream/trunk");
   assert.equal(config.editor.client, "nvim");
@@ -188,16 +181,15 @@ test("repository config merges by key and environment wins", async (t) => {
 });
 
 test("an explicit Glow TUI rule is preserved", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-glow-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+  const { environment } = hermeticEnvironment(t);
+  await writeUserConfig(environment, {
     version: 1,
     viewers: {
       ".md": { label: "View Markdown", client: "glow", args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: true },
       ".txt": { label: "Custom Glow", client: "glow", args: ["--tui"], mode: "terminal", key: "4", autoOpen: false },
     },
-  }));
-  const { config, errors } = loadConfig(root, {});
+  });
+  const { config, errors } = loadConfig(environment);
   assert.deepEqual(errors, []);
   assert.deepEqual(config.viewers[".md"], {
     label: "View Markdown",
@@ -211,29 +203,32 @@ test("an explicit Glow TUI rule is preserved", async (t) => {
   assert.deepEqual(config.viewers[".txt"].args, ["--tui"]);
 });
 
-test("environment overrides do not mutate built-in defaults", () => {
+test("environment overrides do not mutate built-in defaults", (t) => {
+  const { environment } = hermeticEnvironment(t);
   const before = JSON.stringify(DEFAULT_CONFIG);
-  const first = loadConfig("", { GIT_RAIL_CLIENT_ARGS: '["-f"]', GIT_RAIL_POLL_INTERVAL_MS: "2000" });
-  const second = loadConfig("", {});
+  const first = loadConfig({ ...environment, GIT_RAIL_CLIENT_ARGS: '["-f"]', GIT_RAIL_POLL_INTERVAL_MS: "2000" });
+  const second = loadConfig(environment);
   assert.deepEqual(first.errors, []);
   assert.equal(JSON.stringify(DEFAULT_CONFIG), before);
   assert.deepEqual(second.config.editor.args, []);
   assert.equal(second.config.refresh.pollIntervalMs, 10_000);
 });
 
-test("editor integration is optional and EDITOR remains a fallback", () => {
-  const disabled = loadConfig("", {});
+test("editor integration is optional and EDITOR remains a fallback", (t) => {
+  const { environment } = hermeticEnvironment(t);
+  const disabled = loadConfig(environment);
   assert.deepEqual(disabled.errors, []);
   assert.equal(clientMode(disabled.config.editor), "disabled");
-  const fallback = loadConfig("", { EDITOR: "hx --tutor" });
+  const fallback = loadConfig({ ...environment, EDITOR: "hx --tutor" });
   assert.deepEqual(fallback.errors, []);
   assert.equal(fallback.config.editor.client, "hx");
   assert.deepEqual(fallback.config.editor.args, ["--tutor"]);
   assert.equal(clientMode(fallback.config.editor), "terminal");
 });
 
-test("invalid environment overrides report errors without replacing valid defaults", () => {
-  const { config, errors } = loadConfig("", {
+test("invalid environment overrides report errors without replacing valid defaults", (t) => {
+  const { environment } = hermeticEnvironment(t);
+  const { config, errors } = loadConfig({ ...environment,
     GIT_RAIL_BASE: "   ",
     GIT_RAIL_CLIENT: "   ",
     GIT_RAIL_CLIENT_ARGS: "not-json",
@@ -248,11 +243,10 @@ test("invalid environment overrides report errors without replacing valid defaul
   }
 });
 
-test("out-of-range polling overrides preserve a project interval", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-config-poll-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({ version: 1, refresh: { pollIntervalMs: 7000 } }));
-  const { config, errors } = loadConfig(root, { GIT_RAIL_POLL_INTERVAL_MS: "999" });
+test("out-of-range polling overrides preserve a user interval", async (t) => {
+  const { environment } = hermeticEnvironment(t, { GIT_RAIL_POLL_INTERVAL_MS: "999" });
+  await writeUserConfig(environment, { version: 1, refresh: { pollIntervalMs: 7000 } });
+  const { config, errors } = loadConfig(environment);
   assert.equal(config.refresh.pollIntervalMs, 7000);
   assert.ok(errors.some((error) => error.startsWith("GIT_RAIL_POLL_INTERVAL_MS:")));
 });

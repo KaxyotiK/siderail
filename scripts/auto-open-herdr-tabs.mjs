@@ -9,8 +9,10 @@ import {
 } from "../src/herdr-pane-state.mjs";
 import { runCommand } from "../src/process.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
+import { assertSupportedNode } from "../src/node-version.mjs";
 
 const RAIL_LABEL = "HERDER GITRAIL";
+assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
 const DEMO_LABEL = "GitRail Demo";
 const PREVIEW_LABEL = "GitRail Preview";
@@ -52,7 +54,7 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
       || usablePanes[0]
       || tabPanes[0];
     const workspace = workspaceById.get(tab.workspace_id);
-    const cwd = workspace?.worktree?.checkout_path || targetPane?.cwd;
+    const cwd = targetPane?.cwd || workspace?.worktree?.checkout_path;
     if (!workspace || !targetPane || !cwd) return [];
     return [{
       workspaceId: tab.workspace_id,
@@ -65,9 +67,9 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
   });
 }
 
-async function gitWorkspaceRoot(cwd) {
+async function gitWorkspaceRoot(cwd, run = runCommand) {
   try {
-    const result = await runCommand("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
+    const result = await run("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
       timeoutMs: 2_000,
       maxOutputBytes: 64 * 1_024,
     });
@@ -77,15 +79,15 @@ async function gitWorkspaceRoot(cwd) {
   }
 }
 
-export function autoOpenEnabled(repoRoot, environment = process.env) {
-  return loadConfig(repoRoot, environment).config.herdr.autoOpen;
+export function autoOpenEnabled(environment = process.env) {
+  return loadConfig(environment).config.herdr.autoOpen;
 }
 
-async function openTarget(target, { herdr, pluginRoot, environment }) {
-  const repoRoot = await gitWorkspaceRoot(target.cwd);
-  const enabled = repoRoot ? autoOpenEnabled(repoRoot, environment) : false;
+async function openTarget(target, { herdr, pluginRoot, environment, run = runCommand, timeoutMs = 35_000 }) {
+  const repoRoot = await gitWorkspaceRoot(target.cwd, run);
+  const enabled = repoRoot ? autoOpenEnabled(environment) : false;
   if (!enabled) return false;
-  await runCommand("bash", [path.join(pluginRoot, "scripts/open-herdr-panel.sh"), "git-tui", "ensure"], {
+  await run("/bin/bash", [path.join(pluginRoot, "scripts/open-herdr-panel.sh"), "git-tui", "ensure"], {
     cwd: pluginRoot,
     env: {
       HERDR_BIN_PATH: herdr,
@@ -95,11 +97,44 @@ async function openTarget(target, { herdr, pluginRoot, environment }) {
       HERDR_TARGET_PANE_ID: "",
       HERDR_PLUGIN_CONTEXT_JSON: "",
       GIT_RAIL_WORKSPACE_CWD: target.cwd,
+      GIT_RAIL_NODE_PATH: process.execPath,
     },
-    timeoutMs: 35_000,
+    timeoutMs,
+    killGraceMs: 5_000,
+    waitForTermination: true,
     maxOutputBytes: 256 * 1_024,
   });
   return true;
+}
+
+export async function runBoundedSweep(targets, job, {
+  concurrency = 4,
+  deadlineMs = 35_000,
+  now = () => performance.now(),
+} = {}) {
+  const startedAt = now();
+  const deadline = startedAt + deadlineMs;
+  const summary = { opened: [], skipped: [], failed: [], deadlineCancelled: [] };
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < targets.length) {
+      if (now() >= deadline) {
+        summary.deadlineCancelled.push(...targets.slice(cursor).map((target) => target.tabId));
+        cursor = targets.length;
+        return;
+      }
+      const target = targets[cursor++];
+      try {
+        const opened = await job(target, Math.max(1, deadline - now()));
+        (opened ? summary.opened : summary.skipped).push(target.tabId);
+      } catch (error) {
+        if (error?.kind === "timeout" || now() >= deadline) summary.deadlineCancelled.push(target.tabId);
+        else summary.failed.push({ tabId: target.tabId, message: sanitizeTerminalText(error.message) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, worker));
+  return summary;
 }
 
 function pluginContext(environment) {
@@ -110,7 +145,8 @@ function pluginContext(environment) {
   }
 }
 
-export async function autoOpenHerdrTabs(environment = process.env) {
+export async function autoOpenHerdrTabs(environment = process.env, dependencies = {}) {
+  const run = dependencies.run || runCommand;
   const herdr = environment.HERDR_BIN_PATH || "herdr";
   const pluginRoot = environment.HERDR_PLUGIN_ROOT || path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   if (environment.HERDR_PLUGIN_EVENT === "tab.closed") {
@@ -131,9 +167,9 @@ export async function autoOpenHerdrTabs(environment = process.env) {
     ? tabTargetFromContext(pluginContext(environment), environment)
     : null;
   const [workspaceResult, tabResult, paneResult] = await Promise.all([
-    runCommand(herdr, ["workspace", "list"], { timeoutMs: 8_000, maxOutputBytes: 4 * 1_024 * 1_024 }),
-    runCommand(herdr, ["tab", "list"], { timeoutMs: 8_000, maxOutputBytes: 8 * 1_024 * 1_024 }),
-    runCommand(herdr, ["pane", "list"], { timeoutMs: 8_000, maxOutputBytes: 16 * 1_024 * 1_024 }),
+    run(herdr, ["workspace", "list"], { timeoutMs: 8_000, maxOutputBytes: 4 * 1_024 * 1_024 }),
+    run(herdr, ["tab", "list"], { timeoutMs: 8_000, maxOutputBytes: 8 * 1_024 * 1_024 }),
+    run(herdr, ["pane", "list"], { timeoutMs: 8_000, maxOutputBytes: 16 * 1_024 * 1_024 }),
   ]);
   const targets = lifecycleEvent && !eventTarget
     ? []
@@ -153,15 +189,17 @@ export async function autoOpenHerdrTabs(environment = process.env) {
     await pruneMissingPaneState(livePaneIds, environment);
   }
 
-  const failures = [];
-  for (const target of targets) {
-    try {
-      await openTarget(target, { herdr, pluginRoot, environment });
-    } catch (error) {
-      failures.push(`${sanitizeTerminalText(target.workspaceId)}: ${sanitizeTerminalText(error.message)}`);
-    }
+  const summary = await runBoundedSweep(
+    targets,
+    dependencies.openTarget || ((target, timeoutMs) => openTarget(target, { herdr, pluginRoot, environment, run, timeoutMs })),
+    { now: dependencies.now },
+  );
+  if (summary.failed.length || summary.deadlineCancelled.length) {
+    const failed = summary.failed.map((item) => `${item.tabId}: ${item.message}`).join("; ");
+    const cancelled = summary.deadlineCancelled.join(", ");
+    throw new Error(`GitRail auto-open partial result (opened ${summary.opened.length}, skipped ${summary.skipped.length})${failed ? `; failed ${failed}` : ""}${cancelled ? `; deadline-cancelled ${cancelled}` : ""}`);
   }
-  if (failures.length > 0) throw new Error(`GitRail auto-open failed for ${failures.join("; ")}`);
+  return summary;
 }
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

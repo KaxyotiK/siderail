@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import test from "node:test";
+
+test("security policy has no fictional contact or response-time promise", async () => {
+  const policy = await fs.readFile("SECURITY.md", "utf8");
+  assert.doesNotMatch(policy, /security@|within \d+ (?:hours|days)|acknowledge within|private advisory/i);
+  assert.match(policy, /does not currently advertise a security\s+reporting channel/);
+  assert.match(policy, /Repository contents never control GitRail configuration/);
+});
+
+test("documentation states the eventual refresh and user-only configuration contracts", async () => {
+  const readme = await fs.readFile("README.md", "utf8");
+  assert.match(readme, /refresh is intentionally eventually consistent/);
+  assert.match(readme, /built-in defaults/);
+  assert.match(readme, /~\/\.config\/git-rail\/config\.json/);
+  assert.match(readme, /GIT_RAIL_\*/);
+  assert.match(readme, /Untracked is a separate section/);
+  await assert.rejects(() => fs.access("schema/v1/git-rail.schema.json"), (error) => error.code === "ENOENT");
+});

@@ -1,148 +1,41 @@
 # Production readiness
 
-Herdr GitRail's production-readiness work is merged into `main`. This document
-records the current guarantees and the checks required before a tagged release;
-it is not a future implementation plan.
+This checklist maps each release guarantee to executable evidence. “Local pass”
+means the implementation is verified in the development worktree; it is not a
+claim that the Node/OS matrix, live Herdr walkthrough, or `v0.1.0` tag exists.
 
-## Current product behavior
+| ID | User-visible guarantee | Proof | Platform | Status |
+| --- | --- | --- | --- | --- |
+| B1 | Repository contents cannot configure GitRail or select executables | `test/config.test.mjs`, hostile-config case in `test/snapshot.test.mjs`, poisoned-environment CI | all | local pass |
+| B2 | Tests cannot inherit ambient Herdr/GitRail state | `test/helpers/environment.mjs`, clean and poisoned CI jobs | macOS/Linux, Node 22/24 | local pass; CI required |
+| B3 | A 20,000-path Files view styles/materializes only its viewport | `test/files-view-model.test.mjs` at 36/52/100 columns | all | local pass |
+| B4 | Stale preview state never authorizes closing an unverified pane | `test/preview-pane-lifecycle.test.mjs` | Herdr 0.8+ | local pass |
+| H1 | Git failures are distinct from ordinary non-Git directories | startup/failure snapshots in `test/snapshot.test.mjs` and `test/terminal-ui.test.mjs` | all | local pass |
+| H2 | Automatic opening skips unsafe layouts; explicit rebuilds are journaled and recoverable | `test/herdr-panel.test.mjs`; live walkthrough steps 2 and 6 | Herdr 0.8+ | unit pass; live required |
+| H3 | Fatal rail errors restore terminal modes and remove demo fixtures | fatal process case in `test/snapshot.test.mjs` | macOS/Linux | local pass |
+| H4 | Worktree/shared Git metadata invalidates state, with a recovery-poll fallback | `test/git-watch.test.mjs`, scheduler tests in `test/terminal-ui.test.mjs`, live walkthrough step 7 | macOS/Linux | unit pass; live required |
+| M1 | Staged, Unstaged, and Untracked are distinct and keyboard reachable | provider integration tests and 25/36/52/100-column snapshots | all | local pass |
+| M2 | Preview replacement is scoped by workspace and source tab | `test/preview-pane-lifecycle.test.mjs`, live walkthrough step 5 | Herdr 0.8+ | unit pass; live required |
+| M3 | Runtime validation is the sole config authority; `$schema` is rejected | `test/config.test.mjs`, `npm run artifact:verify` | all | local pass |
+| M4 | Viewer keys accept only wildcard, suffix, or exact basename grammar | configuration validation/resolution cases in `test/config.test.mjs` | all | local pass |
+| M5 | Every manifest entrypoint resolves an absolute Node 22+ executable first | `test/node-launcher.test.mjs`, `npm run artifact:verify` | macOS/Linux | local pass |
+| M6 | Refresh promises eventual, not atomic, consistency and preserves usable state | provider/refresh tests plus README contract | all | local pass |
+| M7 | Auto-open uses at most four workers and one 35-second deadline | bounded-sweep cases in `test/auto-open-herdr-tabs.test.mjs` | Herdr 0.8+ | local pass |
+| M8 | Preview search normalizes once and retains at most 8 MiB of prefix candidates | `test/preview-search.test.mjs` including 100,000 lines | all | local pass |
+| L4 | Discarded promises, unused locals, and unused production exports fail lint | `npm run lint` (ESLint + Knip) | Node 22+ | local pass |
+| L5 | Tests pass on macOS 15/Ubuntu 24.04 and Node 22/24 with 88/78/86 coverage floors | CI matrix and `npm run test:coverage` | matrix | candidate CI required |
+| L6 | 36/52/100-column realistic states are recorded | `docs/screenshots/README.md`, live walkthrough step 8 | real Herdr | candidate assets required |
+| L7 | Security policy has no fictional reporting channel or response promise | `SECURITY.md` review and documentation assertion | n/a | local pass |
+| L2 | Candidate install, migration, uninstall, artifact, and live behavior are recorded before tagging | `docs/RELEASING.md` matrix | macOS/Linux | candidate validation required |
 
-- The plugin is a read-only Files and Git inspector scoped to the focused Herdr
-  tab directory.
-- Changes separates Against-base, commit, staged, unstaged, and untracked state.
-  Each row carries an exact descriptor so the preview cannot silently switch Git
-  scope.
-- A clean Changes view explicitly states that the worktree is clean. Commit
-  summary rows participate in the same keyboard focus and Enter activation as
-  file rows.
-- Changes search covers file paths plus the hashes, messages, authors, ages, and
-  changed paths of the latest 200 first-parent commits. The full range count is
-  retained, truncation is disclosed, and path-index failure degrades search
-  without taking down repository state.
-- Files contains tracked and untracked worktree paths. It compares the current
-  worktree with `merge-base(base, HEAD)`, reuses that branch-diff metadata for
-  changed rows, and renders unchanged paths with a neutral icon and no stats.
-- Outside Git, Files remains available through a bounded directory scan with
-  one filesystem-only `⊠`; Git clean files retain `□`, and Changes clearly
-  remains unavailable. Directory
-  symlinks are not followed and `.git` internals are excluded.
-- Folders sort before repository-root files in Tree and Folders layouts. Narrow
-  rails retain filenames and compact ages before secondary metadata.
-- A selected file opens in a dedicated Herdr preview tab labeled with its
-  sanitized basename, capped at 32 terminal columns. Opening another file
-  replaces the plugin-owned preview tab rather than covering the rail or creating
-  unbounded tabs.
-- Diff is a structured file view with old/new line gutters and distinct additions
-  and deletions. Raw reads the selected revision. A third viewer action appears
-  only when the selected filename matches an enabled viewer rule. Matching
-  actions are additive and explicitly key-bound, each pattern accepts one or
-  more actions, and `*` provides global actions. Installed defaults bind
-  Markdown to `3`, render bounded and sanitized Glow output inside GitRail, and
-  bind OS-default Open to `o` for every file. Viewer executables are checked
-  before launch; a missing Glow installation leaves Diff and wrapped Raw usable
-  and produces an actionable hint.
-- Preview search, keyboard navigation, paging, and mouse scrolling repaint in
-  place without clearing the terminal. Raw wraps by default with continuation
-  gutters; Diff preserves lines by default. `w` toggles wrapping, and unwrapped
-  long rows support horizontal arrow-key navigation while retaining their
-  line-number gutter. A right-edge marker shows the viewport position.
-  Pathological long lines automatically remain unwrapped instead of amplifying
-  into more than 100,000 visual rows.
+## Release gate
 
-## Git correctness
+Run `npm ci --ignore-scripts`, `npm run check`, `npm run test:coverage`,
+`npm run snapshot`, and `npm run artifact:verify` from the exact candidate SHA.
+Then complete every automated and live cell in `docs/RELEASING.md`. The release
+is ready to tag only when CI links, environment versions, screenshot source SHA,
+and walkthrough results all name that candidate and the worktree remains clean.
 
-GitRail uses machine-readable, NUL-delimited Git output for paths and status. It
-retains rename and exact-copy source paths, revision-specific modes, object IDs,
-binary state, and independent descriptors for overlapping staged and unstaged
-changes.
-
-| Scope | Diff meaning |
-| --- | --- |
-| Files, changed | merge base of configured base and `HEAD` to worktree |
-| Against base | configured base merge base to `HEAD` |
-| Commit | selected commit against its first parent; root commits use the empty tree |
-| Staged | `HEAD` to index |
-| Unstaged | index to worktree |
-| Untracked | complete addition from `/dev/null` |
-| Clean | no diff; Raw opens worktree content |
-
-The demo creates a temporary real repository and runs the production provider;
-it does not use fabricated hashes, paths, counts, or patches.
-
-## Configuration and safety
-
-Both user and repository configuration files must declare `version: 1`. The
-runtime and published schema reject unknown top-level and nested keys, invalid
-object shapes, unsupported launch modes, and out-of-range limits. Editor rules
-accept `client`, `args`, and `mode`; viewer rules additionally accept `label`,
-`key`, and `autoOpen`, support bounded `embedded` output, and resolve by exact
-filename, suffix, or wildcard.
-Dot-prefixed patterns are suffix rules; all other non-wildcard patterns are
-exact basenames.
-Invalid files are reported and excluded from the merge. No editor executable is
-required; editor integration activates only through configuration or `$EDITOR`.
-
-Git processes run without a shell, with bounded output and timeouts. File reads
-are size-limited, binary-aware, and constrained to the real repository path.
-Dangling symlinks are rejected before editor or viewer launch. Exact-revision
-external actions use bounded byte-preserving materialization while Raw remains
-text-only. Terminal rendering rejects content above 100,000 lines before
-splitting or diff parsing to bound rendered-memory amplification.
-Untracked summary statistics additionally have aggregate file, byte, and
-elapsed-time budgets; rows beyond the budget are marked unavailable without
-blocking exact on-demand previews.
-Debug logs omit source text, diffs, environment values, and command arguments.
-Repository configuration remains trusted local configuration because it can
-choose editor and viewer executables.
-
-## Refresh and lifecycle
-
-Herdr startup plus `workspace.created` and `tab.created` hooks ensure one
-unfocused GitRail pane for each Git-backed tab. Automatic opening is enabled by
-default and can be disabled globally or per repository with `herdr.autoOpen`;
-non-Git tabs and GitRail's own file-preview tabs are ignored.
-New rails apply `herdr.sidebarWidth` once at creation without taking focus;
-subsequent manual resizing remains owned by Herdr.
-Reconciliation adopts current panes, replaces legacy-branded panes, removes
-duplicates, repairs middle-of-layout rails, recovers orphaned locks, and cleans
-per-tab state when tabs or workspaces close.
-Each running rail resolves the focused content directory from its own tab on
-refresh, so repository and branch headers follow directory changes without
-sharing state across tabs.
-The `toggle-git-rail` plugin action opens or closes only a process-verified,
-plugin-owned rail in the current tab; its shortcut is configured in Herdr.
-
-Filesystem events and a recovery poll feed a debounced refresh. Refresh retains
-the last usable state and preserves selection, expansion, layout, search, and
-scroll where possible. Git inspection disables optional lock writes so the
-reader does not trigger its own watcher. Rail and preview ownership is tracked by
-Herdr pane identity rather than display titles.
-
-Temporary demo repositories and editor copies are owner-only. Normal exit and
-handled signals remove them; stale operating-system temporary data can be
-discarded safely.
-
-## Verification gates
-
-Before tagging a release:
-
-1. Run `npm ci --ignore-scripts` and `npm run check` from a clean checkout.
-2. Confirm the GitHub Actions matrix passes on Ubuntu and macOS with Node.js 22.
-   Third-party actions are pinned to immutable commit SHAs.
-3. Exercise the demo and a live repository at narrow and standard sidebar widths.
-4. Verify Changes and Files search, commit expansion, root-file ordering, refresh,
-   and compact time formatting.
-5. Open staged, unstaged, untracked, commit, Against-base, changed Files, and
-   unchanged Files rows; verify Diff and Raw resolve the documented revisions.
-6. Verify a second preview replaces the existing dedicated preview tab and that
-   rapid scrolling does not flicker or reset position.
-7. Test configured terminal, external, system, and disabled editor modes plus
-   malformed and unsupported configuration.
-8. Review `SECURITY.md`, update `CHANGELOG.md`, set matching manifest/package
-   versions, and complete the tagged-install checks in `docs/RELEASING.md`.
-
-## Support boundary
-
-The supported targets are Node.js 22 or newer, Git 2.35 or newer, Herdr 0.8.0 or
-newer, and current macOS or Linux. The latest tagged release receives security
-fixes. GitRail does not stage, discard, commit, push, pull, or otherwise mutate
-repository content.
+Supported targets are Node.js 22+, Git 2.35+, Herdr 0.8.0+, macOS, and Linux.
+The latest tagged release receives security fixes. GitRail does not stage,
+discard, commit, push, pull, or otherwise mutate repository content.

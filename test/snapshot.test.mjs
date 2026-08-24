@@ -7,12 +7,37 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { terminalColumns } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
+import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const exec = promisify(execFile);
 
+async function writeUserConfig(environment, value) {
+  const directory = path.join(environment.XDG_CONFIG_HOME, "git-rail");
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(path.join(directory, "config.json"), JSON.stringify(value));
+}
+
+function execHermetic(t, command, args, options = {}, overrides = {}) {
+  const { env: _discardedEnvironment, ...spawnOptions } = options;
+  const { environment } = hermeticEnvironment(t, overrides);
+  return exec(command, args, { ...spawnOptions, env: environment });
+}
+
+function spawnHermetic(t, command, args, options = {}, overrides = {}) {
+  const { env: _discardedEnvironment, ...spawnOptions } = options;
+  const { environment } = hermeticEnvironment(t, overrides);
+  return spawn(command, args, { ...spawnOptions, env: environment });
+}
+
+async function waitFor(check, message, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(check(), message);
+}
+
 for (const width of [25, 36, 52, 100]) {
-  test(`demo snapshot is coherent at ${width} columns`, async () => {
-    const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+  test(`demo snapshot is coherent at ${width} columns`, async (t) => {
+    const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
     assert.doesNotMatch(plain, /HERDR GITRAIL/);
     assert.match(plain, /feature\/sidebar/);
@@ -22,7 +47,8 @@ for (const width of [25, 36, 52, 100]) {
     assert.match(plain, /Unstaged/);
     if (width === 25) {
       assert.match(plain, /status\.mjs/);
-      assert.doesNotMatch(plain, /Untracked/);
+      assert.match(plain, /Untracked/);
+      assert.match(plain, /\? binary\.dat/);
     }
     assert.doesNotMatch(plain, /Read-only demo preview|const panel = "files"/);
     assert.ok(plain.split("\n").every((line) => [...line].length <= width));
@@ -30,8 +56,8 @@ for (const width of [25, 36, 52, 100]) {
 }
 
 for (const width of [25, 100]) {
-  test(`Files view puts repository-root files after folders at ${width} columns`, async () => {
-    const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
+  test(`Files view puts repository-root files after folders at ${width} columns`, async (t) => {
+    const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
@@ -40,8 +66,8 @@ for (const width of [25, 100]) {
   });
 }
 
-test("Changes search includes commit history summaries", async () => {
-  const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "descriptor-aware", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+test("Changes search includes commit history summaries", async (t) => {
+  const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "descriptor-aware", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /1 result/);
   assert.match(plain, /Commits  1/);
@@ -49,8 +75,8 @@ test("Changes search includes commit history summaries", async () => {
   assert.doesNotMatch(plain, /No changes or commits match/);
 });
 
-test("commit-history search filters expanded commit children", async () => {
-  const { stdout } = await exec(process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "preview.md", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+test("commit-history search filters expanded commit children", async (t) => {
+  const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "preview.md", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /2 results/);
   assert.match(plain, /Against main  1/);
@@ -65,12 +91,12 @@ test("large repositories fully render Files while Changes stays paginated", asyn
   await runGit(root, ["init", "--initial-branch=main"]);
   await Promise.all(Array.from({ length: 250 }, (_, index) => fs.writeFile(path.join(root, `file-${String(index).padStart(3, "0")}.txt`), `${index}\n`)));
   const script = path.resolve("scripts/git-rail.mjs");
-  const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "120"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
+  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "120"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-  assert.match(plain, /Unstaged  250/);
+  assert.match(plain, /Untracked  250/);
   assert.match(plain, /Show 100 more\s+\(150 remaining\)/);
 
-  const filesSnapshot = await exec(process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "270"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
+  const filesSnapshot = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "270"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
   const filesPlain = filesSnapshot.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(filesPlain, /file-000\.txt/);
   assert.match(filesPlain, /file-249\.txt/);
@@ -83,7 +109,7 @@ test("sidebar rows stay within terminal width for wide filenames", async (t) => 
   await runGit(root, ["init", "--initial-branch=main"]);
   await fs.writeFile(path.join(root, `${"界".repeat(20)}.txt`), "wide\n");
   const script = path.resolve("scripts/git-rail.mjs");
-  const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "25", "--height", "28"], { cwd: root });
+  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "25", "--height", "28"], { cwd: root });
   assert.ok(stdout.trimEnd().split("\n").every((line) => terminalColumns(line) <= 25));
 });
 
@@ -96,7 +122,7 @@ test("clean Changes view states that the worktree is clean", async (t) => {
   await runGit(root, ["add", "README.md"]);
   await runGit(root, ["commit", "-m", "clean"], { env: identity });
   const script = path.resolve("scripts/git-rail.mjs");
-  const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root });
+  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /No changes against main · working tree clean/);
 });
@@ -109,15 +135,14 @@ test("non-repository Files stays browsable with one neutral file icon", async (t
   await fs.writeFile(path.join(root, "settings.toml"), "enabled = true\n");
   await fs.writeFile(path.join(root, "src", "index.mjs"), "export {};\n");
   const script = path.resolve("scripts/git-rail.mjs");
-  const isolatedEnvironment = { ...process.env, HERDR_BIN_PATH: path.join(root, "missing-herdr") };
-  const files = await exec(process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });
+  const files = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root }, { HERDR_BIN_PATH: path.join(root, "missing-herdr") });
   const filesPlain = files.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(filesPlain, /⊠ index\.mjs/);
   assert.match(filesPlain, /⊠ README\.md/);
   assert.match(filesPlain, /⊠ settings\.toml/);
   assert.doesNotMatch(filesPlain, /Enter a Git worktree/);
 
-  const changes = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root, env: isolatedEnvironment });
+  const changes = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root }, { HERDR_BIN_PATH: path.join(root, "missing-herdr") });
   const changesPlain = changes.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(changesPlain, /Changes unavailable outside Git/);
   assert.match(changesPlain, /Press Tab to browse files/);
@@ -125,7 +150,7 @@ test("non-repository Files stays browsable with one neutral file icon", async (t
 });
 
 test("keyboard can expand a commit-summary search result", async (t) => {
-  const child = spawn(process.execPath, ["scripts/git-rail.mjs", "--demo", "--search", "descriptor-aware"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--search", "descriptor-aware"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -133,9 +158,9 @@ test("keyboard can expand a commit-summary search result", async (t) => {
   let stdout = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => { stdout += chunk; });
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  await waitFor(() => stdout.includes("descriptor-aware rail"), "rail did not finish its initial render");
   child.stdin.write("j\r");
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await waitFor(() => stdout.includes("rail.mjs"), "commit files did not render");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -146,7 +171,7 @@ test("keyboard can expand a commit-summary search result", async (t) => {
 });
 
 test("help overlay explains keys and icons, scrolls, and returns to a highlighted selection", async (t) => {
-  const child = spawn(process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "36", "--height", "18"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "36", "--height", "18"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -154,17 +179,18 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   let stdout = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => { stdout += chunk; });
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  await waitFor(() => stdout.includes("? help"), "rail did not finish its initial render");
   child.stdin.write("?");
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  child.stdin.write("JJJ");
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  child.stdin.write("JJJ");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.includes("HELP & LEGEND"), "help did not open");
+  for (let index = 0; index < 6; index += 1) {
+    child.stdin.write("J");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  await waitFor(() => stdout.includes("Filesystem-only file"), "legend did not reach its final entries");
   child.stdin.write("q");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.lastIndexOf("Search changes") > stdout.lastIndexOf("HELP & LEGEND"), "help did not close");
   child.stdin.write("j");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m${"\u001b"}[38;2;214;176;91m▏`), "selection did not render");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -172,7 +198,6 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /HELP & LEGEND/);
-  assert.match(plain, /FILE STATES/);
   assert.match(plain, /⊡ Modified/);
   assert.match(plain, /⊠ Filesystem-only file/);
   assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
@@ -180,7 +205,7 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
 });
 
 test("Escape clears a keyboard selection before a second press closes the rail", async (t) => {
-  const child = spawn(process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "52", "--height", "24"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "52", "--height", "24"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -188,14 +213,14 @@ test("Escape clears a keyboard selection before a second press closes the rail",
   let stdout = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => { stdout += chunk; });
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  await waitFor(() => stdout.includes("? help"), "rail did not finish its initial render");
   stdout = "";
   child.stdin.write("j");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m${"\u001b"}[38;2;214;176;91m▏`), "selection did not render");
   assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
   stdout = "";
   child.stdin.write("\u001b");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.includes("Search changes"), "Escape did not repaint the cleared selection");
   assert.equal(child.exitCode, null);
   assert.doesNotMatch(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
   child.stdin.write("\u001b");
@@ -205,11 +230,29 @@ test("Escape clears a keyboard selection before a second press closes the rail",
   });
 });
 
+test("fatal rail errors restore terminal modes before exiting nonzero", async (t) => {
+  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "36", "--height", "18"], {
+    cwd: process.cwd(),
+    stdio: ["pipe", "pipe", "pipe"],
+  }, { NODE_ENV: "test", GIT_RAIL_TEST_FATAL: "1" });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  assert.equal(exitCode, 1);
+  assert.match(stdout, /\u001b\[\?1000l\u001b\[\?1006l\u001b\[\?25h\u001b\[\?1049l/);
+  assert.match(stderr, /GitRail fatal error: Error: injected fatal error/);
+});
+
 test("preview processes coalesced search input, advances matches, and exposes horizontal navigation", async (t) => {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-home-"));
-  t.after(() => fs.rm(home, { recursive: true, force: true }));
-  await fs.mkdir(path.join(home, ".config", "git-rail"), { recursive: true });
-  await fs.writeFile(path.join(home, ".config", "git-rail", "config.json"), JSON.stringify({
+  const { environment } = hermeticEnvironment(t);
+  await writeUserConfig(environment, {
     version: 1,
     viewers: {
       "*": [
@@ -217,14 +260,13 @@ test("preview processes coalesced search input, advances matches, and exposes ho
         { label: "VS Code", client: "code", mode: "external", key: "9" },
       ],
     },
-  }));
+  });
   const descriptor = Buffer.from(JSON.stringify({ kind: "clean" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
   const child = spawn(process.execPath, ["scripts/file-preview.mjs", "--width", "24", "--height", "20"], {
     cwd: process.cwd(),
     env: {
-      ...process.env,
-      HOME: home,
+      ...environment,
       GIT_RAIL_PREVIEW_PATH: "src/config.mjs",
       GIT_RAIL_PREVIEW_REPO: process.cwd(),
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
@@ -278,18 +320,19 @@ done
 `);
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n\nA source paragraph that should remain available in Raw.\n");
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+  const { environment } = hermeticEnvironment(t);
+  await writeUserConfig(environment, {
     version: 1,
     viewers: {
       ".md": { label: "Rendered", client: renderer, args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
     },
-  }));
+  });
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
   const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "28", "--height", "18"], {
     cwd: root,
     env: {
-      ...process.env,
+      ...environment,
       GIT_RAIL_PREVIEW_PATH: "README.md",
       GIT_RAIL_PREVIEW_REPO: root,
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
@@ -323,6 +366,44 @@ done
   assert.doesNotMatch(plain, /Rendered heading/);
 });
 
+test("a hostile repository config cannot auto-launch a preview executable", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-hostile-repo-config-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const marker = path.join(root, "spawned-marker");
+  const hostile = path.join(root, "hostile-viewer");
+  await fs.writeFile(hostile, `#!/bin/sh\nprintf pwned > ${JSON.stringify(marker)}\n`);
+  await fs.chmod(hostile, 0o700);
+  await fs.writeFile(path.join(root, "note.txt"), "repository content\n");
+  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+    version: 1,
+    viewers: { ".txt": { client: hostile, mode: "embedded", key: "3", autoOpen: true } },
+  }));
+  const { environment } = hermeticEnvironment(t, {
+    GIT_RAIL_PREVIEW_PATH: "note.txt",
+    GIT_RAIL_PREVIEW_REPO: root,
+    GIT_RAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
+    GIT_RAIL_PREVIEW_METADATA: Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url"),
+  });
+  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
+    cwd: root,
+    env: environment,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  const deadline = Date.now() + 5_000;
+  while (!stdout.includes("repository content") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+  await assert.rejects(fs.access(marker), { code: "ENOENT" });
+  assert.doesNotMatch(stdout, /3 hostile-viewer|pwned/);
+});
+
 test("embedded Glow renders the selected Markdown bytes through stdin", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-glow-stdin-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -335,18 +416,19 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
 `);
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n\nMarkdown body.\n");
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+  const { environment } = hermeticEnvironment(t);
+  await writeUserConfig(environment, {
     version: 1,
     viewers: {
       ".md": { label: "Rendered", client: renderer, args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
     },
-  }));
+  });
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
   const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
     cwd: root,
     env: {
-      ...process.env,
+      ...environment,
       GIT_RAIL_PREVIEW_PATH: "README.md",
       GIT_RAIL_PREVIEW_REPO: root,
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
@@ -387,18 +469,19 @@ printf 'Glow TUI opened\n'
 `);
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n");
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+  const { environment } = hermeticEnvironment(t);
+  await writeUserConfig(environment, {
     version: 1,
     viewers: {
       ".md": { label: "View Markdown", client: renderer, args: ["--tui", "--style", "dark"], mode: "terminal", key: "3", autoOpen: false },
     },
-  }));
+  });
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
   const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
     cwd: root,
     env: {
-      ...process.env,
+      ...environment,
       GIT_RAIL_PREVIEW_PATH: "README.md",
       GIT_RAIL_PREVIEW_REPO: root,
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
@@ -439,16 +522,14 @@ test("preview keeps repaint latency bounded for a large allowed line count", asy
   await runGit(root, ["commit", "-m", "many lines"], { env: identity });
   const descriptor = Buffer.from(JSON.stringify({ kind: "clean" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
-  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "24", "--height", "20"], {
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "24", "--height", "20"], {
     cwd: root,
-    env: {
-      ...process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  }, {
       GIT_RAIL_PREVIEW_PATH: "many.txt",
       GIT_RAIL_PREVIEW_REPO: root,
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
       GIT_RAIL_PREVIEW_METADATA: metadata,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
   });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -484,16 +565,14 @@ test("preview avoids wrapped-row amplification for a pathological single line", 
   await fs.writeFile(path.join(root, "long.txt"), "x".repeat(150_000));
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
-  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "24", "--height", "20"], {
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "24", "--height", "20"], {
     cwd: root,
-    env: {
-      ...process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  }, {
       GIT_RAIL_PREVIEW_PATH: "long.txt",
       GIT_RAIL_PREVIEW_REPO: root,
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
       GIT_RAIL_PREVIEW_METADATA: metadata,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
   });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -525,16 +604,14 @@ test("preview rejects pathological line counts before rendered-memory amplificat
   await runGit(root, ["commit", "-m", "pathological line count"], { env: identity });
   const descriptor = Buffer.from(JSON.stringify({ kind: "clean" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
-  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "52", "--height", "20"], {
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "52", "--height", "20"], {
     cwd: root,
-    env: {
-      ...process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  }, {
       GIT_RAIL_PREVIEW_PATH: "million.txt",
       GIT_RAIL_PREVIEW_REPO: root,
       GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
       GIT_RAIL_PREVIEW_METADATA: metadata,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
   });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";

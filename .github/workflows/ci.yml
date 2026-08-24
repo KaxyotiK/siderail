@@ -12,13 +12,46 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-15, ubuntu-24.04]
+        node: [22, 24]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm run test:coverage
+
+  poisoned-environment:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm run check
+      - name: Create hostile Herdr witness
+        run: |
+          printf '%s\n' '#!/bin/sh' 'echo "poisoned HERDR_BIN_PATH escaped the test helper" >&2' 'exit 97' > "$RUNNER_TEMP/hostile-herdr"
+          chmod 700 "$RUNNER_TEMP/hostile-herdr"
+      - name: Run with poisoned parent environment
+        env:
+          HERDR_PANE_ID: hostile-pane-id
+          HERDR_BIN_PATH: ${{ runner.temp }}/hostile-herdr
+        run: npm run check
+
+  demo-snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run snapshot
+      - run: npm run artifact:verify

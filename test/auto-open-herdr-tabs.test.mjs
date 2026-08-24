@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
-import { autoOpenEnabled, autoOpenHerdrTabs, collectTabTargets, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
+import { autoOpenEnabled, autoOpenHerdrTabs, collectTabTargets, runBoundedSweep, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
+import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -44,7 +45,7 @@ test("startup reconciliation chooses one non-GitRail pane per tab", () => {
   assert.deepEqual(collectTabTargets(workspaces, tabs, panes), [
     { workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p2", cwd: "/repos/one-a", currentRailPaneIds: [], legacyRailPaneIds: [] },
     { workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p1", cwd: "/repos/one", currentRailPaneIds: ["w1:p3"], legacyRailPaneIds: [] },
-    { workspaceId: "w2", tabId: "w2:t1", paneId: "w2:p1", cwd: "/worktrees/two", currentRailPaneIds: [], legacyRailPaneIds: [] },
+    { workspaceId: "w2", tabId: "w2:t1", paneId: "w2:p1", cwd: "/wrong", currentRailPaneIds: [], legacyRailPaneIds: [] },
   ]);
 });
 
@@ -79,19 +80,44 @@ test("temporary layout staging tabs never trigger auto-open", () => {
   assert.deepEqual(collectTabTargets(workspaces, tabs, panes), []);
 });
 
-test("repository configuration can disable automatic Herdr opening", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-auto-open-config-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
-    version: 1,
-    herdr: { autoOpen: true },
-  }));
-  assert.equal(autoOpenEnabled(root, {}), true);
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+test("bounded sweep caps workers and preserves mixed partial results", async () => {
+  const targets = Array.from({ length: 12 }, (_value, index) => ({ tabId: `t${index}` }));
+  let active = 0;
+  let maximum = 0;
+  const summary = await runBoundedSweep(targets, async (target) => {
+    active += 1;
+    maximum = Math.max(maximum, active);
+    await Promise.resolve();
+    active -= 1;
+    if (target.tabId === "t3") throw new Error("broken");
+    return target.tabId !== "t4";
+  });
+  assert.equal(maximum, 4);
+  assert.equal(summary.opened.length, 10);
+  assert.deepEqual(summary.skipped, ["t4"]);
+  assert.deepEqual(summary.failed, [{ tabId: "t3", message: "broken" }]);
+});
+
+test("bounded sweep does not dequeue work after its global deadline", async () => {
+  const targets = Array.from({ length: 8 }, (_value, index) => ({ tabId: `t${index}` }));
+  let clock = 0;
+  const summary = await runBoundedSweep(targets, async () => {
+    clock = 40_000;
+    return true;
+  }, { deadlineMs: 35_000, now: () => clock });
+  assert.equal(summary.opened.length, 1);
+  assert.equal(summary.deadlineCancelled.length, 7);
+});
+
+test("only user configuration can disable automatic Herdr opening", async (t) => {
+  const { environment } = hermeticEnvironment(t);
+  const directory = path.join(environment.XDG_CONFIG_HOME, "git-rail");
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(path.join(directory, "config.json"), JSON.stringify({
     version: 1,
     herdr: { autoOpen: false },
   }));
-  assert.equal(autoOpenEnabled(root, {}), false);
+  assert.equal(autoOpenEnabled(environment), false);
 });
 
 test("non-Git legacy labels never authorize closing a user pane", async (t) => {

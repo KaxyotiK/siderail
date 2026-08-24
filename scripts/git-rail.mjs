@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
+import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
+import { resolveGitWatchRoots } from "../src/git-watch.mjs";
+import { FilesViewModelCache } from "../src/files-view-model.mjs";
+import { debugLog } from "../src/debug-log.mjs";
+import { assertSupportedNode } from "../src/node-version.mjs";
 import { resolveHerdrTabCwd } from "../src/herdr-context.mjs";
 import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
+import { openOwnedPreview } from "../src/preview-pane-lifecycle.mjs";
 import {
   compactTerminalPath,
   commitExpansionState,
@@ -26,9 +30,10 @@ import {
   validPollInterval,
   startupFailureState,
 } from "../src/terminal-ui.mjs";
-import { compactAge, compareFolderGroups } from "../src/tui-format.mjs";
+import { compactAge } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
+assertSupportedNode();
 const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
 const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
 const C = {
@@ -56,6 +61,12 @@ function stringArg(name) {
   return index < 0 ? "" : String(process.argv[index + 1] || "");
 }
 function safe(value) { return sanitizeTerminalText(value); }
+function reportAsync(promise) {
+  Promise.resolve(promise).catch((error) => {
+    statusMessage = `Action failed: ${safe(error.message)}`;
+    draw();
+  });
+}
 function visibleLength(value) { return terminalColumns(value); }
 function truncate(value, width) { return truncateTerminalColumns(value, width); }
 function fitAnsi(value, width) { return fitAnsiTerminalColumns(value, width); }
@@ -71,6 +82,7 @@ let sourcePaneId = process.env.GIT_RAIL_SOURCE_PANE_ID || context.focused_pane_i
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 let currentProviderCwd = initialCwd;
 let currentWorkspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
+let currentSourceTabId = process.env.GIT_RAIL_SOURCE_TAB_ID || process.env.HERDR_TAB_ID || context.tab_id || "";
 async function liveProviderCwd() {
   if (demoMode) return fixtureRoot;
   const resolved = await resolveHerdrTabCwd({
@@ -83,6 +95,7 @@ async function liveProviderCwd() {
   });
   sourcePaneId = resolved.sourcePaneId;
   currentWorkspaceId = resolved.workspaceId || currentWorkspaceId;
+  currentSourceTabId = resolved.tabId || currentSourceTabId;
   currentProviderCwd = resolved.cwd || currentProviderCwd;
   return currentProviderCwd;
 }
@@ -118,13 +131,17 @@ let transientRestoreStatus = "";
 let transientStatusMessage = "";
 let watchers = [];
 let invalidationRepoRoot = "";
-const expanded = { against: false, commits: false, staged: true, unstaged: true };
-const sectionIds = ["against", "commits", "staged", "unstaged"];
+let invalidationSignature = "";
+let invalidationGeneration = 0;
+const expanded = { against: false, commits: false, staged: true, unstaged: true, untracked: true };
+const sectionIds = ["against", "commits", "staged", "unstaged", "untracked"];
 const collapsedGroups = new Set();
 const collapsedFolders = new Map();
 const expandedCommits = new Set();
 const commitFiles = new Map();
 const pageSizes = new Map();
+const filesViewModels = new FilesViewModelCache();
+let filesViewGeneration = 0;
 
 function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
 function regions(text, targets) { return { text, targets }; }
@@ -157,6 +174,7 @@ function toggleViewMode(width) {
 }
 function statusGlyph(file) {
   const status = file.status || displayState(file).status;
+  if (file.descriptor?.kind === "untracked") return `${C.leaf}?${C.reset}`;
   if (status === "clean") return `${C.fog}${file.descriptor?.kind === "filesystem" ? "⊠" : "□"}${C.reset}`;
   if (file.binary) return `${C.purple}◆${C.reset}`;
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
@@ -198,33 +216,9 @@ function showMoreRow(scope, remaining) {
   if (!remaining) return [];
   return [interactive(
     `${C.gold}  Show ${Math.min(PAGE_SIZE, remaining)} more${C.reset}  ${C.dim}(${remaining} remaining)${C.reset}`,
-    () => { pageSizes.set(scope, (pageSizes.get(scope) || PAGE_SIZE) + PAGE_SIZE); statusMessage = `Loaded more ${scope}`; },
+    () => { pageSizes.set(scope, (pageSizes.get(scope) || PAGE_SIZE) + PAGE_SIZE); filesViewModels.invalidate(); statusMessage = `Loaded more ${scope}`; },
     `Show more ${scope}`,
   )];
-}
-function buildTree(files, collapsed) {
-  const root = { children: new Map() };
-  for (const file of files) {
-    let node = root;
-    file.path.split("/").forEach((part, index, parts) => {
-      if (!node.children.has(part)) node.children.set(part, { name: part, file: index === parts.length - 1 ? file : null, children: new Map() });
-      node = node.children.get(part);
-    });
-  }
-  const rows = [];
-  const visit = (node, depth, parent = "") => {
-    const children = [...node.children.values()].sort((a, b) => Boolean(a.file) - Boolean(b.file) || a.name.localeCompare(b.name));
-    for (const child of children) {
-      const nodePath = parent ? `${parent}/${child.name}` : child.name;
-      if (child.file) rows.push({ kind: "file", depth, file: child.file, name: child.name });
-      else {
-        rows.push({ kind: "folder", depth, path: nodePath, name: child.name });
-        if (!collapsed.has(nodePath)) visit(child, depth + 1, nodePath);
-      }
-    }
-  };
-  visit(root, 0);
-  return rows;
 }
 function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot || state.cwd, file);
@@ -249,66 +243,60 @@ function descriptorLabel(descriptor = { kind: "clean" }) {
   return kind[0].toUpperCase() + kind.slice(1);
 }
 function fileRow(file, width, prefix = " ") {
-  const stats = statsLabel(file);
-  const suffix = stats;
-  const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
-  const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
-  const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
   const identity = selectionKey(state.repoRoot || state.cwd, file);
-  keyboardItems.push({
+  const keyboardItem = {
     identity,
     file,
     status: `${descriptorLabel(file.descriptor)} · ${file.path}`,
-    action: () => void requestPreview(file),
-  });
-  const row = interactive(
-    identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
-    () => selectFile(file),
-    `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
-    () => void requestPreview(file),
-  );
-  row.keyboardIdentity = identity;
-  return row;
+    action: () => reportAsync(requestPreview(file)),
+  };
+  return { keyboardIdentity: identity, keyboardItem, materialize() {
+    const suffix = statsLabel(file);
+    const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
+    const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
+    const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
+    const row = interactive(
+      identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
+      () => selectFile(file),
+      `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
+      () => reportAsync(requestPreview(file)),
+    );
+    row.keyboardIdentity = identity;
+    return row;
+  } };
 }
 function renderTree(files, width, scope, paginate = true) {
   if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
   const paged = paginate ? page(files, scope) : { visible: files, remaining: 0 };
   const collapsed = collapsedFolders.get(scope);
-  const rows = buildTree(paged.visible, collapsed).map((row) => {
+  const cacheKey = `${filesViewGeneration}:tree:${scope}:${paged.visible.length}:${[...collapsed].sort().join("\0")}`;
+  const rows = filesViewModels.rows(cacheKey, paged.visible, { mode: "tree", collapsed, scope }).map((row) => {
     const guides = treeGuides(row.depth, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
     const open = !collapsed.has(row.path);
-    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
+    return { materialize: () => interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
       if (open) collapsed.add(row.path); else collapsed.delete(row.path);
+      filesViewModels.invalidate();
       statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
-    }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`);
+    }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`) };
   });
   return [...rows, ...showMoreRow(scope, paged.remaining)];
 }
 function renderGrouped(files, width, scope, paginate = true) {
   const paged = paginate ? page(files, scope) : { visible: files, remaining: 0 };
-  const groups = new Map();
-  for (const file of paged.visible) {
-    const folder = path.dirname(file.path) === "." ? "" : path.dirname(file.path);
-    if (!groups.has(folder)) groups.set(folder, []);
-    groups.get(folder).push(file);
-  }
   const lines = [];
-  for (const [folder, entries] of [...groups.entries()].sort(compareFolderGroups)) {
-    if (!folder) {
-      lines.push(...entries.sort((a, b) => a.path.localeCompare(b.path)).map((file) => fileRow(file, width)));
+  const cacheKey = `${filesViewGeneration}:grouped:${scope}:${paged.visible.length}:${[...collapsedGroups].sort().join("\0")}`;
+  for (const row of filesViewModels.rows(cacheKey, paged.visible, { mode: "grouped", collapsed: collapsedGroups, scope })) {
+    if (row.kind === "file") {
+      const prefix = row.prefix === "last" ? `  ${C.faint}└─${C.reset} ` : row.prefix === "middle" ? `  ${C.faint}├─${C.reset} ` : " ";
+      lines.push(fileRow(row.file, width, prefix));
       continue;
     }
-    const key = `${scope}:${folder}`;
-    const open = !collapsedGroups.has(key);
-    lines.push(interactive(
-      `${C.fog} ${open ? "⌄" : "›"} ${compactPath(folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${entries.length}${C.reset}`,
-      () => { if (open) collapsedGroups.add(key); else collapsedGroups.delete(key); },
-      `${open ? "Collapse" : "Expand"} folder: ${folder}`,
-    ));
-    if (open) entries.sort((a, b) => a.path.localeCompare(b.path)).forEach((file, index) => {
-      lines.push(fileRow(file, width, `  ${C.faint}${index === entries.length - 1 ? "└─" : "├─"}${C.reset} `));
-    });
+    lines.push({ materialize: () => interactive(
+      `${C.fog} ${row.open ? "⌄" : "›"} ${compactPath(row.folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${row.count}${C.reset}`,
+      () => { if (row.open) collapsedGroups.add(row.key); else collapsedGroups.delete(row.key); filesViewModels.invalidate(); },
+      `${row.open ? "Collapse" : "Expand"} folder: ${row.folder}`,
+    ) });
   }
   return [...lines, ...showMoreRow(scope, paged.remaining)];
 }
@@ -342,7 +330,7 @@ function toolbar(width) {
   const text = ` ${C.gold}${layout}${C.reset}   ${C.fog}${refresh}${C.reset}`;
   return regions(fitAnsi(text, width), [
     { x1: 1, x2: 1 + visibleLength(layout), action: () => toggleViewMode(width), label: "Toggle layout" },
-    { x1: 5 + visibleLength(layout), x2: 4 + visibleLength(layout) + visibleLength(refresh), action: () => void refreshState(true), label: "Refresh" },
+    { x1: 5 + visibleLength(layout), x2: 4 + visibleLength(layout) + visibleLength(refresh), action: () => reportAsync(refreshState(true)), label: "Refresh" },
   ]);
 }
 function sectionHeader(id, label, count, index, width, forced = false) {
@@ -360,6 +348,7 @@ function renderChanges(width) {
     { id: "commits", label: "Commits", commits: searchCommits(state.commits || [], query) },
     { id: "staged", label: "Staged", files: search(state.staged || [], query) },
     { id: "unstaged", label: "Unstaged", files: search(state.unstaged || [], query) },
+    { id: "untracked", label: "Untracked", files: search(state.untracked || [], query) },
   ];
   const matchCount = sections.reduce((sum, item) => {
     if (item.files) return sum + item.files.length;
@@ -400,15 +389,15 @@ function renderChanges(width) {
       const keyboardItem = {
         identity,
         status: `Commit ${safe(commit.shortHash)} · ${safe(commit.message)}`,
-        action: () => void toggleCommit(commit),
+        action: () => reportAsync(toggleCommit(commit)),
       };
-      keyboardItems.push(keyboardItem);
       const row = interactive(
         identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
-        () => { selectKeyboardItem(keyboardItem); void toggleCommit(commit); },
+        () => { selectKeyboardItem(keyboardItem); reportAsync(toggleCommit(commit)); },
         `${open ? "Collapse" : "Expand"} commit ${safe(commit.shortHash)}`,
       );
       row.keyboardIdentity = identity;
+      row.keyboardItem = keyboardItem;
       lines.push(row);
       if (!open) continue;
       if (query) {
@@ -441,7 +430,19 @@ function renderFiles(width) {
 }
 function renderBody(width) {
   keyboardItems = [];
-  if (state.error && !state.repoRoot && mainTab === "changes") return ["", `${C.fog}Changes unavailable outside Git${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Press Tab to browse files."];
+  if (state.error && !state.repoRoot && mainTab === "changes") {
+    if (/^No Git repository\b/.test(state.error)) {
+      return ["", `${C.fog}Changes unavailable outside Git${C.reset}`, `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`, "", "Press Tab to browse files."];
+    }
+    return [
+      "",
+      `${C.red}${C.bold}Git state unavailable${C.reset}`,
+      `${C.red}${truncate(safe(state.error), width)}${C.reset}`,
+      `${C.dim}${truncate(safe(state.cwd), width)}${C.reset}`,
+      "",
+      "Press r to retry or Tab to browse the last available Files state.",
+    ];
+  }
   return mainTab === "changes" ? renderChanges(width) : renderFiles(width);
 }
 function helpEntry(icon, label, color = C.fog) {
@@ -470,6 +471,7 @@ function helpRows(width) {
     helpEntry("!", "Conflicted", C.red),
     helpEntry("◇", "Type changed", C.blue),
     helpEntry("◆", "Binary", C.purple),
+    helpEntry("?", "Untracked", C.leaf),
     helpEntry("□", "Clean Git file"),
     helpEntry("⊠", "Filesystem-only file"),
   ];
@@ -511,6 +513,7 @@ function renderFrame() {
   const height = Math.max(18, forcedHeight || process.stdout.rows || 42);
   const { half, lines: header } = renderHeader(width);
   const body = helpVisible ? helpRows(width) : renderBody(width);
+  if (!helpVisible) keyboardItems = body.flatMap((entry) => entry?.keyboardItem ? [entry.keyboardItem] : []);
   const controls = helpVisible
     ? "↑/↓ or j/k scroll · ?/Esc/q close help"
     : activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · ? help · / search · q";
@@ -530,7 +533,8 @@ function renderFrame() {
   const maxScrollOffset = Math.max(0, scrollable.length - visibleHeight);
   activeScrollOffset = Math.max(0, Math.min(activeScrollOffset, maxScrollOffset));
   if (helpVisible) helpScrollOffset = activeScrollOffset; else scrollOffset = activeScrollOffset;
-  const viewport = [...fixed, ...scrollable.slice(activeScrollOffset, activeScrollOffset + visibleHeight)];
+  const viewport = [...fixed, ...scrollable.slice(activeScrollOffset, activeScrollOffset + visibleHeight)]
+    .map((entry) => entry?.materialize ? entry.materialize() : entry);
   while (viewport.length < bodyHeight) viewport.push("");
   hitTargets = helpVisible ? [] : [
     { row: 4, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
@@ -561,18 +565,6 @@ function scheduleDraw() {
   renderTimer = setTimeout(() => { renderTimer = undefined; draw(); }, 16);
 }
 
-async function currentPaneId() {
-  if (process.env.HERDR_PANE_ID) return process.env.HERDR_PANE_ID;
-  try {
-    const result = await runCommand(process.env.HERDR_BIN_PATH || "herdr", ["pane", "current", "--current"], { cwd: currentProviderCwd });
-    return JSON.parse(result.stdout)?.result?.pane?.pane_id || "";
-  } catch { return ""; }
-}
-function paneStateFile(workspaceId) {
-  const directory = path.join(os.homedir(), ".cache", "herdr-gitrail", "panes");
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  return path.join(directory, `${workspaceId.replace(/[^A-Za-z0-9._-]/g, "_")}.preview`);
-}
 async function openPreview(file) {
   if (file.descriptor?.kind === "commit" && !Object.hasOwn(file.descriptor, "parentHash")) {
     try {
@@ -592,14 +584,7 @@ async function openPreview(file) {
   }
   const herdr = process.env.HERDR_BIN_PATH || "herdr";
   const workspaceId = currentWorkspaceId;
-  const selfPaneId = await currentPaneId();
-  let stalePaneId = "";
-  if (workspaceId) {
-    const stateFile = paneStateFile(workspaceId);
-    try {
-      stalePaneId = fs.readFileSync(stateFile, "utf8").trim();
-    } catch {}
-  }
+  const sourceTabId = currentSourceTabId;
   const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({
     status: file.status,
@@ -614,19 +599,19 @@ async function openPreview(file) {
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot || state.cwd}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);
   try {
-    const result = await runCommand(herdr, openArgs, { cwd: currentProviderCwd });
-    const payload = JSON.parse(result.stdout);
-    const paneId = payload?.result?.plugin_pane?.pane?.pane_id || payload?.result?.pane?.pane_id || payload?.result?.pane_id || "";
-    const tabId = payload?.result?.plugin_pane?.pane?.tab_id || payload?.result?.pane?.tab_id || payload?.result?.tab_id || "";
-    if (workspaceId && paneId) fs.writeFileSync(paneStateFile(workspaceId), `${paneId}\n`, { mode: 0o600 });
-    if (paneId && stalePaneId && stalePaneId !== selfPaneId && stalePaneId !== paneId) {
-      try { await runCommand(herdr, ["pane", "close", stalePaneId], { cwd: currentProviderCwd }); } catch {}
-    }
+    const opened = await openOwnedPreview({
+      run: runCommand,
+      herdr,
+      openArgs,
+      cwd: currentProviderCwd,
+      workspaceId,
+      sourceTabId,
+      environment: process.env,
+      tabName: previewTabName(file.path),
+    });
     let previewStatus = `Preview opened · ${descriptorLabel(file.descriptor)}`;
-    if (tabId) {
-      try { await runCommand(herdr, ["tab", "rename", tabId, previewTabName(file.path)], { cwd: currentProviderCwd }); }
-      catch (error) { previewStatus += ` · tab name unavailable: ${safe(error.message)}`; }
-    }
+    if (opened.cleanupWarning) previewStatus += ` · ${safe(opened.cleanupWarning)}`;
+    if (opened.renameWarning) previewStatus += ` · ${safe(opened.renameWarning)}`;
     showTransientStatus(previewStatus);
   } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
@@ -662,6 +647,8 @@ async function refreshState(announce = false) {
       if (demoMode) next.repository = "gitrail-fixture";
       const previousInterval = state.config?.refresh?.pollIntervalMs;
       state = next;
+      filesViewGeneration += 1;
+      filesViewModels.invalidate();
       if (previousRepoRoot !== next.repoRoot || previousCwd !== next.cwd) {
         selectedIdentity = "";
         scrollOffset = 0;
@@ -670,7 +657,7 @@ async function refreshState(announce = false) {
         collapsedGroups.clear();
         collapsedFolders.clear();
       }
-      if ((state.repoRoot || state.cwd) !== invalidationRepoRoot) startInvalidation();
+      if ((state.repoRoot || state.cwd) !== invalidationRepoRoot) reportAsync(startInvalidation());
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) showTransientStatus("Git state refreshed");
       else statusMessage = refreshStatusAfterSuccess(statusMessage, next.configErrors);
@@ -681,25 +668,39 @@ async function refreshState(announce = false) {
     refreshRunning = false;
     refreshVisible = false;
     draw();
-    if (refreshQueued) { refreshQueued = false; void refreshState(false); }
+    if (refreshQueued) { refreshQueued = false; reportAsync(refreshState(false)); }
   }
 }
-function startInvalidation() {
+async function startInvalidation() {
   if (demoMode) return;
+  const generation = ++invalidationGeneration;
   const watchRoot = state.repoRoot || state.cwd;
-  if (invalidationRepoRoot === watchRoot && refreshTimer) return;
-  stopInvalidation();
+  let gitRoots = [];
+  if (state.repoRoot) {
+    try { gitRoots = await resolveGitWatchRoots(state.repoRoot); }
+    catch (error) { debugLog("watch", { outcome: "poll-fallback", error: safe(error.message) }); }
+  }
+  const signature = JSON.stringify([watchRoot, ...gitRoots]);
+  if (generation !== invalidationGeneration) return;
+  if (invalidationSignature === signature && refreshTimer) return;
+  stopInvalidation(false);
+  if (cleanupComplete) return;
+  invalidationGeneration = generation;
   invalidationRepoRoot = watchRoot || "";
-  invalidationScheduler = createCoalescedScheduler(() => void refreshState(false));
+  invalidationSignature = signature;
+  invalidationScheduler = createCoalescedScheduler(() => reportAsync(refreshState(false)));
   const debounce = () => invalidationScheduler.schedule();
   if (watchRoot) {
     try {
-      watchers.push(fs.watch(watchRoot, { recursive: process.platform === "darwin" }, (_event, filename) => {
+      watchers.push(fs.watch(watchRoot, { recursive: true }, (_event, filename) => {
         if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
         debounce();
       }));
-    } catch {}
-    try { watchers.push(fs.watch(path.join(state.repoRoot, ".git"), { recursive: process.platform === "darwin" }, debounce)); } catch {}
+    } catch (error) { debugLog("watch", { target: watchRoot, outcome: "poll-fallback", error: safe(error.message) }); }
+    for (const root of gitRoots) {
+      try { watchers.push(fs.watch(root, { recursive: true }, debounce)); }
+      catch (error) { debugLog("watch", { target: root, outcome: "poll-fallback", error: safe(error.message) }); }
+    }
   }
   resetRefreshTimer();
 }
@@ -709,27 +710,37 @@ function resetRefreshTimer() {
   const poll = () => {
     refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
     refreshTimer.unref();
-    void refreshState(false);
+    reportAsync(refreshState(false));
   };
   refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
   refreshTimer.unref();
 }
-function stopInvalidation() {
+function stopInvalidation(invalidatePending = true) {
+  if (invalidatePending) invalidationGeneration += 1;
   clearTimeout(refreshTimer); refreshTimer = undefined;
   invalidationScheduler?.cancel(); invalidationScheduler = undefined;
   watchers.forEach((watcher) => watcher.close()); watchers = [];
   invalidationRepoRoot = "";
+  invalidationSignature = "";
 }
-async function cleanup() {
+let cleanupComplete = false;
+function cleanup() {
+  if (cleanupComplete) return;
+  cleanupComplete = true;
   stopInvalidation(); clearTimeout(renderTimer); clearTimeout(statusTimer);
-  if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; await removeFixtureRepository(root); }
+  if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
-async function quit() { await cleanup(); process.exit(0); }
+function quit() { cleanup(); process.exit(0); }
+function fatal(error) {
+  cleanup();
+  process.stderr.write(`GitRail fatal error: ${safe(error?.stack || error?.message || error)}\n`);
+  process.exit(1);
+}
 
 if (snapshotMode) {
   draw();
-  await cleanup();
+  cleanup();
   process.exit(0);
 }
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
@@ -751,14 +762,14 @@ function handleInput(key) {
       const target = hitTargets.find((item) => item.row === row && column >= item.x1 && column <= item.x2);
       if (target) {
         const now = Date.now();
-        if (target.doubleAction && lastClick.label === target.label && now - lastClick.at <= 450) { void target.doubleAction(); lastClick = { label: "", at: 0 }; }
+        if (target.doubleAction && lastClick.label === target.label && now - lastClick.at <= 450) { reportAsync(target.doubleAction()); lastClick = { label: "", at: 0 }; }
         else { target.action(); lastClick = { label: target.label, at: now }; }
       }
     }
     scheduleDraw();
     return;
   }
-  if (key === "\u0003") { void quit(); return; }
+  if (key === "\u0003") { quit(); return; }
   if (helpVisible) {
     if (key === "?" || key === "q" || key === "\u001b") helpVisible = false;
     else if (/^(?:j|\u001b\[B)+$/.test(key)) helpScrollOffset += key.match(/j|\u001b\[B/g)?.length || 1;
@@ -767,7 +778,7 @@ function handleInput(key) {
     else if (key === "K") helpScrollOffset = Math.max(0, helpScrollOffset - 3);
     scheduleDraw(); return;
   }
-  if (!activeSearch && key === "q") { void quit(); return; }
+  if (!activeSearch && key === "q") { quit(); return; }
   if (!activeSearch && key === "\u001b") {
     if (selectedIdentity) {
       selectedIdentity = "";
@@ -775,7 +786,7 @@ function handleInput(key) {
       statusMessage = "Click a section or file";
       scheduleDraw(); return;
     }
-    void quit(); return;
+    quit(); return;
   }
   if (activeSearch) {
     let query = activeSearch === "files" ? fileSearchQuery : diffSearchQuery;
@@ -812,13 +823,19 @@ function handleInput(key) {
   else if (key === "K") scrollOffset = Math.max(0, scrollOffset - 3);
   else if (key === " ") expanded[sectionIds[selectedSection]] = !expanded[sectionIds[selectedSection]];
   else if (key === "g") toggleViewMode(Math.max(24, process.stdout.columns || 52));
-  else if (key === "r") { void refreshState(true); return; }
+  else if (key === "r") { reportAsync(refreshState(true)); return; }
   scheduleDraw();
 }
 const inputDecoder = createTerminalInputDecoder(handleInput);
 process.stdin.on("data", (key) => inputDecoder.push(key));
-process.on("SIGTERM", () => void quit());
-process.on("SIGINT", () => void quit());
+process.on("SIGTERM", quit);
+process.on("SIGINT", quit);
+process.on("exit", cleanup);
+process.on("uncaughtException", fatal);
+process.on("unhandledRejection", fatal);
 process.stdout.on("resize", scheduleDraw);
 draw();
-startInvalidation();
+reportAsync(startInvalidation());
+if (process.env.NODE_ENV === "test" && process.env.GIT_RAIL_TEST_FATAL === "1") {
+  queueMicrotask(() => { throw new Error("injected fatal error"); });
+}

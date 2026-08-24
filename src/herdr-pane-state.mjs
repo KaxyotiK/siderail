@@ -11,7 +11,7 @@ function safeToken(value) {
   return String(value || "").replace(/[^A-Za-z0-9._-]+/g, "_");
 }
 
-export function paneStateDirectory(environment = process.env) {
+function paneStateDirectory(environment = process.env) {
   const cacheRoot = environment.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
   return path.join(cacheRoot, "herdr-gitrail", "panes");
 }

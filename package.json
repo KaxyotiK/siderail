@@ -8,12 +8,23 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test",
-    "lint": "node scripts/lint.mjs",
+    "test": "node --test --test-concurrency=1",
+    "lint": "node scripts/lint.mjs && eslint . && knip --include exports",
     "format:check": "node scripts/lint.mjs",
     "snapshot": "node scripts/git-rail.mjs --demo --snapshot --width 52 --height 46",
+    "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='src/**/*.mjs' --test-coverage-lines=88 --test-coverage-branches=78 --test-coverage-functions=86",
+    "artifact:verify": "node scripts/verify-artifact.mjs",
     "fixture:verify": "node --test test/integration.test.mjs",
     "check": "npm run lint && npm test"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "eslint": "9.39.1",
+    "knip": "5.80.0"
+  },
+  "knip": {
+    "entry": ["scripts/*.mjs", "test/*.test.mjs"],
+    "project": ["src/**/*.mjs", "scripts/**/*.mjs", "test/**/*.mjs"]
+  }
 }

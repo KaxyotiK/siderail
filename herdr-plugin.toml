@@ -6,59 +6,59 @@ description = "A trustworthy, read-only Files and Git sidebar for each Herdr tab
 platforms = ["macos", "linux"]
 
 [[startup]]
-command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[events]]
 on = "workspace.created"
-command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[events]]
 on = "tab.created"
-command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[events]]
 on = "tab.closed"
-command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[events]]
 on = "workspace.closed"
-command = ["node", "scripts/auto-open-herdr-tabs.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[actions]]
 id = "open-git-rail"
 title = "Open GitRail"
 contexts = ["workspace"]
-command = ["bash", "scripts/open-herdr-panel.sh", "git-tui"]
+command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-tui"]
 
 [[actions]]
 id = "toggle-git-rail"
 title = "Toggle GitRail"
 contexts = ["workspace"]
-command = ["bash", "scripts/open-herdr-panel.sh", "git-tui", "toggle"]
+command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-tui", "toggle"]
 
 [[actions]]
 id = "open-git-rail-mockup"
 title = "Open GitRail Demo"
 contexts = ["workspace"]
-command = ["bash", "scripts/open-herdr-panel.sh", "git-mockup"]
+command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-mockup"]
 
 [[panes]]
 id = "git-tui"
 title = "HERDER GITRAIL"
 description = "Read-only Files and Git inspection for the focused directory"
 placement = "overlay"
-command = ["node", "scripts/git-rail.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/git-rail.mjs"]
 
 [[panes]]
 id = "git-mockup"
 title = "GitRail Demo"
 description = "Deterministic GitRail demo derived from a real fixture repository"
 placement = "overlay"
-command = ["node", "scripts/git-rail.mjs", "--demo"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/git-rail.mjs", "--demo"]
 
 [[panes]]
 id = "file-preview"
 title = "GitRail Preview"
 description = "Exact descriptor-aware diff and file preview"
 placement = "tab"
-command = ["node", "scripts/file-preview.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/file-preview.mjs"]

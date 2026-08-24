@@ -3,10 +3,7 @@ import test from "node:test";
 import {
   parseCommitLogZ,
   parseCommitPathsRawLogZ,
-  parseNameStatusZ,
-  parseNumstatZ,
   parsePorcelainV2Z,
-  parseRawDiffZ,
   parseRawNumstatZ,
 } from "../src/git-parsers.mjs";
 
@@ -60,26 +57,6 @@ test("porcelain v2 parser preserves spaces, tabs, unicode, renames, and conflict
   assert.equal(entries[1].worktreeMode, "100644");
   assert.equal(entries[2].conflict, "UU");
   assert.equal(entries[3].path, "leading - and ünicode.txt");
-});
-
-test("raw mode metadata describes the new side while retaining the old type", () => {
-  const metadata = parseRawDiffZ(":120000 100644 aaaaaaa bbbbbbb T\0link-to-file\0").get("link-to-file");
-  assert.equal(metadata.oldSymlink, true);
-  assert.equal(metadata.symlink, false);
-  assert.equal(metadata.oldSubmodule, false);
-  assert.equal(metadata.submodule, false);
-});
-
-test("name-status and numstat parse rename pairs without human-format reconstruction", () => {
-  const names = parseNameStatusZ("R093\0old name.txt\0new\tname.txt\0C100\0copy from\0copy to\0M\0普通.md\0");
-  assert.deepEqual(names, [
-    { path: "new\tname.txt", oldPath: "old name.txt", status: "renamed", score: "093" },
-    { path: "copy to", oldPath: "copy from", status: "copied", score: "100" },
-    { path: "普通.md", status: "modified" },
-  ]);
-  const stats = parseNumstatZ("2\t1\t\0old name.txt\0new\tname.txt\0-\t-\tbinary.dat\0");
-  assert.deepEqual(stats.get("new\tname.txt"), { additions: 2, deletions: 1, binary: false, oldPath: "old name.txt" });
-  assert.deepEqual(stats.get("binary.dat"), { additions: 0, deletions: 0, binary: true });
 });
 
 test("combined raw and numstat output preserves metadata, stats, and unusual paths", () => {

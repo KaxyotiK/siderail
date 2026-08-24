@@ -10,7 +10,7 @@ press `r` to request an immediate refresh. Tabs are resolved independently.
 
 Automatic opening runs for each Git-backed tab when Herdr starts or emits
 `workspace.created` or `tab.created`. Confirm the plugin is enabled and that
-`herdr.autoOpen` is not `false` in the user or repository configuration. A
+`herdr.autoOpen` is not `false` in the user configuration. A
 newly linked plugin does not receive Herdr's one-shot startup hook until the next
 server start; use **Open GitRail** for an existing tab in the meantime. GitRail
 file-preview tabs are intentionally excluded.
@@ -48,7 +48,8 @@ preview pane; external clients open outside Herdr. Set `mode` explicitly when
 automatic detection is unsuitable. Viewer actions appear only when the selected
 filename matches enabled rules and use their configured `key` bindings.
 Patterns beginning with `.` match filename suffixes; other patterns match an
-exact basename.
+exact basename. Glob-shaped keys such as `*.md` are rejected. Set a matching
+viewer to `{ "client": "none" }` to disable an inherited built-in action.
 The `*` rule matches every filename. No viewer auto-opens unless its rule sets
 `autoOpen: true`; the installed Markdown rules enable embedded Glow rendering
 by default. Embedded viewers return bounded, sanitized terminal output to

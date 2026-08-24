@@ -7,6 +7,8 @@ import { clientMode, executableAvailable, launchExecutable, loadConfig, resolveV
 import { parseUnifiedDiff } from "../src/diff-view.mjs";
 import { loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand } from "../src/process.mjs";
+import { MAX_SEARCH_QUERY_SCALARS, PreviewSearchIndex } from "../src/preview-search.mjs";
+import { assertSupportedNode } from "../src/node-version.mjs";
 import {
   commitComparisonSource,
   createTerminalInputDecoder,
@@ -22,6 +24,7 @@ import {
 } from "../src/terminal-ui.mjs";
 
 const ESC = "\u001b[";
+assertSupportedNode();
 const C = {
   reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
   gold: `${ESC}38;2;214;176;91m`, green: `${ESC}38;2;91;190;112m`,
@@ -37,7 +40,7 @@ const repoRoot = process.env.GIT_RAIL_PREVIEW_REPO || process.cwd();
 const descriptor = decode("GIT_RAIL_PREVIEW_DESCRIPTOR", { kind: "clean" });
 const metadata = decode("GIT_RAIL_PREVIEW_METADATA", {});
 const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
-const { config, errors: configErrors } = loadConfig(repoRoot);
+const { config, errors: configErrors } = loadConfig();
 const viewerActions = resolveViewerActions(config, filePath);
 let activeMode = previewInitialMode(descriptor, metadata);
 let scrollOffset = 0;
@@ -60,8 +63,7 @@ let searchActive = false;
 let searchQuery = "";
 let currentMatch = -1;
 let currentMatchColumn = 0;
-let cachedMatchesQuery = null;
-let cachedMatches = [];
+let searchIndex = new PreviewSearchIndex();
 let temporaryDirectory = "";
 let renderTimer;
 let embeddedResizeTimer;
@@ -77,6 +79,12 @@ function decode(name, fallback) {
   try { return JSON.parse(Buffer.from(process.env[name] || "", "base64url").toString("utf8")); } catch { return fallback; }
 }
 function safe(value) { return sanitizeTerminalText(value); }
+function reportAsync(promise) {
+  Promise.resolve(promise).catch((error) => {
+    statusMessage = `Action failed: ${safe(error.message)}`;
+    render();
+  });
+}
 function stripAnsi(value) { return stripTerminalAnsi(value); }
 function visibleLength(value) { return terminalColumns(value); }
 function fit(value, width) { return fitAnsiTerminalColumns(value, width); }
@@ -100,6 +108,7 @@ function setContent(lines, gutterColumns) {
   contentGeneration += 1;
   pendingLayoutAnchor = undefined;
   layoutCache = undefined;
+  searchIndex.reset(lines);
 }
 function visualRows() {
   const width = bodyWidth();
@@ -178,16 +187,7 @@ function diffLines(value) {
   });
 }
 function matches() {
-  if (!searchQuery) return [];
-  if (cachedMatchesQuery === searchQuery) return cachedMatches;
-  const query = searchQuery.toLowerCase();
-  cachedMatches = content.flatMap((line, row) => {
-    const plain = stripAnsi(line);
-    const index = plain.toLowerCase().indexOf(query);
-    return index < 0 ? [] : [{ row, column: terminalColumns(plain.slice(0, index)) }];
-  });
-  cachedMatchesQuery = searchQuery;
-  return cachedMatches;
+  return searchIndex.matches(searchQuery);
 }
 function matchLabel() {
   const found = matches();
@@ -229,16 +229,12 @@ async function loadMode(mode) {
       ? diffLines(result.text)
       : result.text.replace(/\n$/, "").split("\n").map((line, index) => `${C.dim}${String(index + 1).padStart(5)}${C.reset}  ${safe(line)}`);
     setContent(lines, mode === "raw" ? 7 : contentGutterColumns);
-    cachedMatchesQuery = null;
-    cachedMatches = [];
     scrollOffset = 0;
     horizontalOffset = 0;
     statusMessage = mode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel}`;
   } catch (error) {
     if (generation !== loadGeneration) return;
     setContent([`${C.red}${safe(error.message)}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`], 0);
-    cachedMatchesQuery = null;
-    cachedMatches = [];
     statusMessage = error.kind === "oversized"
       ? "Preview is larger than the configured safety limit"
       : error.kind === "too-many-lines" ? "Preview exceeds the terminal line safety limit" : "Preview failed";
@@ -336,8 +332,6 @@ async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
     while (lines.length && !stripAnsi(lines[0]).trim()) lines.shift();
     while (lines.length && !stripAnsi(lines.at(-1)).trim()) lines.pop();
     setContent(lines.length ? lines : [`${C.dim}Renderer returned no content.${C.reset}`], 0);
-    cachedMatchesQuery = null;
-    cachedMatches = [];
     horizontalOffset = 0;
     scrollOffset = resized ? Math.round(previousRatio * Math.max(0, visualRows().length - 1)) : 0;
     statusMessage = `${safe(viewer.label || path.basename(viewer.client))} · ${descriptorLabel()} · ${revisionLabel || "exact revision"}`;
@@ -392,19 +386,19 @@ async function launchEditor() {
 }
 function renderTabs(width) {
   const modes = [
-    ["diff", "1 Diff", () => void loadMode("diff")],
-    ["raw", "2 Raw", () => void loadMode("raw")],
+    ["diff", "1 Diff", () => reportAsync(loadMode("diff"))],
+    ["raw", "2 Raw", () => reportAsync(loadMode("raw"))],
     ...viewerActions.map(({ key, viewer }) => [
       `viewer-${key}`,
       `${key} ${safe(viewer.label || `View with ${path.basename(viewer.client)}`)}`,
-      () => void launchViewer(viewer, key),
+      () => reportAsync(launchViewer(viewer, key)),
     ]),
   ];
   const editorMode = clientMode(config.editor);
   if (editorMode !== "disabled") modes.push([
     "editor",
     `e Open ${editorMode === "terminal" ? "in" : "with"} ${safe(path.basename(config.editor.client))}`,
-    () => void launchEditor(),
+    () => reportAsync(launchEditor()),
   ]);
   hitTargets = [];
   const lines = [];
@@ -504,16 +498,21 @@ function handleInput(key) {
       const previousQuery = searchQuery;
       if (key === "\u007f" || key === "\b") searchQuery = [...searchQuery].slice(0, -1).join("");
       else if (key === "\u0015") searchQuery = "";
-      else searchQuery += key.replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
+      else {
+        const appended = key.replace(/\u001b\[[0-9;]*[A-Za-z~]/g, "").replace(/[\x00-\x1f\x7f]/g, "");
+        const next = searchIndex.clampQuery(searchQuery + appended);
+        if (next === searchQuery && appended) statusMessage = `Search limited to ${MAX_SEARCH_QUERY_SCALARS} characters`;
+        searchQuery = next;
+      }
       if (searchQuery !== previousQuery) { currentMatch = -1; currentMatchColumn = 0; }
     }
   } else {
-    if (key === "1") void loadMode("diff");
-    if (key === "2") void loadMode("raw");
+    if (key === "1") reportAsync(loadMode("diff"));
+    if (key === "2") reportAsync(loadMode("raw"));
     const viewerAction = viewerActions.find((action) => action.key === key);
-    if (viewerAction) void launchViewer(viewerAction.viewer, viewerAction.key);
-    if (key === "\t") void loadMode(activeMode === "diff" ? "raw" : "diff");
-    if (key === "e") void launchEditor();
+    if (viewerAction) reportAsync(launchViewer(viewerAction.viewer, viewerAction.key));
+    if (key === "\t") reportAsync(loadMode(activeMode === "diff" ? "raw" : "diff"));
+    if (key === "e") reportAsync(launchEditor());
     if (key === "/") searchActive = true;
     if (key === "n") moveMatch(1);
     if (key === "N") moveMatch(-1);
@@ -547,13 +546,13 @@ process.stdout.on("resize", () => {
   scheduleRender();
   if (!activeEmbeddedAction) return;
   clearTimeout(embeddedResizeTimer);
-  embeddedResizeTimer = setTimeout(() => void loadEmbeddedViewer(
+  embeddedResizeTimer = setTimeout(() => reportAsync(loadEmbeddedViewer(
     activeEmbeddedAction.viewer,
     activeEmbeddedAction.key,
     { resized: true },
-  ), 150);
+  )), 150);
 });
 render();
-void loadMode(activeMode).then(() => {
-  for (const { key, viewer } of viewerActions) if (viewer.autoOpen) void launchViewer(viewer, key);
-});
+loadMode(activeMode).then(() => {
+  for (const { key, viewer } of viewerActions) if (viewer.autoOpen) reportAsync(launchViewer(viewer, key));
+}).catch((error) => reportAsync(Promise.reject(error)));
