@@ -53,3 +53,9 @@ test("live release cleanup is isolated from the operator's Herdr installation", 
   assert.match(wrapper, /GIT_RAIL_LIVE_GIT_SHIM="\$release_bin\/git"/);
   assert.doesNotMatch(wrapper, /GIT_RAIL_LIVE_GIT_SHIM=\$git_bin/);
 });
+
+test("sealed release logs are not hidden by the general log ignore", async () => {
+  const ignore = await fs.readFile(".gitignore", "utf8");
+  assert.match(ignore, /^\*\.log$/m);
+  assert.match(ignore, /^!release-evidence\/\*\*\/\*\.log$/m);
+});

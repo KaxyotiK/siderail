@@ -2,6 +2,8 @@ node_modules/
 coverage/
 test-results/
 *.log
+!release-evidence/
+!release-evidence/**/*.log
 .DS_Store
 .idea/
 .vscode/
