@@ -1362,8 +1362,10 @@ if (invokedDirectly) {
   };
   process.once("SIGTERM", recoverAndExit);
   process.once("SIGINT", recoverAndExit);
-  openHerdrPanel({ entrypoint: process.argv[2], openMode: process.argv[3] }).catch((error) => {
+  try {
+    await openHerdrPanel({ entrypoint: process.argv[2], openMode: process.argv[3] });
+  } catch (error) {
     console.error(sanitizeTerminalText(error.message));
     process.exitCode = 1;
-  });
+  }
 }
