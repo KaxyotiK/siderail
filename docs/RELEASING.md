@@ -79,7 +79,7 @@ runtime dependencies, and fails on high/critical npm advisories. Dispatch it
 against the reviewed development base and exact candidate:
 
 ```bash
-gh workflow run dependency-audit.yml --ref "$candidate_sha" \
+gh workflow run dependency-audit.yml --ref main \
   -f base_ref=6c7d9ac -f head_ref="$candidate_sha"
 dependency_run=$(gh run list --workflow dependency-audit.yml --commit "$candidate_sha" \
   --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
