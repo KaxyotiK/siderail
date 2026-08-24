@@ -6,6 +6,14 @@ async function canonical(candidate) {
   try { return await fs.realpath(candidate); } catch { return path.resolve(candidate); }
 }
 
+export function shouldInstallWatchers(environment = process.env) {
+  return environment.GIT_RAIL_WATCH_MODE !== "poll-only";
+}
+
+export function shouldInstallRecoveryPoll(environment = process.env) {
+  return environment.GIT_RAIL_WATCH_MODE !== "watch-only";
+}
+
 export async function resolveGitWatchRoots(repoRoot, { run = runGit } = {}) {
   if (!repoRoot) return [];
   const [gitdirResult, commonResult] = await Promise.all([

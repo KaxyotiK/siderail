@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
-import { resolveGitWatchRoots } from "../src/git-watch.mjs";
+import {
+  resolveGitWatchRoots,
+  shouldInstallRecoveryPoll,
+  shouldInstallWatchers,
+} from "../src/git-watch.mjs";
 import { FilesViewModelCache } from "../src/files-view-model.mjs";
 import { debugLog } from "../src/debug-log.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
@@ -804,9 +808,12 @@ async function startInvalidation() {
   invalidationGeneration = generation;
   invalidationRepoRoot = watchRoot || "";
   invalidationSignature = signature;
-  invalidationScheduler = createCoalescedScheduler(() => reportAsync(refreshState(false)));
+  invalidationScheduler = createCoalescedScheduler(() => {
+    debugLog("refresh-trigger", { source: "filesystem" });
+    reportAsync(refreshState(false));
+  });
   const debounce = () => invalidationScheduler.schedule();
-  if (watchRoot) {
+  if (watchRoot && shouldInstallWatchers()) {
     try {
       watchers.push(fs.watch(watchRoot, { recursive: true }, (_event, filename) => {
         if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
@@ -817,15 +824,21 @@ async function startInvalidation() {
       try { watchers.push(fs.watch(root, { recursive: true }, debounce)); }
       catch (error) { debugLog("watch", { target: root, outcome: "poll-fallback", error: safe(error.message) }); }
     }
-  }
+  } else if (watchRoot) debugLog("watch", { target: watchRoot, outcome: "poll-only" });
   resetRefreshTimer();
 }
 function resetRefreshTimer() {
   clearTimeout(refreshTimer);
+  refreshTimer = undefined;
+  if (!shouldInstallRecoveryPoll()) {
+    debugLog("watch", { outcome: "watch-only" });
+    return;
+  }
   const interval = validPollInterval(state.config?.refresh?.pollIntervalMs);
   const poll = () => {
     refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
     refreshTimer.unref();
+    debugLog("refresh-trigger", { source: "poll" });
     reportAsync(refreshState(false));
   };
   refreshTimer = setTimeout(poll, jitteredPollInterval(interval));

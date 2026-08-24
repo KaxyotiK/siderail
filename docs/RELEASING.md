@@ -8,7 +8,11 @@ new candidate and invalidates every cell below.
 
 From a clean `main` worktree:
 
+Run every command block below in Bash. Each block enables strict mode so a
+failed intermediate command cannot be followed by a passing evidence record.
+
 ```bash
+set -euo pipefail
 candidate_sha=$(git rev-parse HEAD)
 evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-gitrail/releases/0.1.0/$candidate_sha"
 evidence_file="$evidence_root/evidence.json"
@@ -16,7 +20,6 @@ mkdir -p "$evidence_root"
 test ! -e "$evidence_file" # never overwrite evidence for the same candidate
 npm run release:evidence -- init --file "$evidence_file" --sha "$candidate_sha"
 local_log="$evidence_root/local.log"
-set -o pipefail
 {
   npm ci --ignore-scripts
   npm run check
@@ -44,7 +47,7 @@ the workflow/run URL for these cells:
 
 - `ci-macos-15-node-22`, `ci-macos-15-node-24`
 - `ci-ubuntu-24.04-node-22`, `ci-ubuntu-24.04-node-24`
-- `poisoned-environment`, `demo-snapshot`
+- `poisoned-environment`, `demo-snapshot`, `ci-archive`
 
 Each OS/Node cell runs `npm ci --ignore-scripts`, `npm run check`, coverage,
 snapshots, and artifact verification. The archive job examines `tar -tf` before
@@ -52,25 +55,25 @@ extraction, rejects `node_modules/`, `schema/`, and root `.git-rail.json`, then
 installs and checks only the extracted candidate.
 
 ```bash
+set -euo pipefail
 ci_run=$(gh run list --workflow ci.yml --commit "$candidate_sha" --limit 1 \
   --json databaseId --jq '.[0].databaseId')
 for cell in ci-macos-15-node-22 ci-macos-15-node-24 \
   ci-ubuntu-24.04-node-22 ci-ubuntu-24.04-node-24 \
-  poisoned-environment demo-snapshot development-migration; do
+  poisoned-environment demo-snapshot ci-archive \
+  live-macos-15 uninstall-macos-15 live-ubuntu-24.04 \
+  uninstall-ubuntu-24.04 development-migration; do
   npm run release:evidence -- record-ci --file "$evidence_file" --sha "$candidate_sha" \
     --cell "$cell" --command "CI workflow $ci_run: $cell" --run "$ci_run"
 done
-while IFS='|' read -r cell platform node_version herdr_version; do
-  npm run release:evidence -- record-ci --file "$evidence_file" --sha "$candidate_sha" \
-    --cell "$cell" --command "CI workflow $ci_run: $cell" --run "$ci_run" \
-    --platform "$platform" --node "$node_version" --herdr "$herdr_version"
-done <<'CELLS'
-live-macos-15|macOS 15|v22.0.0|herdr 0.8.2
-uninstall-macos-15|macOS 15|v22.0.0|herdr 0.8.2
-live-ubuntu-24.04|Ubuntu 24.04|v22.0.0|herdr 0.8.2
-uninstall-ubuntu-24.04|Ubuntu 24.04|v22.0.0|herdr 0.8.2
-CELLS
 ```
+
+`record-ci` applies a built-in contract for each cell. It rejects the wrong
+workflow or event, a missing/failed matrix job, and every missing, skipped, or
+failed required step. Platform, Node, and Herdr metadata for live cells come
+from that contract rather than operator-supplied labels. The live job runs the
+walkthrough once with filesystem watchers isolated and once with only the
+recovery poll enabled, so either invalidation path can fail independently.
 
 GitHub's dependency-review API is unavailable for this private repository
 without GitHub Advanced Security. The executable replacement records the exact
@@ -79,6 +82,7 @@ runtime dependencies, and fails on high/critical npm advisories. Dispatch it
 against the reviewed development base and exact candidate:
 
 ```bash
+set -euo pipefail
 gh workflow run dependency-audit.yml --ref main \
   -f base_ref=6c7d9ac -f head_ref="$candidate_sha"
 dependency_run=$(gh run list --workflow dependency-audit.yml --commit "$candidate_sha" \
@@ -95,9 +99,15 @@ candidate. A workflow for another commit is not evidence.
 ## Independent archive witness
 
 ```bash
+set -euo pipefail
 archive_file=$(mktemp)
 archive_root=$(mktemp -d)
 archive_log="$evidence_root/archive.log"
+cleanup_archive() {
+  rm -f -- "$archive_file"
+  rm -rf -- "$archive_root"
+}
+trap cleanup_archive EXIT
 {
   git archive --format=tar --output "$archive_file" "$candidate_sha"
   tar -tf "$archive_file" | node scripts/verify-archive-members.mjs
@@ -112,8 +122,8 @@ archive_log="$evidence_root/archive.log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
   --cell archive --command "git archive $candidate_sha; verify members; npm ci; artifact; check" \
   --status pass --evidence-file "$archive_log"
-rm -f -- "$archive_file"
-rm -rf -- "$archive_root"
+cleanup_archive
+trap - EXIT
 ```
 
 ## Clean install and live Herdr walkthrough
@@ -123,6 +133,7 @@ Herdr 0.8.x version. Use an isolated Herdr session and configuration root. Link
 a detached candidate checkout so the plugin cannot drift:
 
 ```bash
+set -euo pipefail
 release_runtime=$(mktemp -d)
 export HERDR_SESSION="gitrail-release-$(date +%s)-$$"
 export XDG_CONFIG_HOME="$release_runtime/config"
@@ -194,12 +205,18 @@ The walkthrough must observe:
 4. Markdown actions `1 Diff`, `2 Raw`, and `3 Rendered` all describe the same
    exact revision; action 3 renders with embedded Glow.
 5. Preview replacement is scoped to its workspace and source tab.
-6. Auto-open skips an unsafe layout; explicit Open can rebuild and recover it.
-7. Manual refresh, filesystem invalidation, and recovery polling converge while
-   preserving the last usable state after a failed refresh.
+6. Auto-open skips an unsafe layout and explicit Open completes the journaled
+   rebuild. The H2 fault-injection suite run earlier in the same cell proves
+   recovery after every journaled mutation; the live observation does not claim
+   to inject a process failure.
+7. Manual refresh, filesystem invalidation, and recovery polling each converge
+   while preserving the last usable state after a failed refresh. The CI job
+   runs separate `watch-only` and `poll-only` sessions.
 8. Git status, HEAD, refs, index bytes/mtime, and worktree bytes are unchanged
    by inspection.
-9. The 36/52/100-column states match the checked-in screenshots.
+9. The real demo pane renders, and the screenshot gate proves that the
+   candidate's deterministic 36/52/100-column output is byte-identical to the
+   recorded visual-source commit.
 
 Append a `PASS` or `FAIL` line for each numbered observation, including the
 Herdr commands or screenshots that establish it, to `live_log`. Do not record
@@ -210,6 +227,7 @@ whose current terminal instance, workspace, label, cwd, and argv prove they
 belong to that checkout, then unlinks the plugin:
 
 ```bash
+set -euo pipefail
 {
   cd "$candidate_checkout"
   npm run uninstall:herdr
@@ -237,6 +255,7 @@ Ubuntu CI jobs by the automated-matrix commands above. Clean up only after the
 local witness has finished:
 
 ```bash
+set -euo pipefail
 printf 'PASS uninstall restart: no restored or new GitRail pane\n' >> "$live_log"
 "$HERDR_BIN_PATH" session stop "$HERDR_SESSION" --json
 wait "$server_pid"
@@ -273,15 +292,19 @@ and terminal ids, and restart result, and is therefore recorded as the verified
 local rerun is diagnostic evidence, not a substitute for that candidate-bound
 successful job.
 
-## Verify evidence; tag only after separate authorization
+## Verify and seal durable evidence
 
-Record `screenshots` with their visual-source SHA, then verify all 15 required
-cells and generate the complete annotated-tag message:
+Record `screenshots` with their visual-source SHA, then verify all 16 required
+cells. The screenshot verifier checks PNG structure and dimensions and compares
+the candidate's deterministic output at all three widths with the recorded
+visual-source commit.
 
 ```bash
+set -euo pipefail
 screenshots_log="$evidence_root/screenshots.log"
 visual_source_sha=$(sed -n 's/^- Visual source: `\([0-9a-f]*\)`/\1/p' docs/screenshots/README.md)
 {
+  npm run screenshots:verify -- --sha "$candidate_sha"
   cat docs/screenshots/README.md
   shasum -a 256 docs/screenshots/*.png
 } > "$screenshots_log"
@@ -289,16 +312,46 @@ npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidat
   --cell screenshots --command "verify screenshot README and PNG hashes" --status pass \
   --evidence-file "$screenshots_log" --visual-source-sha "$visual_source_sha"
 npm run release:evidence -- verify --file "$evidence_file" --sha "$candidate_sha"
-npm run release:evidence -- tag-message --file "$evidence_file" --sha "$candidate_sha" \
-  > "$evidence_root/tag-message.txt"
 test "$(git rev-parse HEAD)" = "$candidate_sha"
 test -z "$(git status --porcelain)"
 ```
 
-L2b is complete after the commands above pass. Only after a separate explicit
-authorization to create `v0.1.0`, run L2c:
+The source manifest deliberately lives outside the candidate while validation
+runs. After it verifies, seal its file evidence into a portable bundle and make
+one evidence-only direct-child commit on `main`. This commit does not change the
+candidate and durably retains the manifest and logs. Creating and
+pushing this evidence commit requires the ordinary separate commit/push
+authorization. The generated bundle and the checklist's L2b status are the only
+permitted post-candidate changes in that commit.
 
 ```bash
+set -euo pipefail
+bundle_path="release-evidence/0.1.0/$candidate_sha"
+test ! -e "$bundle_path"
+npm run release:evidence -- seal --file "$evidence_file" --sha "$candidate_sha" \
+  --output "$bundle_path"
+npm run release:evidence -- verify-bundle --bundle "$bundle_path" --sha "$candidate_sha"
+git add -- "$bundle_path"
+git diff --cached --check
+git commit -m "Archive v0.1.0 candidate evidence"
+evidence_commit=$(git rev-parse HEAD)
+test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
+git push origin main
+git fetch origin main
+test "$(git rev-parse origin/main)" = "$evidence_commit"
+npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
+  --evidence-commit "$evidence_commit" \
+  --repository-url "https://github.com/KaxyotiK/herdr-gitrail" \
+  --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
+```
+
+The tag message contains only candidate-bound GitHub job URLs and paths under
+the pushed evidence commit; it contains no machine-local path. L2b is complete
+after the bundle commit is present on `origin/main` and the commands above pass.
+Only after a separate explicit authorization to create `v0.1.0`, run L2c:
+
+```bash
+set -euo pipefail
 test -z "$(git tag -l v0.1.0)"
 git tag -a v0.1.0 "$candidate_sha" -F "$evidence_root/tag-message.txt"
 git show --no-patch v0.1.0

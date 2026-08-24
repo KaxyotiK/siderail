@@ -491,13 +491,17 @@ and the stated acceptance evidence still passes.
   commit, run every automated and live cell against that SHA and store CI links,
   environment versions, commands, and pass/fail results in a versioned evidence
   manifest outside the worktree. Every required record names the full candidate
-  SHA. CI evidence is recorded only after querying GitHub Actions and confirming
-  a successful run at that SHA. Local and live evidence names an existing log
-  file and records its SHA-256; verification re-hashes it and rejects missing or
-  changed logs. Supported platform/Node/Herdr versions are validated structurally.
-  Verification fails on missing, failed, stale, mismatched, or unsupported cells,
-  and the annotated tag embeds the manifest SHA-256 plus durable evidence
-  references; validation must not dirty the candidate.
+  SHA. CI evidence must bind the exact workflow event, matrix job, and required
+  successful steps, deriving supported platform/Node/Herdr metadata from that
+  contract rather than operator labels. Local evidence names an existing log and
+  records its SHA-256; every command block runs in fail-closed shell strict mode.
+  Verification re-hashes logs and rejects missing, failed, stale, mismatched, or
+  unsupported cells. After all 16 cells pass, seal the manifest and logs into an
+  evidence-only direct-child commit on `main`; this generated bundle and the L2b
+  status are exempt from candidate invalidation because neither changes the
+  candidate. The annotated tag embeds the bundle manifest SHA-256, evidence
+  commit, and portable candidate-bound job/file URLs. No machine-local path may
+  appear in the tag, and validation before sealing must not dirty the candidate.
 - If code, manifest, dependencies, release inputs, or packaged artifacts change,
   invalidate all affected cells and rerun them. Verify a clean worktree,
   version/config agreement, artifact contents, and release-note links; only then
@@ -539,6 +543,10 @@ and the stated acceptance evidence still passes.
   the audit must show the exact base/candidate lockfile diff, enforce zero runtime
   dependencies, perform `npm ci --ignore-scripts`, and fail on high/critical npm
   advisories. It must be dispatchable against explicit base/candidate SHAs.
+- Require evidence recording to verify the exact CI workflow, event, job, and
+  named successful steps for every matrix, poisoned, demo, archive, live,
+  uninstall, development-migration, and dependency-audit cell. Overall run
+  success alone is not evidence for a named cell.
 
 **L6 — required screenshots**
 
@@ -547,6 +555,9 @@ and the stated acceptance evidence still passes.
 - Store consistently named PNGs under `docs/screenshots/`, record the visual-source
   SHA and Herdr version in its README, and link the current images from the main
   README. Add all screenshot assets before freezing the candidate commit.
+- Parse and validate the PNG dimensions and byte-compare deterministic
+  36/52/100-column output from the candidate with the recorded visual-source
+  commit, so unchanged captures cannot silently drift from release behavior.
 
 **L7 — honest security reporting policy**
 
@@ -599,8 +610,10 @@ criteria. Keep the worktree testable after each numbered group.
    candidate with all release inputs present.
 8. Run the L2b install/development-migration/uninstall matrix and real-Herdr
    walkthrough on that exact commit. Mark the pre-tag gate complete only if all
-   evidence remains current and the worktree is clean. Under a separate explicit
-   authorization, L2c may then create the annotated tag without moving an
+   16 evidence cells remain current and the candidate worktree is clean. Seal and
+   push the portable evidence-only direct-child commit under the separately
+   required ordinary commit/push authorization. Under a separate explicit tag
+   authorization, L2c may then tag the validated candidate without moving an
    existing tag.
 
 Phase 1 exits only when all B/H items in that phase pass their unit,
@@ -608,9 +621,9 @@ integration, negative, and recovery witnesses. Phase 2 exits only when its
 observable behavior is documented and the full Node 22/24 suite passes. Phase
 3 exits only when CI evidence, the real-Herdr walkthrough, screenshots, release
 matrix, readiness traceability, and release artifacts refer to the candidate or
-the explicitly recorded visual-source SHA as specified above. No step in this
-document authorizes pushing, publishing, or tagging without a separate explicit
-request.
+the explicitly recorded visual-source SHA as specified above, and the portable
+evidence bundle exists on `origin/main`. No step in this document authorizes
+pushing, publishing, or tagging without a separate explicit request.
 
 ## Appendix — evidence
 

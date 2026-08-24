@@ -6,15 +6,39 @@ import test from "node:test";
 import {
   createTagMessage,
   GITHUB_ACTIONS_CELLS,
+  GITHUB_CELL_CONTRACTS,
   initializeEvidence,
   recordFileEvidence,
   recordGithubActionsEvidence,
   REQUIRED_RELEASE_CELLS,
+  sealEvidenceBundle,
   verifyEvidence,
+  verifyEvidenceBundle,
 } from "../scripts/release-evidence.mjs";
 import { validateArchiveMembers } from "../scripts/verify-archive-members.mjs";
 
 const SHA = "a".repeat(40);
+
+function successfulRunFor(cell, overrides = {}) {
+  const contract = GITHUB_CELL_CONTRACTS.get(cell);
+  return {
+    databaseId: 1234,
+    headSha: SHA,
+    conclusion: "success",
+    url: "https://github.com/example/project/actions/runs/1234",
+    workflowName: contract.workflow,
+    workflowPath: contract.workflowPath,
+    event: contract.event,
+    jobs: [{
+      databaseId: 5678,
+      name: contract.job,
+      conclusion: "success",
+      url: "https://github.com/example/project/actions/runs/1234/job/5678",
+      steps: contract.steps.map((name) => ({ name, conclusion: "success" })),
+    }],
+    ...overrides,
+  };
+}
 
 test("archive member verification rejects local-only and removed artifacts", () => {
   const required = "herdr-plugin.toml\npackage.json\nscripts/uninstall-herdr-plugin.mjs\n";
@@ -43,12 +67,7 @@ test("release evidence binds verified runs and hashed files to one SHA", (contex
         platform: macos ? "macOS 15.7" : ubuntu ? "Ubuntu 24.04.3" : undefined,
         node: macos || ubuntu ? "v22.18.0" : undefined,
         herdr: macos || ubuntu ? "herdr 0.8.2" : undefined,
-        inspectRun: () => ({
-          databaseId: 1234,
-          headSha: SHA,
-          conclusion: "success",
-          url: "https://github.com/example/project/actions/runs/1234",
-        }),
+        inspectRun: () => successfulRunFor(cell),
       });
       continue;
     }
@@ -70,9 +89,37 @@ test("release evidence binds verified runs and hashed files to one SHA", (contex
     });
   }
   assert.equal(verifyEvidence({ file, candidateSha: SHA }).candidateSha, SHA);
-  const tagMessage = createTagMessage({ file, candidateSha: SHA });
+  const bundle = path.join(directory, "bundle");
+  sealEvidenceBundle({ file, candidateSha: SHA, directory: bundle });
+  assert.equal(verifyEvidenceBundle({ directory: bundle, candidateSha: SHA }).candidateSha, SHA);
+  const tagMessage = createTagMessage({
+    directory: bundle,
+    candidateSha: SHA,
+    evidenceCommit: "b".repeat(40),
+    repositoryUrl: "https://github.com/example/project.git",
+    bundleRepositoryPath: `release-evidence/0.1.0/${SHA}`,
+    git: (args) => {
+      if (args[0] === "rev-parse") return Buffer.from(`${SHA}\n`);
+      const repositoryPath = args[1].split(":")[1];
+      const relativePath = repositoryPath.slice(`release-evidence/0.1.0/${SHA}/`.length);
+      return fs.readFileSync(path.join(bundle, relativePath));
+    },
+  });
   assert.match(tagMessage, new RegExp(`Validated candidate: ${SHA}`));
+  assert.match(tagMessage, /Evidence commit: b{40}/);
+  assert.match(tagMessage, new RegExp(`github\\.com/example/project/blob/${"b".repeat(40)}/release-evidence/0\\.1\\.0/`));
+  assert.doesNotMatch(tagMessage, new RegExp(directory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(tagMessage, /Evidence SHA-256: [0-9a-f]{64}/);
+  assert.throws(() => createTagMessage({
+    directory: bundle,
+    candidateSha: SHA,
+    evidenceCommit: "b".repeat(40),
+    repositoryUrl: "https://github.com/example/project",
+    bundleRepositoryPath: `release-evidence/0.1.0/${SHA}`,
+    git: () => Buffer.from(`${"c".repeat(40)}\n`),
+  }), /direct child/);
+  fs.appendFileSync(path.join(bundle, "files", "local.log"), "tampered bundle\n");
+  assert.throws(() => verifyEvidenceBundle({ directory: bundle, candidateSha: SHA }), /bundled evidence is missing or has changed/);
   assert.throws(() => recordFileEvidence({
     file,
     candidateSha: "b".repeat(40),
@@ -125,40 +172,66 @@ test("release evidence rejects fabricated, failed, stale, and unsupported record
       url: "https://github.com/example/project/actions/runs/1234",
     }),
   }), /concluded failure/);
-  assert.throws(() => verifyEvidence({ file, candidateSha: SHA }), /incomplete/);
-
-  recordGithubActionsEvidence({
+  assert.throws(() => recordGithubActionsEvidence({
     file,
     candidateSha: SHA,
-    cell: "live-macos-15",
-    command: "walkthrough",
+    cell: "dependency-review",
+    command: "audit",
     run: "1234",
-    inspectRun: () => ({
-      databaseId: 1234,
-      headSha: SHA,
-      conclusion: "success",
-      url: "https://github.com/example/project/actions/runs/1234",
-    }),
-    platform: "macOS 26.0",
-    node: "v25.0.0",
-    herdr: "herdr 0.9.0",
-  });
-  recordFileEvidence({ file, candidateSha: SHA, cell: "local", command: "check", evidenceFile: log, status: "pass" });
-  const unsupported = JSON.parse(fs.readFileSync(file, "utf8"));
+    inspectRun: () => successfulRunFor("dependency-review", { workflowName: "CI" }),
+  }), /requires the Dependency audit workflow/);
+  assert.throws(() => recordGithubActionsEvidence({
+    file,
+    candidateSha: SHA,
+    cell: "dependency-review",
+    command: "audit",
+    run: "1234",
+    inspectRun: () => successfulRunFor("dependency-review", { workflowPath: ".github/workflows/ci.yml" }),
+  }), /requires workflow path \.github\/workflows\/dependency-audit\.yml/);
+  assert.throws(() => recordGithubActionsEvidence({
+    file,
+    candidateSha: SHA,
+    cell: "dependency-review",
+    command: "audit",
+    run: "1234",
+    inspectRun: () => successfulRunFor("dependency-review", { jobs: [] }),
+  }), /requires the dependency-audit job/);
+  const missingStep = successfulRunFor("dependency-review");
+  missingStep.jobs[0].steps.pop();
+  assert.throws(() => recordGithubActionsEvidence({
+    file,
+    candidateSha: SHA,
+    cell: "dependency-review",
+    command: "audit",
+    run: "1234",
+    inspectRun: () => missingStep,
+  }), /requires the Run npm audit --audit-level=high step/);
+  assert.throws(() => verifyEvidence({ file, candidateSha: SHA }), /incomplete/);
+
   for (const cell of REQUIRED_RELEASE_CELLS) {
-    unsupported.cells[cell] = {
-      ...unsupported.cells["live-macos-15"],
-      status: "pass",
-      evidence: GITHUB_ACTIONS_CELLS.has(cell) ? {
-        kind: "github-actions",
-        runId: "1234",
-        url: "https://github.com/example/project/actions/runs/1234",
-        headSha: SHA,
-        conclusion: "success",
-      } : unsupported.cells.local.evidence,
-      ...(cell === "screenshots" ? { visualSourceSha: SHA } : {}),
-    };
+    if (GITHUB_ACTIONS_CELLS.has(cell)) {
+      recordGithubActionsEvidence({
+        file,
+        candidateSha: SHA,
+        cell,
+        command: `verify ${cell}`,
+        run: "1234",
+        inspectRun: () => successfulRunFor(cell),
+      });
+    } else {
+      recordFileEvidence({
+        file,
+        candidateSha: SHA,
+        cell,
+        command: `verify ${cell}`,
+        evidenceFile: log,
+        status: "pass",
+        visualSourceSha: cell === "screenshots" ? SHA : undefined,
+      });
+    }
   }
+  const unsupported = JSON.parse(fs.readFileSync(file, "utf8"));
+  unsupported.cells["live-macos-15"].platform = "macOS 26.0";
   fs.writeFileSync(file, `${JSON.stringify(unsupported, null, 2)}\n`);
   assert.throws(() => verifyEvidence({ file, candidateSha: SHA }), /supported platform/);
 
@@ -170,4 +243,5 @@ test("release evidence rejects fabricated, failed, stale, and unsupported record
   for (const cell of REQUIRED_RELEASE_CELLS) stale.cells[cell] = stale.cells.local;
   fs.writeFileSync(fileEvidence, `${JSON.stringify(stale, null, 2)}\n`);
   assert.throws(() => verifyEvidence({ file: fileEvidence, candidateSha: SHA }), /evidence file is missing or has changed|GitHub Actions evidence/);
+
 });

@@ -29,7 +29,7 @@ claim that the Node/OS matrix, live Herdr walkthrough, or `v0.1.0` tag exists.
 | L5 | Tests pass on macOS 15/Ubuntu 24.04 and Node 22/24 with 95/86/95 coverage floors; exact lockfile changes pass the private-repository dependency audit | CI matrix, dependency-audit workflow, and `npm run test:coverage` | matrix | candidate CI required |
 | L6 | 36/52/100-column realistic states are recorded | `docs/screenshots/README.md`, live walkthrough step 9 | real Herdr | candidate assets required |
 | L7 | Security policy has no fictional reporting channel or response promise | `SECURITY.md` review and documentation assertion | n/a | local pass |
-| L2 | Candidate install, development migration, pane-state continuity, uninstall, artifact, and live behavior are bound to one SHA | `scripts/release-evidence.mjs`, `docs/RELEASING.md` matrix | release matrix | candidate validation required |
+| L2 | Candidate install, development migration, pane-state continuity, uninstall, artifact, and live behavior are bound to one SHA and retained in a portable evidence-only commit | `scripts/release-evidence.mjs`, `docs/RELEASING.md` 16-cell matrix | release matrix | candidate validation required |
 
 ## Release gate
 

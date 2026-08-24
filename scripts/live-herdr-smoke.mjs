@@ -247,6 +247,8 @@ async function main() {
   initializeFixture();
   const beforeInspection = repositoryInvariant();
   const observations = [];
+  const watchMode = process.env.GIT_RAIL_WATCH_MODE || "watch-and-poll";
+  assert.ok(["watch-only", "poll-only", "watch-and-poll"].includes(watchMode), `unsupported live witness watch mode: ${watchMode}`);
 
   const beforeGitEvents = pluginLogCount();
   const sourceA = createWorkspace(fixtureRoot, "GitRail live Git");
@@ -355,7 +357,7 @@ async function main() {
     const text = paneText(rebuiltRailA.pane_id);
     return text.includes("live-refresh") && !text.includes("Refresh failed");
   });
-  observations.push("manual refresh, filesystem invalidation, recovery poll, and failure-state preservation");
+  observations.push(`manual refresh, ${watchMode} convergence, and failure-state preservation`);
 
   focusTab(sourceA.tabId);
   await invokeAction("open-git-rail-mockup");
@@ -375,6 +377,7 @@ async function main() {
     platform: process.platform,
     node: process.version,
     herdr: herdr(["--version"]).stdout.trim(),
+    watchMode,
     observations,
   }, null, 2)}\n`);
 }

@@ -272,6 +272,9 @@ Supported overrides include `GIT_RAIL_BASE`, `GIT_RAIL_CLIENT`,
 `GIT_RAIL_POLL_INTERVAL_MS`. Set `GIT_RAIL_DEBUG_LOG` to an explicit file path
 for sanitized operation names, timestamps, durations, and exit status; source,
 diffs, environment values, and command arguments are never logged.
+Release validation may set `GIT_RAIL_WATCH_MODE` to `watch-only` or `poll-only`
+to prove the two invalidation paths independently. Ordinary runs leave it unset
+and retain both filesystem invalidation and the recovery poll.
 
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`

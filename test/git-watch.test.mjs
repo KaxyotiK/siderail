@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveGitWatchRoots } from "../src/git-watch.mjs";
+import {
+  resolveGitWatchRoots,
+  shouldInstallRecoveryPoll,
+  shouldInstallWatchers,
+} from "../src/git-watch.mjs";
+
+test("the release witness can isolate the recovery poll from filesystem watchers", () => {
+  assert.equal(shouldInstallWatchers({}), true);
+  assert.equal(shouldInstallWatchers({ GIT_RAIL_WATCH_MODE: "ordinary" }), true);
+  assert.equal(shouldInstallWatchers({ GIT_RAIL_WATCH_MODE: "poll-only" }), false);
+  assert.equal(shouldInstallRecoveryPoll({}), true);
+  assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "poll-only" }), true);
+  assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "watch-only" }), false);
+});
 
 test("git watcher resolves and deduplicates per-worktree and common git directories", async () => {
   const calls = [];

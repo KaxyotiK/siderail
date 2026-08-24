@@ -30,5 +30,12 @@ test("public installation and release evidence instructions enforce the candidat
   assert.doesNotMatch(releasing, /release:evidence -- record(?:\s|$)/);
   assert.match(releasing, /record-ci/);
   assert.match(releasing, /record-file/);
+  assert.match(releasing, /all 16 required/);
+  assert.match(releasing, /verify-bundle/);
+  assert.match(releasing, /evidence-only direct-child commit/);
+  assert.doesNotMatch(releasing, /tag-message --file/);
   assert.match(releasing, /separate explicit\s+authorization/);
+  const bashBlocks = [...releasing.matchAll(/```bash\n([\s\S]*?)```/g)].map((match) => match[1]);
+  assert.ok(bashBlocks.length > 0);
+  assert.ok(bashBlocks.every((block) => block.startsWith("set -euo pipefail\n")));
 });
