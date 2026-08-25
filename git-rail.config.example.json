@@ -8,8 +8,8 @@
   "viewers": {
     ".md": {
       "label": "Rendered",
-      "client": "glow",
-      "args": ["--tui", "--style", "dark"],
+      "client": "ink",
+      "args": [],
       "mode": "terminal",
       "key": "3",
       "autoOpen": true

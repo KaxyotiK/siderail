@@ -452,7 +452,7 @@ and the stated acceptance evidence still passes.
   22 or 24. Each clean-install walkthrough must
   observe: one unfocused auto-open rail in a Git tab; no rail in a non-Git or
   preview tab; manual open/toggle; Staged, Unstaged, and Untracked separation;
-  Raw, Diff, and action-3 Glow TUI rendering; per-source-tab preview replacement;
+  Raw, Diff, and action-3 Ink TUI and Mermaid rendering; per-source-tab preview replacement;
   safe auto-open skip; manual refresh/recovery-poll convergence; and successful
   unlink with no remaining startup/event action. The wrapper must create its own
   temporary Herdr config, cache, state, and named sessions so cleanup cannot

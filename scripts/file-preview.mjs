@@ -353,9 +353,11 @@ async function launchViewer(viewer, key) {
   if (!viewer) { statusMessage = "No viewer is configured for this file"; render(); return; }
   if (!executableAvailable(viewer)) {
     const client = path.basename(viewer.client);
-    statusMessage = client.toLocaleLowerCase() === "glow"
-      ? "Glow is not installed · install glow or set autoOpen to false"
-      : `${client || "Viewer"} is not available · install it or update viewer config`;
+    const knownInstallHint = {
+      glow: "Glow is not installed · install glow or set autoOpen to false",
+      ink: "Ink is not installed · install ink or set autoOpen to false",
+    }[client.toLocaleLowerCase()];
+    statusMessage = knownInstallHint || `${client || "Viewer"} is not available · install it or update viewer config`;
     render();
     return;
   }

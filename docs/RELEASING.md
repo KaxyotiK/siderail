@@ -130,10 +130,10 @@ npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidat
 ## Isolated live Herdr smoke
 
 Run the checked-in wrapper once on macOS and once on Linux with Herdr 0.8.x,
-Node 22 or 24, and Glow available. The wrapper creates private temporary Herdr configuration, state,
+Node 22 or 24, and Ink 0.7.x available. The wrapper creates private temporary Herdr configuration, state,
 cache, and named sessions. It never links or unlinks the operator's normal Herdr
 installation. It exercises watch-only and poll-only refresh separately, action-3
-Glow TUI rendering, preview replacement, read-only repository invariants, and
+Ink TUI and Mermaid rendering, preview replacement, read-only repository invariants, and
 uninstall/restart proof.
 
 ```bash

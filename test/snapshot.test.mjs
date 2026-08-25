@@ -77,6 +77,10 @@ for (const width of [25, 100]) {
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
     assert.match(plain, /⊞ preview\.md/);
     assert.match(plain, /□ README\.md/);
+    if (width === 100) {
+      assert.match(plain, /├─ ⊞ preview\.md/);
+      assert.match(plain, /└─ □ usage\.md/);
+    }
   });
 }
 
@@ -516,16 +520,14 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
   assert.doesNotMatch(stdout, /Renderer returned no content/);
 });
 
-test("the built-in Markdown action auto-opens Glow TUI and action 3 opens it again", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-glow-tui-"));
+test("the built-in Markdown action auto-opens Ink TUI and action 3 opens it again", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-ink-tui-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const renderer = path.join(root, "glow");
+  const renderer = path.join(root, "ink");
   await fs.writeFile(renderer, `#!/bin/sh
-test "$1" = "--tui" || exit 9
-test "$2" = "--style" || exit 10
-test "$3" = "dark" || exit 11
-test -f "$4" || exit 12
-printf 'Glow TUI opened\n'
+test "$#" -eq 1 || exit 9
+test -f "$1" || exit 10
+printf 'Ink TUI opened\n'
 `);
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n");
@@ -551,10 +553,10 @@ printf 'Glow TUI opened\n'
   child.stdout.on("data", (chunk) => { stdout += chunk; });
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   const readyDeadline = Date.now() + 5_000;
-  while (!stdout.includes("Glow TUI opened") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  while (!stdout.includes("Ink TUI opened") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
   child.stdin.write("3");
   const launchDeadline = Date.now() + 5_000;
-  while ((stdout.match(/Glow TUI opened/g) || []).length < 2 && Date.now() < launchDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  while ((stdout.match(/Ink TUI opened/g) || []).length < 2 && Date.now() < launchDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
   child.stdin.write("q");
   const exitCode = await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -562,8 +564,8 @@ printf 'Glow TUI opened\n'
   });
   assert.equal(exitCode, 0, stderr);
   assert.match(stdout, /3 Rendered/);
-  assert.equal((stdout.match(/Glow TUI opened/g) || []).length, 2);
-  assert.match(stdout, /Returned from glow/);
+  assert.equal((stdout.match(/Ink TUI opened/g) || []).length, 2);
+  assert.match(stdout, /Returned from ink/);
 });
 
 test("preview reports repaint latency for a large allowed line count", async (t) => {

@@ -9,7 +9,7 @@ import {
   shouldInstallRecoveryPoll,
   shouldInstallWatchers,
 } from "../src/git-watch.mjs";
-import { FilesViewModelCache } from "../src/files-view-model.mjs";
+import { FilesViewModelCache, treeBranchPrefix } from "../src/files-view-model.mjs";
 import { debugLog } from "../src/debug-log.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resolveHerdrTabCwd } from "../src/herdr-context.mjs";
@@ -238,7 +238,7 @@ function searchField(query, active, placeholder, count, width) {
   const tone = active ? C.gold : query ? C.bold : C.dim;
   return `${C.selected}${tone}${padAnsi(` ⌕ ${truncate(value, Math.max(1, fieldWidth - 4))}`, fieldWidth)}${C.reset}${countText ? ` ${countText}` : ""}`;
 }
-function treeGuides(depth, width) { return `${C.faint}${(width <= 46 ? "│" : "│ ").repeat(depth)}${C.reset}`; }
+function treeGuides(row, width) { return `${C.faint}${treeBranchPrefix(row, width)}${C.reset}`; }
 
 function page(files, scope) {
   const limit = pageSizes.get(scope) || PAGE_SIZE;
@@ -306,7 +306,7 @@ function renderTree(files, width, scope, paginate = true) {
   const collapsed = collapsedFolders.get(scope);
   const cacheKey = `${filesViewGeneration}:tree:${scope}:${paged.visible.length}:${[...collapsed].sort().join("\0")}`;
   const rows = filesViewModels.rows(cacheKey, paged.visible, { mode: "tree", collapsed, scope }).map((row) => {
-    const guides = treeGuides(row.depth, width);
+    const guides = treeGuides(row, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
     const open = !collapsed.has(row.path);
     return { materialize: () => interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
@@ -500,7 +500,7 @@ function materializeFilesTabRow(row, width) {
   if (typeof row === "string") return row;
   if (row.kind === "file") {
     const prefix = Number.isInteger(row.depth)
-      ? ` ${treeGuides(row.depth, width)}`
+      ? ` ${treeGuides(row, width)}`
       : row.prefix === "last" ? `  ${C.faint}└─${C.reset} `
         : row.prefix === "middle" ? `  ${C.faint}├─${C.reset} ` : " ";
     const item = filesTabViewCache.keyboardItems[filesTabViewCache.keyboardIndexByIdentity.get(
@@ -509,7 +509,7 @@ function materializeFilesTabRow(row, width) {
     return fileRow(row.file, width, prefix, item).materialize();
   }
   if (row.kind === "folder") {
-    const guides = treeGuides(row.depth, width);
+    const guides = treeGuides(row, width);
     const collapsed = collapsedFolders.get(`files:${fileSearchQuery.trim()}`) || new Set();
     const open = !collapsed.has(row.path);
     return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {

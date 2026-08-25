@@ -10,19 +10,33 @@ function treeRows(files, collapsed) {
     });
   }
   const rows = [];
-  const visit = (node, depth, parent = "") => {
+  const visit = (node, depth, parent = "", ancestorContinues = []) => {
     const children = [...node.children.values()].sort((a, b) => Boolean(a.file) - Boolean(b.file) || a.name.localeCompare(b.name));
-    for (const child of children) {
+    children.forEach((child, index) => {
       const nodePath = parent ? `${parent}/${child.name}` : child.name;
-      if (child.file) rows.push({ kind: "file", depth, file: child.file, name: child.name });
+      const isLast = index === children.length - 1;
+      const branch = { depth, ancestorContinues, isLast };
+      if (child.file) rows.push({ kind: "file", ...branch, file: child.file, name: child.name });
       else {
-        rows.push({ kind: "folder", depth, path: nodePath, name: child.name });
-        if (!collapsed.has(nodePath)) visit(child, depth + 1, nodePath);
+        rows.push({ kind: "folder", ...branch, path: nodePath, name: child.name });
+        if (!collapsed.has(nodePath)) {
+          const childAncestors = depth === 0 ? [] : [...ancestorContinues, !isLast];
+          visit(child, depth + 1, nodePath, childAncestors);
+        }
       }
-    }
+    });
   };
-  visit(root);
+  visit(root, 0);
   return rows;
+}
+
+export function treeBranchPrefix(row, width) {
+  if (!row.depth) return "";
+  const narrow = width <= 46;
+  const ancestors = row.ancestorContinues
+    .map((continues) => continues ? (narrow ? "│ " : "│  ") : (narrow ? "  " : "   "))
+    .join("");
+  return `${ancestors}${row.isLast ? "└─ " : "├─ "}`;
 }
 
 function groupedRows(files, collapsed, scope) {

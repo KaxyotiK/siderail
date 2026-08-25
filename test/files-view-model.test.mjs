@@ -1,6 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FilesViewModelCache } from "../src/files-view-model.mjs";
+import { FilesViewModelCache, treeBranchPrefix } from "../src/files-view-model.mjs";
+
+test("tree rows retain enough ancestry to distinguish siblings from nested children", () => {
+  const files = [
+    { path: "docs/screenshots/capture.png" },
+    { path: "docs/INSTALLATION.md" },
+    { path: "test/helpers/environment.mjs" },
+    { path: "test/auto-open.test.mjs" },
+    { path: "README.md" },
+  ];
+  const rows = new FilesViewModelCache().rows("branches", files, { mode: "tree" });
+  const shape = rows.map((row) => ({
+    name: row.name,
+    depth: row.depth,
+    ancestorContinues: row.ancestorContinues,
+    isLast: row.isLast,
+  }));
+  assert.deepEqual(shape, [
+    { name: "docs", depth: 0, ancestorContinues: [], isLast: false },
+    { name: "screenshots", depth: 1, ancestorContinues: [], isLast: false },
+    { name: "capture.png", depth: 2, ancestorContinues: [true], isLast: true },
+    { name: "INSTALLATION.md", depth: 1, ancestorContinues: [], isLast: true },
+    { name: "test", depth: 0, ancestorContinues: [], isLast: false },
+    { name: "helpers", depth: 1, ancestorContinues: [], isLast: false },
+    { name: "environment.mjs", depth: 2, ancestorContinues: [true], isLast: true },
+    { name: "auto-open.test.mjs", depth: 1, ancestorContinues: [], isLast: true },
+    { name: "README.md", depth: 0, ancestorContinues: [], isLast: true },
+  ]);
+  assert.equal(treeBranchPrefix(rows[1], 36), "├─ ");
+  assert.equal(treeBranchPrefix(rows[2], 36), "│ └─ ");
+  assert.equal(treeBranchPrefix(rows[2], 100), "│  └─ ");
+  assert.equal(treeBranchPrefix(rows[3], 100), "└─ ");
+  assert.equal(treeBranchPrefix(rows[0], 100), "");
+});
 
 test("20k-path files model materializes only the viewport at supported widths", () => {
   const files = Array.from({ length: 20_000 }, (_value, index) => ({ path: `folder-${String(index % 100).padStart(3, "0")}/file-${String(index).padStart(5, "0")}.txt` }));

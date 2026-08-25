@@ -11,6 +11,7 @@ while Changes clearly reports that Git state is unavailable.
 - Node.js 22 or 24
 - Git 2.35 or newer
 - Herdr 0.8.x
+- Ink 0.7.x for rendered Markdown and Mermaid diagrams
 - macOS or Linux
 
 The launcher rejects Node versions older than 22. Release validation covers
@@ -18,9 +19,10 @@ Herdr 0.8.x; newer Herdr versions are outside the 0.1.0 validation target.
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. The installed defaults open `.md`, `.mdx`,
-and `.markdown` files in Glow's terminal UI. Press `q` in Glow to return to the
-GitRail preview. If Glow is unavailable, GitRail keeps the wrapped Raw view open
-with an installation hint; Diff and Raw do not require Glow.
+and `.markdown` files in Ink's terminal UI. Ink renders supported Mermaid blocks
+as terminal diagrams. Press `q` in Ink to return to the GitRail preview. If Ink
+is unavailable, GitRail keeps the wrapped Raw view open with an installation
+hint; Diff and Raw do not require Ink.
 
 ## Install and launch
 
@@ -110,7 +112,7 @@ wheel scrolls. A gold marker at the right edge shows the current position.
 Configured filename and extension matches add actions with explicit key
 bindings. Installed defaults provide `o Open` for every file and `3 Rendered`
 for `.md`, `.mdx`, and `.markdown` files. Markdown previews automatically enter
-Glow's terminal UI; `q` returns to GitRail, and `3` opens Glow again. `/` searches
+Ink's terminal UI; `q` returns to GitRail, and `3` opens Ink again. `/` searches
 the current in-preview Diff or Raw content and `n`/`N` moves through matches. `e` opens the configured
 editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
@@ -239,7 +241,7 @@ width. File-specific
 rules win if two matching actions claim the same key. Preview navigation keys
 are reserved and rejected by validation. Version-1 rules without `key` retain
 legacy automatic numeric assignment. If no enabled rule matches, the preview omits
-viewer actions. The built-in Markdown defaults use Glow:
+viewer actions. The built-in Markdown defaults use Ink:
 
 ```json
 {
@@ -247,8 +249,8 @@ viewer actions. The built-in Markdown defaults use Glow:
   "viewers": {
     ".md": {
       "label": "Rendered",
-      "client": "glow",
-      "args": ["--tui", "--style", "dark"],
+      "client": "ink",
+      "args": [],
       "mode": "terminal",
       "key": "3",
       "autoOpen": true
@@ -283,8 +285,8 @@ and retain both filesystem invalidation and the recovery poll.
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`
 disables editing. External apps, including VS Code and Cursor, open outside
-Herdr. The built-in Markdown rule launches Glow with `--tui` as a terminal
-action. Set an explicit `embedded` viewer only when bounded captured output is
+Herdr. The built-in Markdown rule launches Ink as a terminal action. Set an
+explicit `embedded` viewer only when bounded captured output is
 preferred over the viewer's own interface.
 
 Viewer and editor actions materialize the exact selected commit, Against-base,
