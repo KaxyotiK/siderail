@@ -8,14 +8,15 @@ while Changes clearly reports that Git state is unavailable.
 
 ## Requirements
 
-- Node.js 22 or 24
+- Node.js 22 or newer
 - Git 2.35 or newer
 - Herdr 0.8.x
 - Ink 0.7.x for rendered Markdown and Mermaid diagrams
 - macOS or Linux
 
-The launcher rejects Node versions older than 22. Release validation covers
-Herdr 0.8.x; newer Herdr versions are outside the 0.1.0 validation target.
+The launcher rejects Node versions older than 22. Release validation runs on
+Node 22 and 24 and covers Herdr 0.8.x; other supported Node releases and newer
+Herdr versions are outside the 0.1.0 validation target.
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. The installed defaults open `.md`, `.mdx`,
@@ -55,8 +56,9 @@ herdr plugin action invoke local.git-rail.open-git-rail-mockup
 The demo contains committed, Against-base, partially staged, unstaged,
 untracked text, and untracked binary states. It has no hard-coded hashes,
 counts, patches, or pseudo-paths. Temporary repositories and editor copies are
-owner-only and removed when the process exits normally or receives a handled
-signal.
+owner-only. Copies handed to detached external viewers remain available for 15
+minutes and are then removed automatically; all other copies are removed when
+the preview exits normally or receives a handled signal.
 
 Live Herdr captures of that demo are available at
 [36 columns](docs/screenshots/gitrail-36.png),

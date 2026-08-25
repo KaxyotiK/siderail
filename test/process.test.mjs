@@ -12,6 +12,13 @@ test("process stdout remains text by default and can preserve exact bytes", asyn
   assert.deepEqual(bytes.stdout, Buffer.from([0x66, 0x80, 0x6f]));
 });
 
+test("strict process decoding rejects invalid UTF-8 instead of merging byte identities", async () => {
+  await assert.rejects(
+    runCommand(process.execPath, ["-e", "process.stdout.write(Buffer.from([0x66, 0x80, 0x6f]))"], { stdoutEncoding: "utf8-strict" }),
+    (error) => error.kind === "invalid-output" && /not valid UTF-8/.test(error.message),
+  );
+});
+
 test("process input can be supplied as exact bytes", async () => {
   const input = Buffer.from([0x66, 0x00, 0x80, 0x6f]);
   const result = await runCommand(

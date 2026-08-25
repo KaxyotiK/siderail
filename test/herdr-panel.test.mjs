@@ -289,6 +289,26 @@ test("legacy rails are replaced at the right edge using the tab-focused source c
   assert.ok(open.includes("GIT_RAIL_REPO_ROOT=/repo/two/sub"));
 });
 
+test("legacy migration open failure retains the verified legacy rail", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-legacy-open-failure-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "Grove Git Rail" },
+  ];
+  const layout = {
+    area: { x: 0, y: 0, width: 100, height: 20 }, focused_pane_id: "w1:p1", zoomed: false,
+    panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 70, height: 20 } }],
+  };
+  const mocked = mockRun({ panes, layout, afterMutation: async (args) => {
+    if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") throw new Error("injected legacy open failure");
+  } });
+  await assert.rejects(openHerdrPanel({
+    entrypoint: "git-tui", environment: env, run: mocked.run, resize: async () => {}, writeOutput: () => {},
+  }), /injected legacy open failure/);
+  assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p3"), false);
+});
+
 test("automatic ensure adopts a middle rail without rearranging user panes", async (t) => {
   const root = await temporaryRoot(t, "gitrail-repair-");
   const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
@@ -377,6 +397,37 @@ test("manual open also skips an unsafe vertical layout without rearranging user 
   assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
 });
 
+test("manual open retains an existing verified rail when replacement is unsafe", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-existing-vertical-manual-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDER GITRAIL" },
+  ];
+  const layout = {
+    area: { x: 0, y: 0, width: 120, height: 40 },
+    focused_pane_id: "w1:p1",
+    panes: [
+      { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 80, height: 20 } },
+      { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 80, height: 20 } },
+      { pane_id: "w1:p3", rect: { x: 80, y: 0, width: 40, height: 40 } },
+    ],
+  };
+  const mocked = mockRun({ panes, layout });
+  const result = await openHerdrPanel({
+    entrypoint: "git-tui",
+    openMode: "replace",
+    environment: env,
+    run: mocked.run,
+    resize: async () => {},
+    writeOutput: () => {},
+  });
+  assert.deepEqual(result, { paneId: "w1:p3", adopted: true, openMode: "replace", skipped: true });
+  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane close")), false);
+  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane open")), false);
+});
+
 test("manual replace retargets an existing rail while ensure adopts it", async (t) => {
   const root = await temporaryRoot(t, "gitrail-retarget-");
   const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo/two" });
@@ -402,7 +453,27 @@ test("manual replace retargets an existing rail while ensure adopts it", async (
   assert.ok(replaced.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"));
 });
 
-test("replace aborts instead of duplicating when the owned rail cannot close", async (t) => {
+test("replacement open failure retains the existing verified rail", async (t) => {
+  const root = await temporaryRoot(t, "gitrail-replacement-open-failure-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo/two" });
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo/two" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDER GITRAIL" },
+  ];
+  const layout = {
+    area: { x: 0, y: 0, width: 100, height: 20 }, focused_pane_id: "w1:p1", zoomed: false,
+    panes: [{ pane_id: "w1:p1", rect: { x: 0, y: 0, width: 70, height: 20 } }],
+  };
+  const mocked = mockRun({ panes, layout, afterMutation: async (args) => {
+    if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") throw new Error("injected open failure");
+  } });
+  await assert.rejects(openHerdrPanel({
+    entrypoint: "git-tui", environment: env, run: mocked.run, resize: async () => {}, writeOutput: () => {},
+  }), /injected open failure/);
+  assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p3"), false);
+});
+
+test("replace compensates the new pane when the owned rail cannot close", async (t) => {
   const root = await temporaryRoot(t, "gitrail-close-failure-");
   const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo/two" });
   const panes = [
@@ -421,7 +492,8 @@ test("replace aborts instead of duplicating when the owned rail cannot close", a
   await assert.rejects(openHerdrPanel({
     entrypoint: "git-tui", environment: env, run, resize: async () => {}, writeOutput: () => {},
   }), /injected close failure/);
-  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
+  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), true);
+  assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p9"), true);
 });
 
 test("zoomed tabs are unzoomed for replacement and restored afterward", async (t) => {

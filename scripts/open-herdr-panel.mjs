@@ -12,6 +12,7 @@ import {
   writePaneState,
 } from "../src/herdr-pane-state.mjs";
 import { runCommand } from "../src/process.mjs";
+import { closeVerifiedPluginPane } from "../src/herdr-plugin-pane.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resizeConfiguredSidebar } from "./resize-herdr-sidebar.mjs";
@@ -145,10 +146,7 @@ async function resolveInvocation(environment, herdr, run) {
 
 async function closeOwnedPane(run, herdr, paneId, { quiet = false } = {}) {
   try {
-    await run(herdr, ["plugin", "pane", "close", paneId], {
-      timeoutMs: 5_000,
-      maxOutputBytes: 256 * 1_024,
-    });
+    await closeVerifiedPluginPane({ run, herdr, paneId });
     return true;
   } catch (error) {
     if (quiet) return false;
@@ -322,11 +320,19 @@ export async function openHerdrPanel({
     }
     const ownedPaneIds = new Set([...currentRails, ...legacyRails].map((pane) => pane.pane_id));
     let keptRail = currentRails.find((pane) => pane.pane_id === state?.paneId) || currentRails[0] || null;
+    let replacementRails = [];
+    if (!keptRail && legacyRails.length > 0) {
+      const primaryLegacy = legacyRails.find((pane) => pane.pane_id === state?.paneId) || legacyRails[0];
+      replacementRails = [
+        ...legacyRails.filter((pane) => pane.pane_id !== primaryLegacy.pane_id),
+        primaryLegacy,
+      ];
+    }
     const invokedFromRail = Boolean(keptRail && invocation.requestedPaneId === keptRail.pane_id);
     const replaceExisting = Boolean(keptRail && openMode !== "ensure" && !invokedFromRail);
     if (replaceExisting) {
       const zoomProbe = sourcePane(tabPanes, invocation.requestedPaneId, null, ownedPaneIds, entrypoint) || keptRail;
-      const beforeReplace = await paneLayout(run, herdr, zoomProbe.pane_id);
+      let beforeReplace = await paneLayout(run, herdr, zoomProbe.pane_id);
       if (beforeReplace.zoomed) {
         restoreFocusLocation = await globalFocusLocation(run, herdr);
         await run(herdr, ["pane", "zoom", "--pane", zoomProbe.pane_id, "--off"], {
@@ -334,10 +340,24 @@ export async function openHerdrPanel({
           maxOutputBytes: 256 * 1_024,
         });
         restoreZoomPaneId = zoomProbe.pane_id;
+        beforeReplace = await paneLayout(run, herdr, zoomProbe.pane_id);
       }
-      for (const pane of [...currentRails, ...legacyRails]) await closeOwnedPane(run, herdr, pane.pane_id);
-      tabPanes = tabPanes.filter((pane) => !currentRails.includes(pane) && !legacyRails.includes(pane));
-      ownedPaneIds.clear();
+      const replacementContentPanes = tabPanes.filter((pane) => (
+        pane.label !== PREVIEW_LABEL && !ownedPaneIds.has(pane.pane_id)
+      ));
+      const replacementTargetId = rightmostPaneId(beforeReplace, replacementContentPanes);
+      const replacementTarget = (beforeReplace.panes || []).find((pane) => pane.pane_id === replacementTargetId);
+      const replacementSafe = beforeReplace.area && replacementTarget?.rect
+        && replacementTarget.rect.y === beforeReplace.area.y
+        && replacementTarget.rect.height === beforeReplace.area.height;
+      if (!replacementSafe) {
+        console.error(`GitRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
+        return { paneId: keptRail.pane_id, adopted: true, openMode, skipped: true };
+      }
+      replacementRails = [
+        ...[...currentRails, ...legacyRails].filter((pane) => pane.pane_id !== keptRail.pane_id),
+        keptRail,
+      ];
       keptRail = null;
     }
 
@@ -399,7 +419,10 @@ export async function openHerdrPanel({
       return { paneId: legacy.pane_id, adopted: true };
     }
     if (!layoutProbe) throw new Error("unable to resolve a non-GitRail pane in the target tab");
-    for (const pane of legacyRails) await closeOwnedPane(run, herdr, pane.pane_id);
+    const replacementPaneIds = new Set(replacementRails.map((pane) => pane.pane_id));
+    for (const pane of legacyRails) {
+      if (!replacementPaneIds.has(pane.pane_id)) await closeOwnedPane(run, herdr, pane.pane_id);
+    }
 
     let layout = await paneLayout(run, herdr, layoutProbe.pane_id);
     if (layout.zoomed) {
@@ -447,6 +470,15 @@ export async function openHerdrPanel({
         entrypoint,
         priorPaneIds,
       });
+      try {
+        for (const pane of replacementRails) await closeOwnedPane(run, herdr, pane.pane_id);
+      } catch (error) {
+        const replacementClosed = await closeOwnedPane(run, herdr, paneId, { quiet: true });
+        if (!replacementClosed) {
+          throw new Error(`${error.message}; replacement pane ${paneId} also could not be closed`);
+        }
+        throw error;
+      }
     } else {
       console.error(`GitRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
       return { paneId: "", adopted: false, openMode, skipped: true };

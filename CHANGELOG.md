@@ -61,6 +61,8 @@ intentional configuration changes documented here.
 
 - Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS and Linux through
   reproducible local release checks. The project does not use GitHub Actions.
+- Keeps owner-only exact-revision copies available to detached external viewers
+  for 15 minutes before automatic cleanup.
 - Routes all manifest entrypoints through a launcher that resolves an absolute
   Node executable and rejects unsupported versions before layout or terminal
   mutation.

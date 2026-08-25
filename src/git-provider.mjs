@@ -34,6 +34,10 @@ async function gitText(cwd, args, options = {}) {
   return (await runGit(cwd, args, options)).stdout;
 }
 
+async function gitMachineText(cwd, args, options = {}) {
+  return (await runGit(cwd, args, { ...options, stdoutEncoding: "utf8-strict" })).stdout;
+}
+
 async function resolveRepository(cwd) {
   try {
     const repoRoot = (await gitText(cwd, ["rev-parse", "--show-toplevel"])).trim();
@@ -135,7 +139,7 @@ function withDescriptor(files, descriptor) {
 }
 
 async function changedFiles(repoRoot, diffArgs, descriptor) {
-  const output = await gitText(repoRoot, ["diff", ...diffArgs, ...CHANGE_SUMMARY_ARGS], {
+  const output = await gitMachineText(repoRoot, ["diff", ...diffArgs, ...CHANGE_SUMMARY_ARGS], {
     // Raw and numstat previously had independent 16 MiB subprocess budgets.
     maxOutputBytes: CHANGE_SUMMARY_MAX_OUTPUT_BYTES,
   });
@@ -146,8 +150,18 @@ async function workspaceState(repoRoot, baseRef) {
   if (!baseRef) return { workspaceChanges: [], workspaceDescriptor: null };
   let mergeBase = baseRef;
   if (baseRef !== "HEAD") {
-    try { mergeBase = (await gitText(repoRoot, ["merge-base", baseRef, "HEAD"])).trim() || baseRef; }
-    catch {}
+    try { mergeBase = (await gitText(repoRoot, ["merge-base", baseRef, "HEAD"])).trim(); }
+    catch (error) {
+      if (!(error instanceof ProcessError) || error.kind !== "exit") throw error;
+      mergeBase = "";
+    }
+    if (!mergeBase) {
+      return {
+        workspaceChanges: [],
+        workspaceDescriptor: null,
+        workspaceError: `Configured base ref has no merge base with HEAD: ${baseRef}`,
+      };
+    }
   }
   const workspaceDescriptor = { kind: "workspace", baseRef, mergeBase };
   return {
@@ -222,7 +236,7 @@ function comparisonModeMetadata(oldMode, newMode) {
 }
 
 async function workingFiles(repoRoot, maxFileBytes) {
-  const output = await gitText(repoRoot, ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
+  const output = await gitMachineText(repoRoot, ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
   const records = parsePorcelainV2Z(output);
   const [stagedChanges, unstagedChanges] = await Promise.all([
     changedFiles(repoRoot, ["--cached"], { kind: "staged" }),
@@ -324,7 +338,7 @@ async function commitState(repoRoot, baseRef) {
   let commitPathIndex = new Map();
   let historyPathsAvailable = true;
   try {
-    const pathLog = await gitText(repoRoot, [
+    const pathLog = await gitMachineText(repoRoot, [
       "log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H",
       "--raw", "--no-abbrev", "--no-renames", range,
     ]);
@@ -346,7 +360,7 @@ export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 *
   const parentLine = (await gitText(repoRoot, ["rev-list", "--parents", "-n", "1", commitHash], { maxOutputBytes })).trim();
   const parentHash = parentLine.split(/\s+/)[1] || "";
   const comparison = parentHash ? ["diff", parentHash, commitHash] : ["show", "--root", "--format=", commitHash];
-  const output = await gitText(repoRoot, [...comparison, ...CHANGE_SUMMARY_ARGS], {
+  const output = await gitMachineText(repoRoot, [...comparison, ...CHANGE_SUMMARY_ARGS], {
     // Preserve the old per-format allowance now that both formats share stdout.
     maxOutputBytes: maxOutputBytes * 2,
   });
@@ -397,17 +411,19 @@ export async function getRepositoryState(cwd, options = {}) {
   const { baseRef } = resolvedBase;
   const configErrors = [...loadedConfigErrors, ...(resolvedBase.error ? [resolvedBase.error] : [])];
   const workingPromise = workingFiles(repoRoot, config.limits.maxFileBytes);
-  const trackedPromise = gitText(repoRoot, ["ls-files", "-z", "--stage"]).then((output) => {
+  const trackedPromise = gitMachineText(repoRoot, ["ls-files", "-z", "--stage"]).then((output) => {
     const entries = parseLsFilesStageZ(output);
     return { paths: [...new Set(entries.map((entry) => entry.path))], entries };
   });
   const workspacePromise = workspaceState(repoRoot, baseRef);
   const againstPromise = baseRef && baseRef !== "HEAD"
-    ? workspacePromise.then(({ workspaceDescriptor }) => changedFiles(
-      repoRoot,
-      [workspaceDescriptor.mergeBase, "HEAD"],
-      { kind: "against", baseRef, mergeBase: workspaceDescriptor.mergeBase },
-    ))
+    ? workspacePromise.then(({ workspaceDescriptor }) => workspaceDescriptor
+      ? changedFiles(
+        repoRoot,
+        [workspaceDescriptor.mergeBase, "HEAD"],
+        { kind: "against", baseRef, mergeBase: workspaceDescriptor.mergeBase },
+      )
+      : [])
     : Promise.resolve([]);
   const [working, trackedData, againstBase, workspace, commitData, tracking] = await Promise.all([
     workingPromise,
@@ -417,6 +433,11 @@ export async function getRepositoryState(cwd, options = {}) {
     commitState(repoRoot, baseRef),
     trackingState(repoRoot),
   ]);
+  const finalConfigErrors = [
+    ...configErrors,
+    ...(workspace.workspaceError ? [workspace.workspaceError] : []),
+  ];
+  const { workspaceError: _workspaceError, ...workspaceData } = workspace;
   const state = {
     cwd,
     repoRoot,
@@ -425,7 +446,7 @@ export async function getRepositoryState(cwd, options = {}) {
     baseRef,
     baseLabel: baseRef || "no base",
     againstBase,
-    ...workspace,
+    ...workspaceData,
     staged: working.staged,
     unstaged: working.unstaged,
     untracked: working.untracked,
@@ -434,8 +455,8 @@ export async function getRepositoryState(cwd, options = {}) {
     tracking,
     ...commitData,
     config,
-    configErrors,
-    error: configErrors[0] || "",
+    configErrors: finalConfigErrors,
+    error: finalConfigErrors[0] || "",
   };
   const trackedMetadata = new Map(trackedData.entries.filter((entry) => entry.stage === 0).map((entry) => [entry.path, {
     mode: entry.mode,

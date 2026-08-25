@@ -14,6 +14,14 @@ export function shouldInstallRecoveryPoll(environment = process.env) {
   return environment.GIT_RAIL_WATCH_MODE !== "watch-only";
 }
 
+export function closeWatcherOnError(watcher, onError) {
+  watcher.on("error", (error) => {
+    try { watcher.close(); } catch {}
+    onError(error);
+  });
+  return watcher;
+}
+
 export async function resolveGitWatchRoots(repoRoot, { run = runGit } = {}) {
   if (!repoRoot) return [];
   const [gitdirResult, commonResult] = await Promise.all([

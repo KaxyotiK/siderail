@@ -15,17 +15,26 @@ async function fixture(t) {
   return { root, environment: { XDG_CACHE_HOME: root } };
 }
 
-function mockRunner({ staleLabel = "GitRail Preview", staleWorkspace = "w1", argv = ["node", "scripts/file-preview.mjs"], failInspection = false, missingPane = false, failOpen = false, failRename = false, malformedOpen = false } = {}) {
+function mockRunner({ staleLabel = "GitRail Preview", staleWorkspace = "w1", argv = ["node", "scripts/file-preview.mjs"], failInspection = false, missingPane = false, failOpen = false, failRename = false, malformedOpen = false, openedPane = {} } = {}) {
   const calls = [];
+  const opened = {
+    pane_id: "new-pane",
+    tab_id: "preview-tab",
+    terminal_id: "new-terminal",
+    workspace_id: "w1",
+    label: "GitRail Preview",
+    ...openedPane,
+  };
   const run = async (_command, args) => {
     calls.push(args);
     if (args.join(" ") === "plugin pane open") {
       if (failOpen) throw new Error("open failed");
-      return { stdout: malformedOpen ? "{}" : JSON.stringify({ result: { plugin_pane: { pane: { pane_id: "new-pane", tab_id: "preview-tab", terminal_id: "new-terminal" } } } }) };
+      return { stdout: malformedOpen ? "{}" : JSON.stringify({ result: { plugin_pane: { pane: opened } } }) };
     }
     if (args[0] === "pane" && args[1] === "get") {
       if (failInspection) throw new Error("inspection timed out");
       if (missingPane) return { stdout: "{}" };
+      if (args[2] === opened.pane_id) return { stdout: JSON.stringify({ result: { pane: opened } }) };
       return { stdout: JSON.stringify({ result: { pane: { pane_id: args[2], terminal_id: "stale-terminal", workspace_id: staleWorkspace, label: staleLabel } } }) };
     }
     if (args[0] === "tab" && args[1] === "rename" && failRename) throw new Error("rename failed");
@@ -135,6 +144,53 @@ test("open failure preserves stale ownership and rename failure is only a warnin
   const result = await openOwnedPreview({ run: renamed.run, herdr: "herdr", openArgs: ["plugin", "pane", "open"], cwd: "/repo", workspaceId: "w1", sourceTabId: "w1:t1", environment, tabName: "README.md" });
   assert.equal(result.paneId, "new-pane");
   assert.match(result.renameWarning, /rename failed/);
+});
+
+test("post-open state failure closes the new pane and preserves old ownership", async (t) => {
+  const { environment } = await fixture(t);
+  const statePath = previewPaneStatePath({ workspaceId: "w1", sourceTabId: "w1:t1", environment });
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await writePaneState(statePath, "stale-pane", "/repo", "stale-terminal");
+  const mocked = mockRunner();
+  await assert.rejects(openOwnedPreview({
+    run: mocked.run,
+    herdr: "herdr",
+    openArgs: ["plugin", "pane", "open"],
+    cwd: "/repo",
+    workspaceId: "w1",
+    sourceTabId: "w1:t1",
+    environment,
+    writeState: async () => { throw new Error("injected state failure"); },
+  }), /ownership state could not be recorded; newly opened pane was closed: injected state failure/);
+  assert.deepEqual(await readPaneState(statePath), { paneId: "stale-pane", cwd: "/repo", terminalId: "stale-terminal" });
+  assert.ok(mocked.calls.some((args) => args.join(" ") === "plugin pane close new-pane"));
+});
+
+test("post-open state failure never closes a foreign pane from a malformed open response", async (t) => {
+  const { environment } = await fixture(t);
+  const statePath = previewPaneStatePath({ workspaceId: "w1", sourceTabId: "w1:t1", environment });
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await writePaneState(statePath, "stale-pane", "/repo", "stale-terminal");
+  const mocked = mockRunner({
+    openedPane: {
+      pane_id: "user-pane",
+      terminal_id: "user-terminal",
+      workspace_id: "other-workspace",
+      label: "User shell",
+    },
+  });
+  await assert.rejects(openOwnedPreview({
+    run: mocked.run,
+    herdr: "herdr",
+    openArgs: ["plugin", "pane", "open"],
+    cwd: "/repo",
+    workspaceId: "w1",
+    sourceTabId: "w1:t1",
+    environment,
+    writeState: async () => { throw new Error("injected state failure"); },
+  }), /could not be verified for safe cleanup: injected state failure/);
+  assert.deepEqual(await readPaneState(statePath), { paneId: "stale-pane", cwd: "/repo", terminalId: "stale-terminal" });
+  assert.equal(mocked.calls.some((args) => args.includes("close")), false);
 });
 
 test("an unwritable preview state root fails inside the guarded lifecycle before opening a pane", async (t) => {

@@ -4,6 +4,7 @@ import {
   readPaneState,
   writePaneState,
 } from "./herdr-pane-state.mjs";
+import { closeVerifiedPluginPane } from "./herdr-plugin-pane.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -70,6 +71,7 @@ export async function openOwnedPreview({
   environment = process.env,
   tabName = "",
   pluginRoot = PLUGIN_ROOT,
+  writeState = writePaneState,
 }) {
   const statePath = workspaceId && sourceTabId
     ? previewPaneStatePath({ workspaceId, sourceTabId, environment })
@@ -93,7 +95,33 @@ export async function openOwnedPreview({
       identityWarning = `preview ownership identity unavailable: ${error.message}`;
     }
   }
-  if (statePath) await writePaneState(statePath, pane.pane_id, cwd, pane.terminal_id || "");
+  if (statePath) {
+    try {
+      await writeState(statePath, pane.pane_id, cwd, pane.terminal_id || "");
+    } catch (stateError) {
+      let ownedForCompensation = false;
+      try {
+        ownedForCompensation = await verifiedPreviewPane({
+          run,
+          herdr,
+          paneId: pane.pane_id,
+          terminalId: pane.terminal_id || "",
+          workspaceId,
+          cwd,
+          pluginRoot,
+        });
+      } catch {}
+      if (!ownedForCompensation) {
+        throw new Error(`preview ownership state could not be recorded and the newly opened pane could not be verified for safe cleanup: ${stateError.message}`);
+      }
+      try {
+        await closeVerifiedPluginPane({ run, herdr, paneId: pane.pane_id, cwd });
+      } catch (closeError) {
+        throw new Error(`preview ownership state could not be recorded: ${stateError.message}; newly opened pane ${pane.pane_id} also could not be closed: ${closeError.message}`);
+      }
+      throw new Error(`preview ownership state could not be recorded; newly opened pane was closed: ${stateError.message}`);
+    }
+  }
 
   let cleanupWarning = identityWarning;
   if (staleState?.paneId && staleState.paneId !== pane.pane_id) {
@@ -107,11 +135,7 @@ export async function openOwnedPreview({
         cwd,
         pluginRoot,
       })) {
-        await run(herdr, ["plugin", "pane", "close", staleState.paneId], {
-          cwd,
-          timeoutMs: 5_000,
-          maxOutputBytes: 256 * 1_024,
-        });
+        await closeVerifiedPluginPane({ run, herdr, paneId: staleState.paneId, cwd });
       }
     } catch (error) {
       cleanupWarning = [cleanupWarning, `previous preview left open: ${error.message}`].filter(Boolean).join("; ");

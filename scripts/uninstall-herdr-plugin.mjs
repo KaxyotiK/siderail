@@ -2,6 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "../src/process.mjs";
+import { closeVerifiedPluginPane } from "../src/herdr-plugin-pane.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 
@@ -83,10 +84,7 @@ export async function uninstallGitRail({
     throw new Error(`refusing to unlink while GitRail-labelled panes cannot be proven owned: ${ambiguous.map((pane) => sanitizeTerminalText(pane.pane_id)).join(", ")}`);
   }
   for (const pane of verified) {
-    await run(herdr, ["plugin", "pane", "close", pane.pane_id], {
-      timeoutMs: 5_000,
-      maxOutputBytes: 256 * 1_024,
-    });
+    await closeVerifiedPluginPane({ run, herdr, paneId: pane.pane_id });
   }
   await run(herdr, ["plugin", "unlink", pluginId], {
     timeoutMs: 8_000,

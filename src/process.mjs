@@ -53,14 +53,18 @@ export function runCommand(command, args = [], options = {}) {
       if (abortListener) signal?.removeEventListener("abort", abortListener);
       callback();
     };
-    const resultSoFar = (exitCode = null, signal = null) => {
+    const resultSoFar = (exitCode = null, signal = null, { allowLossy = false } = {}) => {
       const stdoutBuffer = Buffer.concat(stdout);
       return {
         command,
         args,
         exitCode,
         signal,
-        stdout: stdoutEncoding === null ? stdoutBuffer : stdoutBuffer.toString(stdoutEncoding),
+        stdout: stdoutEncoding === null
+          ? stdoutBuffer
+          : stdoutEncoding === "utf8-strict" && !allowLossy
+            ? new TextDecoder("utf-8", { fatal: true }).decode(stdoutBuffer)
+            : stdoutBuffer.toString(stdoutEncoding === "utf8-strict" ? "utf8" : stdoutEncoding),
         stderr: Buffer.concat(stderr).toString("utf8"),
         durationMs: Date.now() - startedAt,
       };
@@ -80,14 +84,14 @@ export function runCommand(command, args = [], options = {}) {
       forceKillTimer = setTimeout(() => {
         signalTree("SIGKILL");
         if (waitForTermination) finish(() => {
-          const result = resultSoFar(null, "SIGKILL");
+          const result = resultSoFar(null, "SIGKILL", { allowLossy: true });
           debugLog(command, { durationMs: result.durationMs, exitCode: null, signal: "SIGKILL", outcome: kind });
           reject(new ProcessError(message, { kind, ...result }));
         });
       }, killGraceMs);
       forceKillTimer.unref();
       if (!waitForTermination) finish(() => {
-        const result = resultSoFar();
+        const result = resultSoFar(null, null, { allowLossy: true });
         debugLog(command, { durationMs: result.durationMs, exitCode: null, signal: "SIGTERM", outcome: kind });
         reject(new ProcessError(message, { kind, ...result }));
       });
@@ -112,7 +116,19 @@ export function runCommand(command, args = [], options = {}) {
       { kind: cause.code === "ENOENT" ? "missing-executable" : "spawn", command, args, cause },
     ))));
     child.on("close", (exitCode, signal) => finish(() => {
-      const result = resultSoFar(exitCode, signal);
+      let result;
+      try {
+        result = resultSoFar(exitCode, signal);
+      } catch (cause) {
+        const lossyResult = resultSoFar(exitCode, signal, { allowLossy: true });
+        debugLog(command, { durationMs: lossyResult.durationMs, exitCode, signal, outcome: "invalid-output" });
+        reject(new ProcessError(`${command} stdout was not valid UTF-8`, {
+          kind: "invalid-output",
+          ...lossyResult,
+          cause,
+        }));
+        return;
+      }
       if (termination) {
         debugLog(command, { durationMs: result.durationMs, exitCode, signal, outcome: termination.kind });
         reject(new ProcessError(termination.message, { kind: termination.kind, ...result }));

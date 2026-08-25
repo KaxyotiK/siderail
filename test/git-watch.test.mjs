@@ -1,10 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  closeWatcherOnError,
   resolveGitWatchRoots,
   shouldInstallRecoveryPoll,
   shouldInstallWatchers,
 } from "../src/git-watch.mjs";
+
+test("an asynchronous watcher error closes only that watcher and reaches recovery", () => {
+  let listener;
+  let closed = false;
+  let recovered;
+  const watcher = {
+    on(event, callback) { assert.equal(event, "error"); listener = callback; },
+    close() { closed = true; },
+  };
+  assert.equal(closeWatcherOnError(watcher, (error) => { recovered = error; }), watcher);
+  const failure = new Error("watch failed asynchronously");
+  listener(failure);
+  assert.equal(closed, true);
+  assert.equal(recovered, failure);
+});
 
 test("the release witness can isolate the recovery poll from filesystem watchers", () => {
   assert.equal(shouldInstallWatchers({}), true);

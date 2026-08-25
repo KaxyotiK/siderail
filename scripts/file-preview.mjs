@@ -9,6 +9,7 @@ import { loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/previe
 import { runCommand } from "../src/process.mjs";
 import { MAX_SEARCH_QUERY_SCALARS, PreviewSearchIndex } from "../src/preview-search.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
+import { retainExternalPreviewCopy } from "../src/temporary-copy-retention.mjs";
 import {
   commitComparisonSource,
   createTerminalInputDecoder,
@@ -264,6 +265,13 @@ function launch(configValue, sourcePath, label) {
       if (status !== 0) { statusMessage = `${label} exited with status ${status}`; render(); }
     });
     child.unref();
+    if (temporaryDirectory && path.dirname(sourcePath) === temporaryDirectory) {
+      retainExternalPreviewCopy(temporaryDirectory, { onError: (error) => {
+        statusMessage = `Opened, but temporary-copy cleanup failed: ${safe(error.message)}`;
+        render();
+      } });
+      temporaryDirectory = "";
+    }
     statusMessage = `Opened with ${safe(path.basename(configValue.client))}`;
     return;
   }

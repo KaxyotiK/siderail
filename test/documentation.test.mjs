@@ -30,6 +30,10 @@ test("public installation and release evidence instructions enforce the candidat
   assert.doesNotMatch(releasing, /record-ci|gh workflow|gh run/);
   assert.match(releasing, /record-file/);
   assert.match(releasing, /All eight required/);
+  assert.match(releasing, /for live_cell in live-macos live-linux/);
+  assert.match(releasing, /live-macos-handoff/);
+  assert.match(releasing, /live-linux-handoff/);
+  assert.match(releasing, /does not read or write the\s+coordinator evidence manifest/);
   assert.match(releasing, /verify-bundle/);
   assert.match(releasing, /evidence-only direct-child commit/);
   assert.doesNotMatch(releasing, /tag-message --file/);

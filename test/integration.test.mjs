@@ -162,6 +162,65 @@ test("configured bases must resolve to commits and never silently fall back", as
   }
 });
 
+test("a configured base with unrelated history never masquerades as a merge base", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-unrelated-base-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "README.md"), "main\n");
+  await runGit(root, ["add", "README.md"]);
+  await runGit(root, ["commit", "-m", "main root"], { env: identity });
+  const emptyTree = (await runGit(root, ["mktree"], { stdinInput: "" })).stdout.trim();
+  const unrelatedCommit = (await runGit(root, ["commit-tree", emptyTree, "-m", "unrelated root"], { env: identity })).stdout.trim();
+  await runGit(root, ["update-ref", "refs/heads/unrelated", unrelatedCommit]);
+
+  const state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "unrelated" } });
+  assert.equal(state.baseRef, "unrelated");
+  assert.equal(state.workspaceDescriptor, null);
+  assert.deepEqual(state.workspaceChanges, []);
+  assert.deepEqual(state.againstBase, []);
+  assert.match(state.error, /has no merge base with HEAD: unrelated/);
+});
+
+test("invalid UTF-8 in display-only commit metadata does not hide repository state", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-commit-metadata-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "README.md"), "base\n");
+  await runGit(root, ["add", "README.md"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature"]);
+  await fs.writeFile(path.join(root, "README.md"), "feature\n");
+  await runGit(root, ["add", "README.md"]);
+  const tree = (await runGit(root, ["write-tree"])).stdout.trim();
+  const parent = (await runGit(root, ["rev-parse", "HEAD"])).stdout.trim();
+  const commit = (await runGit(root, ["commit-tree", tree, "-p", parent], {
+    env: identity,
+    stdinInput: Buffer.from([0x80, 0x0a]),
+  })).stdout.trim();
+  await runGit(root, ["update-ref", "HEAD", commit]);
+
+  const state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  assert.equal(state.commits.length, 1);
+  assert.equal(state.commits[0].hash, commit);
+  assert.notEqual(state.commits[0].message, "");
+  assert.equal(state.workspaceChanges[0].path, "README.md");
+});
+
+test("non-UTF-8 Git paths fail visibly instead of collapsing identities", { skip: process.platform !== "linux" }, async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-non-utf8-paths-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  const absolutePrefix = Buffer.from(`${root}${path.sep}`);
+  await fs.writeFile(Buffer.concat([absolutePrefix, Buffer.from([0x80]), Buffer.from(".txt")]), "first\n");
+  await fs.writeFile(Buffer.concat([absolutePrefix, Buffer.from([0x81]), Buffer.from(".txt")]), "second\n");
+  await runGit(root, ["add", "-A"]);
+  await runGit(root, ["commit", "-m", "non UTF-8 paths"], { env: identity });
+  await assert.rejects(repositoryState(t, root), /git stdout was not valid UTF-8/);
+});
+
 test("Against Raw uses the same merge base as its diff after branches diverge", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-against-merge-base-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

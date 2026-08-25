@@ -15,13 +15,15 @@ completion status and evidence references in `PRODUCTION-HARDENING.md` and
 the release archive. Any behavioral documentation edit still creates a new
 candidate.
 
-Run every command block below in Bash. Each block enables strict mode so an
+Run every coordinator command block below in the same Bash shell. The two live
+worker blocks run separately on their named platforms and never mutate the
+coordinator's evidence manifest. Each block enables strict mode so an
 intermediate failure cannot be followed by a passing evidence record.
 
 ## Freeze the candidate
 
 Start from a clean `main` worktree and continue in the same Bash shell for all
-blocks:
+coordinator blocks:
 
 ```bash
 set -euo pipefail
@@ -52,11 +54,13 @@ cell="local-node-$node_major"
 log="$evidence_root/$cell.log"
 {
   test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
   npm ci --ignore-scripts
   npm run check
   npm run snapshot
   npm run artifact:verify
   test "$(node -p 'require("./package.json").version')" = "$(sed -n 's/^version = "\([^"]*\)"/\1/p' herdr-plugin.toml)"
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
   test -z "$(git status --porcelain)"
   node --version
 } 2>&1 | tee "$log"
@@ -79,7 +83,13 @@ trap 'rm -rf -- "$poison_root"' EXIT
 printf '%s\n' '#!/bin/sh' 'echo "poisoned Herdr escaped the test helper" >&2' 'exit 97' > "$poison_root/herdr"
 chmod 700 "$poison_root/herdr"
 poison_log="$evidence_root/poisoned-environment.log"
-HERDR_PANE_ID=hostile-pane-id HERDR_BIN_PATH="$poison_root/herdr" npm run check 2>&1 | tee "$poison_log"
+{
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+  HERDR_PANE_ID=hostile-pane-id HERDR_BIN_PATH="$poison_root/herdr" npm run check
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+} 2>&1 | tee "$poison_log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
   --cell poisoned-environment --command "npm run check with hostile HERDR_*" \
   --status pass --evidence-file "$poison_log"
@@ -93,17 +103,23 @@ Validate only files committed in the candidate:
 set -euo pipefail
 archive_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-archive.XXXXXX")
 trap 'rm -rf -- "$archive_root"' EXIT
-git archive --format=tar --output "$archive_root/candidate.tar" "$candidate_sha"
-tar -tf "$archive_root/candidate.tar" | node scripts/verify-archive-members.mjs
-mkdir "$archive_root/worktree"
-tar -xf "$archive_root/candidate.tar" -C "$archive_root/worktree"
 archive_log="$evidence_root/archive.log"
-(
-  cd "$archive_root/worktree"
-  npm ci --ignore-scripts
-  npm run artifact:verify
-  npm run check
-) 2>&1 | tee "$archive_log"
+{
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+  git archive --format=tar --output "$archive_root/candidate.tar" "$candidate_sha"
+  tar -tf "$archive_root/candidate.tar" | node scripts/verify-archive-members.mjs
+  mkdir "$archive_root/worktree"
+  tar -xf "$archive_root/candidate.tar" -C "$archive_root/worktree"
+  (
+    cd "$archive_root/worktree"
+    npm ci --ignore-scripts
+    npm run artifact:verify
+    npm run check
+  )
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+} 2>&1 | tee "$archive_log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
   --cell archive --command "git archive; verify members; npm ci; artifact; check" \
   --status pass --evidence-file "$archive_log"
@@ -118,9 +134,13 @@ critical-severity advisory in its exact lockfile:
 set -euo pipefail
 dependency_log="$evidence_root/dependency-audit.log"
 {
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
   node -e 'const p=require("./package.json");if(p.dependencies&&Object.keys(p.dependencies).length)throw new Error("runtime dependencies must remain empty")'
   npm ci --ignore-scripts
   npm audit --audit-level=high
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
 } 2>&1 | tee "$dependency_log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
   --cell dependency-audit --command "zero runtime dependencies; npm ci; npm audit" \
@@ -130,25 +150,71 @@ npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidat
 ## Isolated live Herdr smoke
 
 Run the checked-in wrapper once on macOS and once on Linux with Herdr 0.8.x,
-Node 22 or 24, and Ink 0.7.x available. The wrapper creates private temporary Herdr configuration, state,
-cache, and named sessions. It never links or unlinks the operator's normal Herdr
-installation. It exercises watch-only and poll-only refresh separately, action-3
-Ink TUI and Mermaid rendering, preview replacement, read-only repository invariants, and
-uninstall/restart proof.
+Node 22 or 24, and Ink 0.7.x available. Each worker must use a clean checkout at
+the exact candidate SHA. The wrapper creates private temporary Herdr
+configuration, state, cache, and named sessions. It never links or unlinks the
+operator's normal Herdr installation. It exercises watch-only and poll-only
+refresh separately, action-3 Ink TUI and Mermaid rendering, preview
+replacement, read-only repository invariants, and uninstall/restart proof.
+
+On each platform worker, export the frozen full SHA as `CANDIDATE_SHA` and an
+absolute, nonexistent destination as `LIVE_HANDOFF_ROOT`, then run this block.
+It creates one self-contained handoff directory and does not read or write the
+coordinator evidence manifest:
 
 ```bash
 set -euo pipefail
+candidate_sha=${CANDIDATE_SHA:?export the frozen candidate SHA}
+handoff_root=${LIVE_HANDOFF_ROOT:?set an absolute nonexistent handoff directory}
+case "$handoff_root" in /*) ;; *) echo "LIVE_HANDOFF_ROOT must be absolute" >&2; exit 1 ;; esac
+test ! -e "$handoff_root"
 case "$(uname -s)" in
   Darwin) live_cell=live-macos; platform="macOS $(sw_vers -productVersion)" ;;
   Linux) live_cell=live-linux; platform="Linux $(. /etc/os-release && printf '%s' "$PRETTY_NAME")" ;;
   *) echo "live release smoke requires macOS or Linux" >&2; exit 1 ;;
 esac
-live_log="$evidence_root/$live_cell.log"
-HERDR_BIN_PATH=$(command -v herdr) npm run live:release:smoke 2>&1 | tee "$live_log"
-npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
-  --cell "$live_cell" --command "isolated watch/poll live smoke and uninstall proof" \
-  --status pass --evidence-file "$live_log" --platform "$platform" \
-  --node "$(node --version)" --herdr "$(herdr --version)"
+mkdir -m 700 "$handoff_root"
+live_log="$handoff_root/live.log"
+{
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+  HERDR_BIN_PATH=$(command -v herdr) npm run live:release:smoke
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+} 2>&1 | tee "$live_log"
+printf '%s\n' "$candidate_sha" > "$handoff_root/candidate-sha.txt"
+printf '%s\n' "$live_cell" > "$handoff_root/cell.txt"
+printf '%s\n' "$platform" > "$handoff_root/platform.txt"
+node --version > "$handoff_root/node.txt"
+herdr --version > "$handoff_root/herdr.txt"
+chmod 600 "$handoff_root"/*
+```
+
+Transfer both completed directories to the coordinator without changing their
+contents, naming them `$evidence_root/live-macos-handoff` and
+`$evidence_root/live-linux-handoff`. Then, back in the original coordinator
+shell, record both cells:
+
+```bash
+set -euo pipefail
+test "$(git rev-parse HEAD)" = "$candidate_sha"
+test -z "$(git status --porcelain)"
+for live_cell in live-macos live-linux; do
+  handoff="$evidence_root/$live_cell-handoff"
+  test "$(<"$handoff/candidate-sha.txt")" = "$candidate_sha"
+  test "$(<"$handoff/cell.txt")" = "$live_cell"
+  live_log="$handoff/live.log"
+  test -f "$live_log"
+  platform=$(<"$handoff/platform.txt")
+  node_version=$(<"$handoff/node.txt")
+  herdr_version=$(<"$handoff/herdr.txt")
+  npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+    --cell "$live_cell" --command "isolated watch/poll live smoke and uninstall proof" \
+    --status pass --evidence-file "$live_log" --platform "$platform" \
+    --node "$node_version" --herdr "$herdr_version"
+done
+test "$(git rev-parse HEAD)" = "$candidate_sha"
+test -z "$(git status --porcelain)"
 ```
 
 ## Screenshots
@@ -162,7 +228,13 @@ set -euo pipefail
 visual_source_sha=$(sed -n 's/^- Visual source: `\([0-9a-f]*\)`/\1/p' docs/screenshots/README.md)
 capture_source_sha=$(sed -n 's/^- Capture source: `\([0-9a-f]*\)`/\1/p' docs/screenshots/README.md)
 screenshots_log="$evidence_root/screenshots.log"
-npm run screenshots:verify -- --sha "$candidate_sha" 2>&1 | tee "$screenshots_log"
+{
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+  npm run screenshots:verify -- --sha "$candidate_sha"
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+} 2>&1 | tee "$screenshots_log"
 npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
   --cell screenshots --command "verify capture bytes and candidate/source output" \
   --status pass --evidence-file "$screenshots_log" --visual-source-sha "$visual_source_sha" \

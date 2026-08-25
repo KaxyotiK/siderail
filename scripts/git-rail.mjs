@@ -5,6 +5,7 @@ import path from "node:path";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import {
+  closeWatcherOnError,
   resolveGitWatchRoots,
   shouldInstallRecoveryPoll,
   shouldInstallWatchers,
@@ -813,15 +814,22 @@ async function startInvalidation() {
     reportAsync(refreshState(false));
   });
   const debounce = () => invalidationScheduler.schedule();
+  const addWatcher = (watcher, target) => {
+    watchers.push(watcher);
+    closeWatcherOnError(watcher, (error) => {
+      watchers = watchers.filter((candidate) => candidate !== watcher);
+      debugLog("watch", { target, outcome: "poll-fallback", error: safe(error.message) });
+    });
+  };
   if (watchRoot && shouldInstallWatchers()) {
     try {
-      watchers.push(fs.watch(watchRoot, { recursive: true }, (_event, filename) => {
+      addWatcher(fs.watch(watchRoot, { recursive: true }, (_event, filename) => {
         if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
         debounce();
-      }));
+      }), watchRoot);
     } catch (error) { debugLog("watch", { target: watchRoot, outcome: "poll-fallback", error: safe(error.message) }); }
     for (const root of gitRoots) {
-      try { watchers.push(fs.watch(root, { recursive: true }, debounce)); }
+      try { addWatcher(fs.watch(root, { recursive: true }, debounce), root); }
       catch (error) { debugLog("watch", { target: root, outcome: "poll-fallback", error: safe(error.message) }); }
     }
   } else if (watchRoot) debugLog("watch", { target: watchRoot, outcome: "poll-only" });
