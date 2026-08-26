@@ -155,6 +155,7 @@ let refreshGeneration = 0;
 let refreshRunning = false;
 let refreshVisible = false;
 let refreshQueued = false;
+let refreshQueuedAnnounce = false;
 let refreshTimer;
 let invalidationScheduler;
 let renderTimer;
@@ -749,16 +750,15 @@ async function toggleCommit(commit) {
   draw();
 }
 async function refreshState(announce = false) {
-  if (refreshRunning) { refreshQueued = true; return; }
+  if (refreshRunning) {
+    refreshQueued = true;
+    refreshQueuedAnnounce ||= announce;
+    if (announce && !refreshVisible) { refreshVisible = true; draw(); }
+    return;
+  }
   refreshRunning = true;
   const generation = ++refreshGeneration;
-  let indicatorTimer;
   if (announce) { refreshVisible = true; draw(); }
-  else {
-    indicatorTimer = setTimeout(() => {
-      if (refreshRunning && generation === refreshGeneration) { refreshVisible = true; draw(); }
-    }, 150);
-  }
   try {
     const providerCwd = fixtureRoot || await liveProviderCwd();
     const previousRepoRoot = state.repoRoot;
@@ -785,11 +785,15 @@ async function refreshState(announce = false) {
     }
   } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
   finally {
-    clearTimeout(indicatorTimer);
     refreshRunning = false;
     refreshVisible = false;
     draw();
-    if (refreshQueued) { refreshQueued = false; reportAsync(refreshState(false)); }
+    if (refreshQueued) {
+      const queuedAnnounce = refreshQueuedAnnounce;
+      refreshQueued = false;
+      refreshQueuedAnnounce = false;
+      reportAsync(refreshState(queuedAnnounce));
+    }
   }
 }
 async function startInvalidation() {

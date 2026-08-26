@@ -36,6 +36,8 @@ intentional configuration changes documented here.
   the last usable state after transient refresh failures.
 - Resolves per-worktree and shared Git directories for filesystem invalidation,
   retaining a jittered recovery poll when recursive watching is unavailable.
+- Keeps automatic filesystem and recovery-poll refreshes visually silent while
+  retaining toolbar progress and confirmation for user-requested refreshes.
 - Restores terminal modes and removes temporary demo data after fatal errors.
 - Preserves source-tab-scoped preview replacement and prevents stale pane ids
   from authorizing destructive closes.

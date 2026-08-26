@@ -72,6 +72,14 @@ test("manual refresh confirmation is transient", async () => {
   assert.match(rail, /clearTimeout\(statusTimer\)/);
 });
 
+test("only user-requested refreshes show toolbar progress", async () => {
+  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  assert.match(rail, /if \(announce\) \{ refreshVisible = true; draw\(\); \}/);
+  assert.match(rail, /refreshQueuedAnnounce \|\|= announce/);
+  assert.match(rail, /reportAsync\(refreshState\(queuedAnnounce\)\)/);
+  assert.doesNotMatch(rail, /setTimeout\([\s\S]{0,200}refreshVisible = true/);
+});
+
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig(DEFAULT_CONFIG), []);
   assert.deepEqual(validateConfig({ version: 1, herdr: { autoOpen: false, sidebarWidth: 34 }, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
