@@ -24,6 +24,7 @@ import {
   revealScrollOffset,
   sanitizeRendererAnsi,
   sanitizeTerminalText,
+  statusAfterBusy,
   sliceAnsiTerminalColumns,
   startupFailureState,
   stripSgrMouseEvents,
@@ -58,6 +59,11 @@ test("clean Files metadata opens Raw even with a workspace descriptor", () => {
   assert.equal(previewInitialMode({ kind: "workspace", baseRef: "origin/main" }, { status: "clean" }), "raw");
   assert.equal(previewInitialMode({ kind: "workspace", baseRef: "origin/main" }, { status: "modified" }), "diff");
   assert.equal(previewInitialMode({ kind: "filesystem" }, { status: "clean" }), "raw");
+});
+
+test("successful asynchronous actions restore the pre-busy status", () => {
+  assert.equal(statusAfterBusy("Filesystem · README.md", "Opening README.md…", "Opening README.md…"), "Filesystem · README.md");
+  assert.equal(statusAfterBusy("Filesystem · README.md", "Opening README.md…", "Workspace changed"), "Workspace changed");
 });
 
 test("commit preview context distinguishes first-parent and root comparisons", () => {
