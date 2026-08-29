@@ -36,6 +36,7 @@ import {
   previewTabName,
   refreshStatusAfterSuccess,
   revealScrollOffset,
+  statusAfterBusy,
   sanitizeTerminalText,
   sliceAnsiTerminalColumns,
   terminalColumns,
@@ -237,8 +238,8 @@ function focusedLine(line, width) {
     .replaceAll(C.reset, `${C.reset}${C.selected}`);
   return `${C.selected}${C.gold}▏${C.reset}${C.selected}${content}${C.reset}`;
 }
-function showTransientStatus(message, durationMs = 1_500) {
-  if (!statusTimer || statusMessage !== transientStatusMessage) transientRestoreStatus = statusMessage;
+function showTransientStatus(message, durationMs = 1_500, restoreStatus = statusMessage) {
+  if (!statusTimer || statusMessage !== transientStatusMessage) transientRestoreStatus = restoreStatus;
   clearTimeout(statusTimer);
   statusMessage = message;
   transientStatusMessage = message;
@@ -725,8 +726,16 @@ function scheduleDraw() {
 }
 
 async function openPreview(file) {
+  let statusBeforeOpen = statusMessage;
+  let openingStatus = "";
   if (HOST === "cmux") {
-    statusMessage = `Opening ${safe(file.path)}…`;
+    if (statusTimer && statusMessage === transientStatusMessage) statusBeforeOpen = transientRestoreStatus;
+    clearTimeout(statusTimer);
+    statusTimer = undefined;
+    transientRestoreStatus = "";
+    transientStatusMessage = "";
+    openingStatus = `Opening ${safe(file.path)}…`;
+    statusMessage = openingStatus;
     draw();
   }
   if (file.descriptor?.kind === "commit" && !Object.hasOwn(file.descriptor, "parentHash")) {
@@ -761,7 +770,11 @@ async function openPreview(file) {
       await liveProviderCwd();
       if (path.resolve(currentProviderCwd) !== selectedCwd) {
         const refreshed = await refreshState(false);
-        if (refreshed) showTransientStatus("Workspace changed · selection refreshed");
+        if (refreshed) showTransientStatus(
+          "Workspace changed · selection refreshed",
+          1_500,
+          statusAfterBusy(statusBeforeOpen, openingStatus, statusMessage),
+        );
         else if (!statusMessage.startsWith("Refresh failed:")) statusMessage = "Workspace changed · refresh queued";
         draw();
         return;
@@ -785,7 +798,11 @@ async function openPreview(file) {
       let previewStatus = `File opened · ${descriptorLabel(file.descriptor)}`;
       if (opened.cleanupWarning) previewStatus += ` · ${safe(opened.cleanupWarning)}`;
       if (opened.renameWarning) previewStatus += ` · ${safe(opened.renameWarning)}`;
-      showTransientStatus(previewStatus);
+      showTransientStatus(
+        previewStatus,
+        1_500,
+        statusAfterBusy(statusBeforeOpen, openingStatus, statusMessage),
+      );
     } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
     draw();
     return;

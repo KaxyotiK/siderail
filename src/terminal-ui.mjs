@@ -365,6 +365,10 @@ export function createLatestSerialQueue(handler) {
   };
 }
 
+export function statusAfterBusy(previousStatus, busyStatus, currentStatus) {
+  return currentStatus === busyStatus ? previousStatus : currentStatus;
+}
+
 export function createPointerClickTracker({ doubleClickIntervalMs = 700, clock = Date.now } = {}) {
   let previousIdentity = "";
   let previousAt = 0;
