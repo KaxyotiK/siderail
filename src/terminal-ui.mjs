@@ -365,6 +365,39 @@ export function createLatestSerialQueue(handler) {
   };
 }
 
+export function createPointerClickTracker({ doubleClickIntervalMs = 700, clock = Date.now } = {}) {
+  let previousIdentity = "";
+  let previousAt = 0;
+  return (identity) => {
+    const currentIdentity = String(identity || "");
+    const currentAt = clock();
+    const elapsed = currentAt - previousAt;
+    const isDoubleClick = Boolean(currentIdentity)
+      && currentIdentity === previousIdentity
+      && elapsed >= 0
+      && elapsed <= doubleClickIntervalMs;
+    previousIdentity = isDoubleClick ? "" : currentIdentity;
+    previousAt = isDoubleClick ? 0 : currentAt;
+    return isDoubleClick;
+  };
+}
+
+export function activatePointerTarget(target, trackClick, report = (value) => value) {
+  const doubleClick = trackClick(target?.label);
+  if (target?.doubleAction && doubleClick) {
+    report(target.doubleAction());
+    return "double";
+  }
+  target?.action?.();
+  return target ? "single" : "none";
+}
+
+export function interruptPointerClickSequence({ key = "", button = -1, phase = "" } = {}, trackClick) {
+  const interrupted = Boolean(key) || phase === "M" && (button === 64 || button === 65);
+  if (interrupted) trackClick("");
+  return interrupted;
+}
+
 export function revealScrollOffset(rowIndex, currentOffset, visibleRows, totalRows) {
   const maximum = Math.max(0, totalRows - visibleRows);
   if (rowIndex < 0 || visibleRows <= 0) return Math.max(0, Math.min(currentOffset, maximum));

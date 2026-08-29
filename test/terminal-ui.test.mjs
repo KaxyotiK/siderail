@@ -11,9 +11,12 @@ import {
   commitComparisonSource,
   createCoalescedScheduler,
   createLatestSerialQueue,
+  createPointerClickTracker,
+  activatePointerTarget,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   jitteredPollInterval,
+  interruptPointerClickSequence,
   padAnsiTerminalColumns,
   previewInitialMode,
   previewTabName,
@@ -119,6 +122,75 @@ test("terminal input decoder preserves ordered coalesced keyboard, CSI, and mous
   decoder.push("\u001b");
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(events.at(-1), "\u001b");
+});
+
+test("pointer clicks recognize a cmux-paced double click and reset after opening", () => {
+  let now = 1_000;
+  const isDoubleClick = createPointerClickTracker({ doubleClickIntervalMs: 700, clock: () => now });
+  assert.equal(isDoubleClick("file:a"), false);
+  now = 1_650;
+  assert.equal(isDoubleClick("file:a"), true);
+  now = 1_700;
+  assert.equal(isDoubleClick("file:a"), false);
+  now = 1_750;
+  assert.equal(isDoubleClick("file:b"), false);
+  now = 2_500;
+  assert.equal(isDoubleClick("file:b"), false);
+  now = 2_400;
+  assert.equal(isDoubleClick("file:b"), false);
+});
+
+test("an intervening non-file click cancels a pending file double click", () => {
+  let now = 1_000;
+  const track = createPointerClickTracker({ doubleClickIntervalMs: 700, clock: () => now });
+  const actions = [];
+  const file = {
+    label: "Select Unstaged: a.txt",
+    action: () => actions.push("select-file"),
+    doubleAction: () => actions.push("open-file"),
+  };
+  const toolbar = { label: "Refresh", action: () => actions.push("refresh") };
+  activatePointerTarget(file, track);
+  now += 200;
+  activatePointerTarget(toolbar, track);
+  now += 200;
+  activatePointerTarget(file, track);
+  assert.deepEqual(actions, ["select-file", "refresh", "select-file"]);
+});
+
+test("an intervening blank click cancels a pending file double click", () => {
+  let now = 1_000;
+  const track = createPointerClickTracker({ doubleClickIntervalMs: 700, clock: () => now });
+  const actions = [];
+  const file = {
+    label: "Select Unstaged: a.txt",
+    action: () => actions.push("select-file"),
+    doubleAction: () => actions.push("open-file"),
+  };
+  activatePointerTarget(file, track);
+  now += 200;
+  assert.equal(activatePointerTarget(undefined, track), "none");
+  now += 200;
+  activatePointerTarget(file, track);
+  assert.deepEqual(actions, ["select-file", "select-file"]);
+});
+
+test("wheel and keyboard input cancel a pending file double click without treating mouse release as input", () => {
+  let now = 1_000;
+  const track = createPointerClickTracker({ doubleClickIntervalMs: 700, clock: () => now });
+  assert.equal(track("file:a"), false);
+  now += 100;
+  assert.equal(interruptPointerClickSequence({ button: 64, phase: "M" }, track), true);
+  now += 100;
+  assert.equal(track("file:a"), false);
+  now += 100;
+  assert.equal(interruptPointerClickSequence({ key: "j" }, track), true);
+  now += 100;
+  assert.equal(track("file:a"), false);
+  now += 100;
+  assert.equal(interruptPointerClickSequence({ button: 0, phase: "m" }, track), false);
+  now += 100;
+  assert.equal(track("file:a"), true);
 });
 
 test("summary-only commit matches can expand to meaningful file content", () => {

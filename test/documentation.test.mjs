@@ -49,6 +49,36 @@ test("the default local check enforces coverage", async () => {
   assert.match(packageJson.scripts.check, /test:coverage/);
 });
 
+test("cmux documentation and project Dock config describe the supported right-sidebar host", async () => {
+  const guide = await fs.readFile("docs/CMUX.md", "utf8");
+  const dock = JSON.parse(await fs.readFile(".cmux/dock.json", "utf8"));
+  const packageJson = JSON.parse(await fs.readFile("package.json", "utf8"));
+  assert.match(guide, /right sidebar Dock/);
+  assert.match(guide, /does not use the\s+left\/custom-sidebar interpreter, ExtensionKit/);
+  assert.match(guide, /CMUX_WORKSPACE_ID/);
+  assert.match(guide, /CMUX_SURFACE_ID/);
+  assert.match(guide, /CMUX_DOCK_CONTROL_ID/);
+  assert.match(guide, /CMUX_DOCK_CONTROL_TITLE/);
+  assert.match(guide, /current_directory/);
+  assert.match(guide, /cmux choose its Markdown, image, PDF, media, or\s+general file viewer/);
+  assert.match(guide, /`cmux open`/);
+  assert.match(guide, /`cmux open` as a native file tab/);
+  assert.match(guide, /ambient\s+`CMUX_SURFACE_ID` is cleared/);
+  assert.match(guide, /process-backed active\s+instance and stable workspace\/control\/surface identity/);
+  assert.match(guide, /relaunches GitRail in the same verified Dock terminal/);
+  assert.match(guide, /Staged · Index · read-only/);
+  assert.match(guide, /before deletion/);
+  assert.match(guide, /stable GitRail Dock control identity/);
+  assert.match(guide, /retried on the next preview open/);
+  assert.match(guide, /migrates validated surface-keyed ownership/);
+  assert.deepEqual(dock.controls.map(({ id, title, cwd }) => ({ id, title, cwd })), [
+    { id: "git-rail", title: "GitRail", cwd: "." },
+  ]);
+  assert.match(dock.controls[0].command, /scripts\/cmux-node-launcher\.sh/);
+  assert.match(dock.controls[0].command, /scripts\/cmux-git-rail\.mjs/);
+  assert.match(packageJson.scripts["cmux:launch"], /open-cmux-dock\.mjs/);
+});
+
 test("live release cleanup is isolated from the operator's Herdr installation", async () => {
   const wrapper = await fs.readFile("scripts/run-isolated-live-smoke.sh", "utf8");
   assert.match(wrapper, /unset HERDR_ENV HERDR_WORKSPACE_ID HERDR_TAB_ID HERDR_PANE_ID/);

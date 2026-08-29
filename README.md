@@ -6,6 +6,12 @@ Against-base, Commit, Staged, Unstaged, Untracked, and clean-file previews
 cannot be confused. Outside Git, Files remains a bounded filesystem browser
 while Changes clearly reports that Git state is unavailable.
 
+GitRail also ships a separate host for cmux's **right sidebar Dock**. The cmux
+host reuses the same provider, models, TUI, and exact-revision semantics while
+opening selections as tabs in cmux's native file viewer. It does not use
+cmux's left/custom-sidebar interpreter or ExtensionKit. See
+[cmux Dock installation and lifecycle](docs/CMUX.md).
+
 ## Requirements
 
 - Node.js 22 or newer
@@ -13,6 +19,10 @@ while Changes clearly reports that Git state is unavailable.
 - Herdr 0.8.x
 - Ink 0.7.x for rendered Markdown and Mermaid diagrams
 - macOS or Linux
+
+The Herdr host requires Herdr 0.8.x. The cmux host instead requires a cmux
+build with right-sidebar Dock controls and the supported v2 surface/CLI
+operations described in [the cmux guide](docs/CMUX.md); cmux is macOS-only.
 
 The launcher rejects Node versions older than 22. Release validation runs on
 Node 22 and 24 and covers Herdr 0.8.x; other supported Node releases and newer
@@ -32,6 +42,15 @@ npm ci --ignore-scripts
 npm run check
 herdr plugin link .
 herdr plugin action invoke local.git-rail.open-git-rail
+```
+
+For the cmux Dock, this checkout includes `.cmux/dock.json`. After running the
+same install and check commands above, review the Dock control and accept
+cmux's project trust prompt. A direct, fail-closed development launch is
+also available from a cmux terminal in the intended project:
+
+```bash
+npm run cmux:launch
 ```
 
 GitRail also declares `local.git-rail.toggle-git-rail`, which opens or closes
@@ -312,6 +331,7 @@ coverage floors locally. This repository does not use GitHub Actions.
 ## Documentation
 
 - [Installation and upgrades](docs/INSTALLATION.md)
+- [cmux Dock host](docs/CMUX.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Production readiness](PRODUCTION-READINESS.md)
 - [Releasing](docs/RELEASING.md)

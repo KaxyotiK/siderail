@@ -54,6 +54,22 @@ checkout, run `npm ci --ignore-scripts` and `npm run check`, relink with
 `herdr plugin link .`, and reopen it.
 Use a tagged release in production rather than an arbitrary moving branch.
 
+## Install in the cmux right sidebar Dock
+
+The cmux host is independent of the Herdr plugin. This checkout's
+`.cmux/dock.json` launches `scripts/cmux-git-rail.mjs` through a cmux-specific
+Node discovery bootstrap and the same guarded Node launcher. Review and trust that project control in cmux, or run
+`npm run cmux:launch` from a cmux terminal for a supported CLI-based launch.
+The direct launcher does not focus the Dock and reuses an existing
+GitRail surface from this checkout. A running configured control records its
+process-backed active identity in GitRail's owner-only cache so the launcher
+can distinguish it from unrelated configured Dock controls and from its own
+post-`q` shell. Both configured and direct controls enter a login shell after
+GitRail exits; another direct launch reuses that verified terminal.
+
+See [CMUX.md](CMUX.md) for cwd resolution, preview replacement, session-seed,
+upgrade, and removal behavior.
+
 ## Uninstall
 
 From the linked checkout, run `npm run uninstall:herdr`. It closes only panes
