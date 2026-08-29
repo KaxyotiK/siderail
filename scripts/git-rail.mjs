@@ -2,6 +2,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } from "../src/cmux-context.mjs";
+import { openCmuxPreview } from "../src/cmux-preview-lifecycle.mjs";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import {
@@ -20,11 +23,14 @@ import { openOwnedPreview } from "../src/preview-pane-lifecycle.mjs";
 import {
   compactTerminalPath,
   commitExpansionState,
+  activatePointerTarget,
   createCoalescedScheduler,
   createLatestSerialQueue,
+  createPointerClickTracker,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   jitteredPollInterval,
+  interruptPointerClickSequence,
   padAnsiTerminalColumns,
   previewTabName,
   refreshStatusAfterSuccess,
@@ -40,6 +46,7 @@ import { compactAge } from "../src/tui-format.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
+const HOST = process.env.GIT_RAIL_HOST === "cmux" ? "cmux" : "herdr";
 const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
 const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
 const C = {
@@ -87,8 +94,13 @@ function parseContext() {
 }
 
 const context = parseContext();
-const initialCwd = process.env.GIT_RAIL_REPO_ROOT || context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
+const initialCwd = process.env.GIT_RAIL_REPO_ROOT
+  || (HOST === "cmux" ? process.env.GIT_RAIL_PROJECT_CWD : "")
+  || context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
 let sourcePaneId = process.env.GIT_RAIL_SOURCE_PANE_ID || context.focused_pane_id || "";
+let cmuxDockSurfaceId = process.env.CMUX_SURFACE_ID || "";
+let cmuxMainSurfaceId = "";
+let cmuxOwnerWindowId = process.env.GIT_RAIL_WINDOW_ID || "";
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 let snapshotEnvironmentRoot = "";
 if (snapshotMode && demoMode) {
@@ -104,7 +116,45 @@ if (snapshotMode && demoMode) {
 let currentProviderCwd = initialCwd;
 let currentWorkspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
 let currentSourceTabId = process.env.GIT_RAIL_SOURCE_TAB_ID || process.env.HERDR_TAB_ID || context.tab_id || "";
+const cmuxControlInstanceId = HOST === "cmux" ? randomUUID() : "";
+async function registerCmuxOwner(workspaceId) {
+  if (HOST !== "cmux" || !workspaceId || !cmuxDockSurfaceId) return false;
+  try {
+    return await registerCmuxDockControl({
+      workspaceId,
+      surfaceId: cmuxDockSurfaceId,
+      controlId: process.env.CMUX_DOCK_CONTROL_ID || "git-rail",
+      instanceId: cmuxControlInstanceId,
+      processId: process.pid,
+      environment: process.env,
+    });
+  } catch (error) {
+    debugLog("cmux-control-registration", { outcome: "failed", workspaceId, error: safe(error.message) });
+    return false;
+  }
+}
 async function liveProviderCwd() {
+  if (HOST === "cmux") {
+    const environment = cmuxOwnerWindowId
+      ? { ...process.env, GIT_RAIL_WINDOW_ID: cmuxOwnerWindowId }
+      : process.env;
+    const resolved = await resolveCmuxProjectContext({
+      run: runCommand,
+      cmux: cmuxExecutable(environment),
+      environment,
+      fallbackCwd: currentProviderCwd,
+    });
+    if (!cmuxOwnerWindowId && resolved.windowId) {
+      cmuxOwnerWindowId = resolved.windowId;
+      process.env.GIT_RAIL_WINDOW_ID = resolved.windowId;
+    }
+    currentWorkspaceId = resolved.workspaceId || currentWorkspaceId;
+    cmuxDockSurfaceId = resolved.dockSurfaceId || cmuxDockSurfaceId;
+    cmuxMainSurfaceId = resolved.mainSurfaceId || "";
+    currentProviderCwd = demoMode ? fixtureRoot : resolved.cwd || currentProviderCwd;
+    await registerCmuxOwner(currentWorkspaceId);
+    return currentProviderCwd;
+  }
   if (demoMode) return fixtureRoot;
   const resolved = await resolveHerdrTabCwd({
     run: runCommand,
@@ -120,7 +170,9 @@ async function liveProviderCwd() {
   currentProviderCwd = resolved.cwd || currentProviderCwd;
   return currentProviderCwd;
 }
+await registerCmuxOwner(process.env.CMUX_WORKSPACE_ID);
 currentProviderCwd = fixtureRoot || await liveProviderCwd();
+if (HOST === "cmux" && fixtureRoot) currentProviderCwd = await liveProviderCwd();
 let state;
 try { state = await getRepositoryState(currentProviderCwd); }
 catch (error) { state = startupFailureState(currentProviderCwd, error); }
@@ -150,7 +202,7 @@ let activeSearch = "";
 let helpVisible = false;
 let helpScrollOffset = 0;
 let hitTargets = [];
-let lastClick = { label: "", at: 0 };
+const isDoubleClick = createPointerClickTracker();
 let refreshGeneration = 0;
 let refreshRunning = false;
 let refreshVisible = false;
@@ -593,6 +645,8 @@ function helpRows(width) {
     "",
     ` ${C.gold}${C.bold}FILE STATES${C.reset}`,
     ...legendRows,
+    ` ${C.dim}Unstaged: tracked change not staged${C.reset}`,
+    ` ${C.dim}Untracked: not added to Git${C.reset}`,
     "",
     ` ${C.gold}${C.bold}STRUCTURE & STATS${C.reset}`,
     ` ${C.fog}› / ⌄${C.reset} Collapsed / expanded`,
@@ -688,6 +742,10 @@ function scheduleDraw() {
 }
 
 async function openPreview(file) {
+  if (HOST === "cmux") {
+    statusMessage = `Opening ${safe(file.path)}…`;
+    draw();
+  }
   if (file.descriptor?.kind === "commit" && !Object.hasOwn(file.descriptor, "parentHash")) {
     try {
       let details = commitFiles.get(file.descriptor.commitHash);
@@ -704,11 +762,8 @@ async function openPreview(file) {
       return;
     }
   }
-  const herdr = process.env.HERDR_BIN_PATH || "herdr";
-  const workspaceId = currentWorkspaceId;
-  const sourceTabId = currentSourceTabId;
-  const descriptor = Buffer.from(JSON.stringify(file.descriptor || { kind: "clean" })).toString("base64url");
-  const metadata = Buffer.from(JSON.stringify({
+  const previewDescriptor = file.descriptor || { kind: "clean" };
+  const previewMetadata = {
     status: file.status,
     oldPath: file.oldPath,
     binary: file.binary,
@@ -716,7 +771,47 @@ async function openPreview(file) {
     symlink: file.symlink,
     oldSubmodule: file.oldSubmodule,
     oldSymlink: file.oldSymlink,
-  })).toString("base64url");
+  };
+  if (HOST === "cmux") {
+    try {
+      const selectedCwd = path.resolve(state.cwd || currentProviderCwd);
+      await liveProviderCwd();
+      if (path.resolve(currentProviderCwd) !== selectedCwd) {
+        const refreshed = await refreshState(false);
+        if (refreshed) showTransientStatus("Workspace changed · selection refreshed");
+        else if (!statusMessage.startsWith("Refresh failed:")) statusMessage = "Workspace changed · refresh queued";
+        draw();
+        return;
+      }
+      const opened = await openCmuxPreview({
+        run: runCommand,
+        cmux: cmuxExecutable(process.env),
+        cwd: currentProviderCwd,
+        workspaceId: currentWorkspaceId,
+        targetSurfaceId: cmuxMainSurfaceId,
+        ownerSurfaceId: cmuxDockSurfaceId,
+        ownerControlId: process.env.CMUX_DOCK_CONTROL_ID || "git-rail",
+        previewPath: file.path,
+        repoRoot: state.repoRoot || state.cwd,
+        descriptor: previewDescriptor,
+        metadata: previewMetadata,
+        maxFileBytes: state.config.limits.maxFileBytes,
+        tabName: previewTabName(file.path),
+        environment: process.env,
+      });
+      let previewStatus = `File opened · ${descriptorLabel(file.descriptor)}`;
+      if (opened.cleanupWarning) previewStatus += ` · ${safe(opened.cleanupWarning)}`;
+      if (opened.renameWarning) previewStatus += ` · ${safe(opened.renameWarning)}`;
+      showTransientStatus(previewStatus);
+    } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
+    draw();
+    return;
+  }
+  const herdr = process.env.HERDR_BIN_PATH || "herdr";
+  const workspaceId = currentWorkspaceId;
+  const sourceTabId = currentSourceTabId;
+  const descriptor = Buffer.from(JSON.stringify(previewDescriptor)).toString("base64url");
+  const metadata = Buffer.from(JSON.stringify(previewMetadata)).toString("base64url");
   const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
     "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot || state.cwd}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);
@@ -754,9 +849,10 @@ async function refreshState(announce = false) {
     refreshQueued = true;
     refreshQueuedAnnounce ||= announce;
     if (announce && !refreshVisible) { refreshVisible = true; draw(); }
-    return;
+    return false;
   }
   refreshRunning = true;
+  let succeeded = false;
   const generation = ++refreshGeneration;
   if (announce) { refreshVisible = true; draw(); }
   try {
@@ -782,6 +878,7 @@ async function refreshState(announce = false) {
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
       if (announce) showTransientStatus("Git state refreshed");
       else statusMessage = refreshStatusAfterSuccess(statusMessage, next.configErrors);
+      succeeded = true;
     }
   } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
   finally {
@@ -795,6 +892,7 @@ async function refreshState(announce = false) {
       reportAsync(refreshState(queuedAnnounce));
     }
   }
+  return succeeded;
 }
 async function startInvalidation() {
   if (demoMode) return;
@@ -897,6 +995,7 @@ function handleInput(key) {
   const match = key.match(/^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/);
   if (match) {
     const button = Number(match[1]); const column = Number(match[2]); const row = Number(match[3]); const phase = match[4];
+    interruptPointerClickSequence({ button, phase }, isDoubleClick);
     if (button === 64 && phase === "M") {
       if (helpVisible) helpScrollOffset = Math.max(0, helpScrollOffset - 3); else scrollOffset = Math.max(0, scrollOffset - 3);
     }
@@ -905,15 +1004,12 @@ function handleInput(key) {
     }
     if (!helpVisible && button === 0 && phase === "M") {
       const target = hitTargets.find((item) => item.row === row && column >= item.x1 && column <= item.x2);
-      if (target) {
-        const now = Date.now();
-        if (target.doubleAction && lastClick.label === target.label && now - lastClick.at <= 450) { reportAsync(target.doubleAction()); lastClick = { label: "", at: 0 }; }
-        else { target.action(); lastClick = { label: target.label, at: now }; }
-      }
+      activatePointerTarget(target, isDoubleClick, reportAsync);
     }
     scheduleDraw();
     return;
   }
+  interruptPointerClickSequence({ key }, isDoubleClick);
   if (key === "\u0003") { quit(); return; }
   if (helpVisible) {
     if (key === "?" || key === "q" || key === "\u001b") helpVisible = false;

@@ -19,6 +19,7 @@
     "fixture:verify": "node --test test/integration.test.mjs",
     "live:herdr:smoke": "node scripts/live-herdr-smoke.mjs",
     "live:release:smoke": "/bin/bash scripts/run-isolated-live-smoke.sh",
+    "cmux:launch": "/bin/bash scripts/node-launcher.sh scripts/open-cmux-dock.mjs",
     "uninstall:herdr": "/bin/bash scripts/node-launcher.sh scripts/uninstall-herdr-plugin.mjs",
     "check": "npm run lint && npm run test:coverage"
   },

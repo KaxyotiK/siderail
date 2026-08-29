@@ -264,6 +264,8 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   assert.match(plain, /HELP & LEGEND/);
   assert.match(plain, /⊡ Modified/);
   assert.match(plain, /⊠ Filesystem-only file/);
+  assert.match(plain, /Unstaged: tracked change not staged/);
+  assert.match(plain, /Untracked: not added to Git/);
   assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
   assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏\u001b\[0m\u001b\[48;2;45;41;34m/);
 });
@@ -342,17 +344,17 @@ test("preview processes coalesced search input, advances matches, and exposes ho
   let stdout = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => { stdout += chunk; });
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await waitFor(() => stdout.includes("Read-only preview"), "preview did not render");
   child.stdin.write("/return\r");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => /Match 1 of \d+/.test(stdout), "initial search results did not render");
   child.stdin.write("n");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => /Match 2 of \d+/.test(stdout), "search did not advance to the next match");
   child.stdin.write("/\u0015executableAvailable\r");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.includes("executableAvaila"), "replacement search result did not render");
   child.stdin.write("w");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => stdout.includes("w wrap:off"), "word wrap did not disable");
   child.stdin.write("\u001b[C");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => /↔ col (?:[2-9]|[1-9]\d+)/.test(stdout), "horizontal navigation did not advance");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);

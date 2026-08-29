@@ -9,6 +9,7 @@ import { assertSupportedNode } from "../src/node-version.mjs";
 
 const execFileAsync = promisify(execFile);
 const launcher = path.resolve("scripts/node-launcher.sh");
+const cmuxLauncher = path.resolve("scripts/cmux-node-launcher.sh");
 
 test("manifest routes every runtime entrypoint through an absolute shell and launcher", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
@@ -27,6 +28,33 @@ test("launcher accepts an absolute Node executable whose path contains spaces", 
     env: { GIT_RAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
   });
   assert.equal(result.stdout, "ok");
+});
+
+test("cmux bootstrap preserves an explicit Node executable through a restricted Dock PATH", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail cmux node path "));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const linkedNode = path.join(root, "node executable");
+  await fs.symlink(process.execPath, linkedNode);
+  const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write(process.env.GIT_RAIL_NODE_PATH)"], {
+    env: { GIT_RAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
+  });
+  assert.equal(result.stdout, linkedNode);
+});
+
+test("direct cmux bootstrap enters a login shell after GitRail exits", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail cmux shell "));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const fakeShell = path.join(root, "login shell");
+  await fs.writeFile(fakeShell, "#!/bin/bash\nprintf '|shell:%s' \"$1\"\n", { mode: 0o700 });
+  const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write('tui')"], {
+    env: {
+      GIT_RAIL_NODE_PATH: process.execPath,
+      GIT_RAIL_STAY_OPEN: "1",
+      SHELL: fakeShell,
+      PATH: "/untrusted",
+    },
+  });
+  assert.equal(result.stdout, "tui|shell:-l");
 });
 
 test("launcher rejects missing and unsupported Node before running the target", async (t) => {

@@ -1,0 +1,10 @@
+{
+  "controls": [
+    {
+      "id": "git-rail",
+      "title": "GitRail",
+      "command": "/bin/bash scripts/cmux-node-launcher.sh scripts/cmux-git-rail.mjs",
+      "cwd": "."
+    }
+  ]
+}

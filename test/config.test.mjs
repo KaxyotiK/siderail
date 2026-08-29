@@ -42,6 +42,18 @@ test("file previews open in a dedicated Herdr tab", async () => {
   assert.match(rail, /openOwnedPreview/);
 });
 
+test("cmux previews use native file tabs without changing the Herdr preview", async () => {
+  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  const cmuxLifecycle = await fs.readFile("src/cmux-preview-lifecycle.mjs", "utf8");
+  const herdrPreview = await fs.readFile("scripts/file-preview.mjs", "utf8");
+  assert.match(rail, /targetSurfaceId: cmuxMainSurfaceId/);
+  assert.match(rail, /ownerSurfaceId: cmuxDockSurfaceId/);
+  assert.match(cmuxLifecycle, /"open", materialized\.filePath/);
+  assert.doesNotMatch(cmuxLifecycle, /"diff", "-"/);
+  assert.match(cmuxLifecycle, /CMUX_SURFACE_ID: ""/);
+  assert.doesNotMatch(herdrPreview, /cmux|CMUX/);
+});
+
 test("preview scrolling repaints in place without clearing the screen", async () => {
   const preview = await fs.readFile("scripts/file-preview.mjs", "utf8");
   assert.equal(preview.includes("${ESC}2J"), false);

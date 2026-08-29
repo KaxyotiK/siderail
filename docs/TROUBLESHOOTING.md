@@ -6,6 +6,29 @@ Change a content pane in that Herdr tab into the intended worktree. GitRail
 follows the tab's focused content pane on refresh and on its recovery poll;
 press `r` to request an immediate refresh. Tabs are resolved independently.
 
+For cmux, GitRail resolves the selected main workspace's `current_directory`;
+it never uses its own Dock surface as the source. Confirm the intended main
+workspace is selected and press `r`. If cmux's socket is unavailable, the
+control falls back to the project cwd from `.cmux/dock.json`.
+
+## GitRail is missing from the cmux Dock
+
+Project Dock config seeds only a new Dock. A restored (including intentionally
+empty) Dock snapshot wins over `.cmux/dock.json`. Reload the Dock config or run
+`npm run cmux:launch` from a cmux terminal in the intended project. Review the
+project trust prompt whenever the Dock config fingerprint changes.
+
+If a preview cannot open, verify that `cmux open --help` is available and that
+the build supports v2 surface discovery and close.
+Direct Dock launch additionally needs `surface.create` with `initial_command`
+and `startup_environment`. See [CMUX.md](CMUX.md).
+
+Configured GitRail records active identity before cmux context discovery, and
+the direct launcher waits briefly when a configured control is still starting.
+Unrelated configured controls do not block direct launch. After `q` leaves the
+control at its login shell, `npm run cmux:launch` reuses that terminal and
+starts GitRail again.
+
 ## GitRail did not open automatically
 
 Automatic opening runs for each Git-backed tab when Herdr starts or emits
