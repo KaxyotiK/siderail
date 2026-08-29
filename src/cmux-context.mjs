@@ -9,6 +9,11 @@ function parseObject(stdout) {
   return value && typeof value === "object" ? value : {};
 }
 
+function surfaceRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  return payload?.surfaces || payload?.result?.surfaces || [];
+}
+
 function normalized(value) {
   const text = String(value || "").trim();
   return text || "";
@@ -153,6 +158,37 @@ export function selectedMainWorkspace(identifyPayload, workspacePayload, environ
   };
 }
 
+function selectedMainSurface(surfacePayload, mainSurfaceId, dockSurfaceId) {
+  const rows = surfaceRows(surfacePayload).filter((surface) => (
+    !normalized(surface.dock_scope)
+    && normalized(surface.id || surface.surface_id) !== normalized(dockSurfaceId)
+  ));
+  return rows.find((surface) => normalized(surface.id || surface.surface_id) === normalized(mainSurfaceId))
+    || rows.find((surface) => surface.focused === true)
+    || rows.find((surface) => surface.selected_in_pane === true)
+    || null;
+}
+
+function selectedDirectoryCandidates(main, surface) {
+  return [
+    surface?.resume_binding?.launch_command?.working_directory,
+    surface?.requested_working_directory,
+    surface?.current_directory,
+    surface?.resume_binding?.cwd,
+    main.cwd,
+  ].map(normalized).filter(Boolean);
+}
+
+async function directoryExists(candidate) {
+  try { return (await fs.stat(candidate)).isDirectory(); } catch { return false; }
+}
+
+async function selectedProjectDirectory(main, surface, projectFallback, isDirectory) {
+  const candidates = [...new Set(selectedDirectoryCandidates(main, surface).map((candidate) => path.resolve(candidate)))];
+  for (const candidate of candidates) if (await isDirectory(candidate)) return candidate;
+  return candidates[0] || path.resolve(projectFallback);
+}
+
 async function currentWorkspace({ run, cmux, identifyPayload, environment }) {
   const focused = identifyPayload?.focused || identifyPayload?.active || {};
   const caller = identifyPayload?.caller || {};
@@ -172,10 +208,12 @@ export async function resolveCmuxProjectContext({
   cmux = cmuxExecutable(),
   environment = process.env,
   fallbackCwd = process.cwd(),
+  isDirectory = directoryExists,
 } = {}) {
   const projectFallback = normalized(environment.GIT_RAIL_PROJECT_CWD) || fallbackCwd;
   let identifyPayload = {};
   let workspacePayload = {};
+  let surfacePayload = {};
   let warning = "";
   try {
     const identifyArgs = ["--json", "--id-format", "both", "identify"];
@@ -188,13 +226,29 @@ export async function resolveCmuxProjectContext({
     });
     identifyPayload = parseObject(identified.stdout);
     workspacePayload = await currentWorkspace({ run, cmux, identifyPayload, environment });
+    const main = selectedMainWorkspace(identifyPayload, workspacePayload, environment);
+    if (main.workspaceId) {
+      const listed = await run(cmux, [
+        "--json", "--id-format", "both", "list-panels", "--workspace", main.workspaceId,
+      ], {
+        env: environment,
+        timeoutMs: 3_000,
+        maxOutputBytes: 512 * 1_024,
+      });
+      surfacePayload = parseObject(listed.stdout);
+    }
   } catch (error) {
     warning = `cmux context unavailable: ${error.message}`;
   }
 
   const main = selectedMainWorkspace(identifyPayload, workspacePayload, environment);
+  const mainSurface = selectedMainSurface(
+    surfacePayload,
+    main.mainSurfaceId,
+    normalized(environment.CMUX_SURFACE_ID),
+  );
   return {
-    cwd: path.resolve(main.cwd || projectFallback),
+    cwd: await selectedProjectDirectory(main, mainSurface, projectFallback, isDirectory),
     workspaceId: main.workspaceId,
     windowId: main.windowId,
     mainSurfaceId: main.mainSurfaceId,

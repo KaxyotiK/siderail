@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } from "../src/cmux-context.mjs";
+import { startCmuxContextWatcher } from "../src/cmux-context-watch.mjs";
 import { openCmuxPreview } from "../src/cmux-preview-lifecycle.mjs";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
@@ -209,6 +210,7 @@ let refreshVisible = false;
 let refreshQueued = false;
 let refreshQueuedAnnounce = false;
 let refreshTimer;
+let cmuxContextWatcher;
 let invalidationScheduler;
 let renderTimer;
 let statusTimer;
@@ -962,11 +964,24 @@ function stopInvalidation(invalidatePending = true) {
   invalidationRepoRoot = "";
   invalidationSignature = "";
 }
+function startCmuxInvalidation() {
+  if (HOST !== "cmux" || cmuxContextWatcher) return;
+  cmuxContextWatcher = startCmuxContextWatcher({
+    cmux: cmuxExecutable(process.env),
+    environment: process.env,
+    windowId: cmuxOwnerWindowId,
+    onChange: (event) => {
+      debugLog("refresh-trigger", { source: "cmux-event", event: event.name });
+      reportAsync(refreshState(false));
+    },
+    onError: (error) => debugLog("cmux-context-watch", { outcome: "failed", error: safe(error.message) }),
+  });
+}
 let cleanupComplete = false;
 function cleanup() {
   if (cleanupComplete) return;
   cleanupComplete = true;
-  stopInvalidation(); clearTimeout(renderTimer); clearTimeout(statusTimer);
+  stopInvalidation(); cmuxContextWatcher?.close(); cmuxContextWatcher = undefined; clearTimeout(renderTimer); clearTimeout(statusTimer);
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
   if (snapshotEnvironmentRoot) { const root = snapshotEnvironmentRoot; snapshotEnvironmentRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
@@ -1077,6 +1092,7 @@ process.on("uncaughtException", fatal);
 process.on("unhandledRejection", fatal);
 process.stdout.on("resize", scheduleDraw);
 draw();
+startCmuxInvalidation();
 reportAsync(startInvalidation());
 if (process.env.NODE_ENV === "test" && process.env.GIT_RAIL_TEST_FATAL === "1") {
   queueMicrotask(() => { throw new Error("injected fatal error"); });
