@@ -8,9 +8,9 @@
   "viewers": {
     ".md": {
       "label": "Rendered",
-      "client": "ink",
-      "args": [],
-      "mode": "terminal",
+      "client": "glow",
+      "args": ["--width", "{width}"],
+      "mode": "embedded",
       "key": "3",
       "autoOpen": true
     },

@@ -33,20 +33,18 @@ Set `herdr.autoOpen` to `false` in GitRail configuration to opt out; the manual
 action remains available. `herdr.sidebarWidth` controls the initial rail width
 in terminal columns and defaults to 34.
 
-Install [Ink](https://github.com/borghei/ink) to use the installed Markdown
-default. On macOS with Homebrew:
+Install [Glow](https://github.com/charmbracelet/glow) to use the installed
+Markdown default. On macOS or Linux with Homebrew:
 
 ```bash
-brew tap borghei/tap
-brew trust --tap borghei/tap
-brew install borghei/tap/ink
+brew install glow
 ```
 
-On Linux, install the matching binary from Ink's releases and ensure `ink` is
-on `PATH`. GitRail opens `.md`, `.mdx`, and `.markdown` files in Ink's terminal
-UI, including terminal-rendered Mermaid diagrams supported by Ink. Press `q` in
-Ink to return to Diff/Raw in the GitRail preview; action `3 Rendered` opens Ink
-again. The viewer rule can be disabled or replaced in configuration. When Ink
+On Linux without Homebrew, install the matching binary from Glow's releases and
+ensure `glow` is on `PATH`. GitRail captures Glow's rendered output for `.md`,
+`.mdx`, and `.markdown` files and displays it in its own scrollable preview;
+action `3 Rendered` renders it again. The viewer rule can be disabled or
+replaced in configuration. When Glow
 is not on `PATH`, GitRail keeps wrapped Raw open with an installation hint.
 
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the

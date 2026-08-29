@@ -65,7 +65,7 @@ test("preview scrolling repaints in place without clearing the screen", async ()
   assert.equal(preview.includes("markdownEligible"), false);
   assert.match(preview, /resolveViewerActions\(config, filePath\)/);
   assert.match(preview, /viewerActions\.find/);
-  assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?Ink is not installed/);
+  assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?Glow is not installed/);
   assert.match(preview, /if \(!executableAvailable\(viewer\)\)[\s\S]*?if \(clientMode\(viewer\) === "embedded"\)/);
   assert.match(preview, /wrapAnsiTerminalLines/);
   assert.match(preview, /PgUp\/PgDn/);
@@ -129,10 +129,10 @@ test("configuration requires a version and rejects nested unknown keys", () => {
 
 test("viewer actions resolve conditionally by selected filename", () => {
   const markdown = resolveViewer(DEFAULT_CONFIG, "docs/README.md");
-  assert.equal(markdown.client, "ink");
+  assert.equal(markdown.client, "glow");
   assert.equal(markdown.label, "Rendered");
-  assert.equal(markdown.mode, "terminal");
-  assert.deepEqual(markdown.args, []);
+  assert.equal(markdown.mode, "embedded");
+  assert.deepEqual(markdown.args, ["--width", "{width}"]);
   assert.equal(markdown.autoOpen, true);
   assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.md").map(({ key, viewer }) => [key, viewer.label]), [
     ["3", "Rendered"], ["o", "Open"],

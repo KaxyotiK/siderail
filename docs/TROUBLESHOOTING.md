@@ -79,11 +79,11 @@ Patterns beginning with `.` match filename suffixes; other patterns match an
 exact basename. Glob-shaped keys such as `*.md` are rejected. Set a matching
 viewer to `{ "client": "none" }` to disable an inherited built-in action.
 The `*` rule matches every filename. No viewer auto-opens unless its rule sets
-`autoOpen: true`; the installed Markdown rules open Ink's terminal UI by
-default. Press `q` to return to GitRail. Explicit embedded viewers instead return
-bounded, sanitized terminal output to GitRail, which retains control of wrapping,
-scrolling, searching, and resizing.
-If Ink is missing, GitRail does not attempt to spawn it repeatedly: the preview
+`autoOpen: true`; the installed Markdown rules render with Glow inside GitRail's
+own preview by default. Embedded viewers return bounded, sanitized terminal
+output to GitRail, which retains control of wrapping, scrolling, searching, and
+resizing.
+If Glow is missing, GitRail does not attempt to spawn it repeatedly: the preview
 stays usable in Diff or wrapped Raw and reports how to disable auto-open.
 
 ## Binary or oversized preview

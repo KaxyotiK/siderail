@@ -66,7 +66,6 @@ const viewportFixtureCount = snapshotMode || process.env.NODE_ENV === "test"
   ? numberArg("--viewport-fixture-count")
   : null;
 const snapshotFrameCount = Math.max(1, snapshotMode ? numberArg("--snapshot-frames") || 1 : 1);
-const PAGE_SIZE = 100;
 const NARROW_RAIL_MAX = 88;
 
 function numberArg(name) {
@@ -226,7 +225,6 @@ const collapsedGroups = new Set();
 const collapsedFolders = new Map();
 const expandedCommits = new Set();
 const commitFiles = new Map();
-const pageSizes = new Map();
 const filesViewModels = new FilesViewModelCache();
 let filesViewGeneration = 0;
 let filesTabViewCache = null;
@@ -296,18 +294,6 @@ function searchField(query, active, placeholder, count, width) {
 }
 function treeGuides(row, width) { return `${C.faint}${treeBranchPrefix(row, width)}${C.reset}`; }
 
-function page(files, scope) {
-  const limit = pageSizes.get(scope) || PAGE_SIZE;
-  return { visible: files.slice(0, limit), remaining: Math.max(0, files.length - limit) };
-}
-function showMoreRow(scope, remaining) {
-  if (!remaining) return [];
-  return [interactive(
-    `${C.gold}  Show ${Math.min(PAGE_SIZE, remaining)} more${C.reset}  ${C.dim}(${remaining} remaining)${C.reset}`,
-    () => { pageSizes.set(scope, (pageSizes.get(scope) || PAGE_SIZE) + PAGE_SIZE); filesViewModels.invalidate(); statusMessage = `Loaded more ${scope}`; },
-    `Show more ${scope}`,
-  )];
-}
 function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot || state.cwd, file);
   revealSelected = true;
@@ -356,12 +342,11 @@ function fileRow(file, width, prefix = " ", keyboardItem = keyboardItemForFile(f
     return row;
   } };
 }
-function renderTree(files, width, scope, paginate = true) {
+function renderTree(files, width, scope) {
   if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
-  const paged = paginate ? page(files, scope) : { visible: files, remaining: 0 };
   const collapsed = collapsedFolders.get(scope);
-  const cacheKey = `${filesViewGeneration}:tree:${scope}:${paged.visible.length}:${[...collapsed].sort().join("\0")}`;
-  const rows = filesViewModels.rows(cacheKey, paged.visible, { mode: "tree", collapsed, scope }).map((row) => {
+  const cacheKey = `${filesViewGeneration}:tree:${scope}:${files.length}:${[...collapsed].sort().join("\0")}`;
+  return filesViewModels.rows(cacheKey, files, { mode: "tree", collapsed, scope }).map((row) => {
     const guides = treeGuides(row, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
     const open = !collapsed.has(row.path);
@@ -371,13 +356,11 @@ function renderTree(files, width, scope, paginate = true) {
       statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
     }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`) };
   });
-  return [...rows, ...showMoreRow(scope, paged.remaining)];
 }
-function renderGrouped(files, width, scope, paginate = true) {
-  const paged = paginate ? page(files, scope) : { visible: files, remaining: 0 };
+function renderGrouped(files, width, scope) {
   const lines = [];
-  const cacheKey = `${filesViewGeneration}:grouped:${scope}:${paged.visible.length}:${[...collapsedGroups].sort().join("\0")}`;
-  for (const row of filesViewModels.rows(cacheKey, paged.visible, { mode: "grouped", collapsed: collapsedGroups, scope })) {
+  const cacheKey = `${filesViewGeneration}:grouped:${scope}:${files.length}:${[...collapsedGroups].sort().join("\0")}`;
+  for (const row of filesViewModels.rows(cacheKey, files, { mode: "grouped", collapsed: collapsedGroups, scope })) {
     if (row.kind === "file") {
       const prefix = row.prefix === "last" ? `  ${C.faint}└─${C.reset} ` : row.prefix === "middle" ? `  ${C.faint}├─${C.reset} ` : " ";
       lines.push(fileRow(row.file, width, prefix));
@@ -389,12 +372,12 @@ function renderGrouped(files, width, scope, paginate = true) {
       `${row.open ? "Collapse" : "Expand"} folder: ${row.folder}`,
     ) });
   }
-  return [...lines, ...showMoreRow(scope, paged.remaining)];
+  return lines;
 }
-function renderFilesList(files, width, scope, paginate = true) {
+function renderFilesList(files, width, scope) {
   return resolvedViewMode(width) === "tree"
-    ? renderTree(files, width, scope, paginate)
-    : renderGrouped(files, width, scope, paginate);
+    ? renderTree(files, width, scope)
+    : renderGrouped(files, width, scope);
 }
 function search(files, rawQuery) {
   const query = rawQuery.trim().toLocaleLowerCase();
@@ -468,8 +451,7 @@ function renderChanges(width) {
       lines.push(...renderFilesList(section.files, width, `${section.id}:${query}`));
       return;
     }
-    const paged = page(section.commits, `commits:${query}`);
-    for (const commit of paged.visible) {
+    for (const commit of section.commits) {
       const manuallyOpen = expandedCommits.has(commit.hash);
       const expansion = commitExpansionState(query, commit.matchingPaths, manuallyOpen, commitFiles.has(commit.hash));
       const open = expansion.open;
@@ -501,7 +483,6 @@ function renderChanges(width) {
       } else if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
-    lines.push(...showMoreRow(`commits:${query}`, paged.remaining));
   });
   return lines;
 }

@@ -7,7 +7,7 @@ The eight hashed evidence cells are retained by evidence commit
 `ea182ee1070469f1c88c7bfadd469c97299c25ec` under
 `release-evidence/0.1.0/3aaaf05aa0f8adeb284adf4b30bb3171fe587b75/`.
 This repository does not use GitHub Actions. The `v0.1.0` tag does not exist;
-creating it remains a separately authorized operation. The Files-tree and Ink
+creating it remains a separately authorized operation. The Files-tree and Glow
 viewer changes after that candidate require a new candidate and new evidence;
 the current checkout is not tag-ready.
 
@@ -29,7 +29,7 @@ the current checkout is not tag-ready.
 | M6 | Refresh promises eventual, not atomic, consistency and preserves usable state | provider/refresh tests plus README contract | all | candidate pass |
 | M7 | Auto-open uses at most four workers and one 35-second deadline | bounded-sweep cases in `test/auto-open-herdr-tabs.test.mjs` | Herdr 0.8.x | candidate pass |
 | M8 | Preview search normalizes once, retains at most 8 MiB of prefix matches, and returns cached display positions without another position pass | `test/preview-search.test.mjs` including cached positions and 100,000 lines | all | candidate pass |
-| R1 | Raw, Diff, and the action-3 Ink TUI use the selected descriptor and exact revision bytes, including Mermaid rendering | exact-revision unit cases and isolated live smoke | macOS/Linux | pending new candidate |
+| R1 | Raw, Diff, and action-3 embedded Glow use the selected descriptor and exact revision bytes | exact-revision unit cases and isolated live smoke | macOS/Linux | pending new candidate |
 | R2 | Inspection never changes HEAD, refs, index, or worktree content | before/after repository invariant cases and isolated live smoke | macOS/Linux | candidate pass |
 | R3 | Uninstall closes only currently verified GitRail pane instances and leaves no restored/event rail | `test/uninstall-herdr-plugin.test.mjs`; isolated live smoke | Herdr 0.8.x | candidate pass |
 | L4 | `void` expressions, unused locals, and unused production exports fail lint; interactive async actions use explicit visible-error boundaries | `npm run lint` (ESLint + Knip), `reportAsync` action paths | Node 22+ | candidate pass |

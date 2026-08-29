@@ -12,8 +12,7 @@ intentional configuration changes documented here.
   clean-file preview semantics.
 - Adds descriptor-aware Diff and Raw views plus bounded in-preview search.
   Markdown files expose action `3 Rendered`, which opens exact revision bytes
-  in Ink's terminal UI, renders supported Mermaid diagrams in the terminal, and
-  returns to the GitRail preview when Ink exits.
+  with Glow inside GitRail's bounded, scrollable preview.
 - Separates Untracked from Unstaged with Git's `?` marker and makes all file
   rows keyboard reachable while materializing only the visible viewport.
 - Auto-opens one unfocused rail per Git-backed tab. Automatic and manual opening

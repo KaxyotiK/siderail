@@ -149,16 +149,18 @@ test("commit-history search filters expanded commit children", async (t) => {
   assert.doesNotMatch(plain, /rail\.mjs|status\.mjs/);
 });
 
-test("large repositories fully render Files while Changes stays paginated", async (t) => {
+test("large repositories fully render Changes and Files without continuation controls", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await Promise.all(Array.from({ length: 250 }, (_, index) => fs.writeFile(path.join(root, `file-${String(index).padStart(3, "0")}.txt`), `${index}\n`)));
   const script = path.resolve("scripts/git-rail.mjs");
-  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "120"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
+  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "270"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /Untracked  250/);
-  assert.match(plain, /Show 100 more\s+\(150 remaining\)/);
+  assert.match(plain, /file-000\.txt/);
+  assert.match(plain, /file-249\.txt/);
+  assert.doesNotMatch(plain, /Show \d+ more/);
 
   const filesSnapshot = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "270"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
   const filesPlain = filesSnapshot.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
@@ -422,6 +424,8 @@ done
   child.stdin.write("\u001b[6~");
   await new Promise((resolve) => setTimeout(resolve, 100));
   child.stdin.write("q");
+  await waitFor(() => stdout.includes("Source heading"), "q did not return from rendered Markdown to Raw");
+  child.stdin.write("q");
   const exitCode = await new Promise((resolve, reject) => {
     child.once("exit", resolve);
     child.once("error", reject);
@@ -511,25 +515,32 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   const deadline = Date.now() + 5_000;
   while (!stdout.includes("Rendered from stdin") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  const renderedOutput = stdout;
+  stdout = "";
+  child.stdin.write("q");
+  await waitFor(() => stdout.includes("Source heading"), "q did not return from embedded Glow to Raw");
   child.stdin.write("q");
   const exitCode = await new Promise((resolve, reject) => {
     child.once("exit", resolve);
     child.once("error", reject);
   });
   assert.equal(exitCode, 0, stderr);
-  assert.match(stdout, /3 Rendered/);
-  assert.match(stdout, /Rendered from stdin/);
-  assert.doesNotMatch(stdout, /Renderer returned no content/);
+  assert.match(renderedOutput, /3 Rendered/);
+  assert.match(renderedOutput, /Rendered from stdin/);
+  assert.doesNotMatch(renderedOutput, /Renderer returned no content/);
 });
 
-test("the built-in Markdown action auto-opens Ink TUI and action 3 opens it again", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-ink-tui-"));
+test("the built-in Markdown action auto-opens embedded Glow and action 3 renders it again", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-default-glow-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const renderer = path.join(root, "ink");
+  const renderer = path.join(root, "glow");
+  const calls = path.join(root, "glow-calls");
   await fs.writeFile(renderer, `#!/bin/sh
-test "$#" -eq 1 || exit 9
-test -f "$1" || exit 10
-printf 'Ink TUI opened\n'
+test "$#" -eq 2 || exit 9
+test "$1" = "--width" || exit 10
+case "$(cat)" in *'Source heading'*) ;; *) exit 11 ;; esac
+printf x >> '${calls}'
+printf 'Glow rendered from stdin\n'
 `);
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n");
@@ -555,19 +566,26 @@ printf 'Ink TUI opened\n'
   child.stdout.on("data", (chunk) => { stdout += chunk; });
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   const readyDeadline = Date.now() + 5_000;
-  while (!stdout.includes("Ink TUI opened") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  while (!stdout.includes("Glow rendered from stdin") && Date.now() < readyDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
   child.stdin.write("3");
   const launchDeadline = Date.now() + 5_000;
-  while ((stdout.match(/Ink TUI opened/g) || []).length < 2 && Date.now() < launchDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
+  while (Date.now() < launchDeadline) {
+    try { if ((await fs.readFile(calls, "utf8")).length >= 2) break; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const renderedOutput = stdout;
+  stdout = "";
+  child.stdin.write("q");
+  await waitFor(() => stdout.includes("Source heading"), "q did not return from built-in Glow to Raw");
   child.stdin.write("q");
   const exitCode = await new Promise((resolve, reject) => {
     child.once("exit", resolve);
     child.once("error", reject);
   });
   assert.equal(exitCode, 0, stderr);
-  assert.match(stdout, /3 Rendered/);
-  assert.equal((stdout.match(/Ink TUI opened/g) || []).length, 2);
-  assert.match(stdout, /Returned from ink/);
+  assert.match(renderedOutput, /3 Rendered/);
+  assert.equal((await fs.readFile(calls, "utf8")).length, 2);
+  assert.match(renderedOutput, /Glow rendered from stdin/);
 });
 
 test("preview reports repaint latency for a large allowed line count", async (t) => {

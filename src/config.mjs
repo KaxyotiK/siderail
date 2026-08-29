@@ -10,9 +10,9 @@ export const DEFAULT_CONFIG = deepFreeze({
   herdr: { autoOpen: true, sidebarWidth: 34 },
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "Rendered", client: "ink", args: [], mode: "terminal", key: "3", autoOpen: true },
-    ".mdx": { label: "Rendered", client: "ink", args: [], mode: "terminal", key: "3", autoOpen: true },
-    ".markdown": { label: "Rendered", client: "ink", args: [], mode: "terminal", key: "3", autoOpen: true },
+    ".md": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    ".mdx": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    ".markdown": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
     "*": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },

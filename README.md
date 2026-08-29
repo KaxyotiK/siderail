@@ -17,7 +17,7 @@ cmux's left/custom-sidebar interpreter or ExtensionKit. See
 - Node.js 22 or newer
 - Git 2.35 or newer
 - Herdr 0.8.x
-- Ink 0.7.x for rendered Markdown and Mermaid diagrams
+- Glow 2.x or newer for rendered Markdown
 - macOS or Linux
 
 The Herdr host requires Herdr 0.8.x. The cmux host instead requires a cmux
@@ -30,10 +30,9 @@ Herdr versions are outside the 0.1.0 validation target.
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. The installed defaults open `.md`, `.mdx`,
-and `.markdown` files in Ink's terminal UI. Ink renders supported Mermaid blocks
-as terminal diagrams. Press `q` in Ink to return to the GitRail preview. If Ink
+and `.markdown` files with Glow inside GitRail's own scrollable preview. If Glow
 is unavailable, GitRail keeps the wrapped Raw view open with an installation
-hint; Diff and Raw do not require Ink.
+hint; Diff and Raw do not require Glow.
 
 ## Install and launch
 
@@ -104,16 +103,15 @@ Live Herdr captures of that demo are available at
 - Escape clears the current selection; press Escape again to close GitRail.
   `q` closes GitRail immediately.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
-- Folder expanders and **Show more** rows in Changes are currently mouse
-  controls; commit expansion and file opening remain fully keyboard-accessible.
+- Folder expanders are currently mouse controls; commit expansion and file
+  opening remain fully keyboard-accessible.
 
 Against-base and Commits begin collapsed; Staged, Unstaged, and Untracked begin
 expanded. Untracked is a separate section immediately after Unstaged and uses
 Git's `?` marker, so a staged addition (`⊞`) cannot be confused with a file Git
 has not begun tracking.
-Files renders every discovered path immediately. Large Changes sections and
-commit history expose explicit **Show more** rows, so displayed totals never
-refer to unreachable content.
+Files and Changes render every discovered path immediately, and commit history
+renders every loaded commit.
 
 Files contains every tracked and untracked worktree path. Files changed since
 the merge base use the same status and statistics as Against-base; unchanged
@@ -133,7 +131,7 @@ wheel scrolls. A gold marker at the right edge shows the current position.
 Configured filename and extension matches add actions with explicit key
 bindings. Installed defaults provide `o Open` for every file and `3 Rendered`
 for `.md`, `.mdx`, and `.markdown` files. Markdown previews automatically enter
-Ink's terminal UI; `q` returns to GitRail, and `3` opens Ink again. `/` searches
+GitRail's embedded Glow view; `q` returns to Diff/Raw and `3` renders it again. `/` searches
 the current in-preview Diff or Raw content and `n`/`N` moves through matches. `e` opens the configured
 editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
@@ -262,7 +260,7 @@ width. File-specific
 rules win if two matching actions claim the same key. Preview navigation keys
 are reserved and rejected by validation. Version-1 rules without `key` retain
 legacy automatic numeric assignment. If no enabled rule matches, the preview omits
-viewer actions. The built-in Markdown defaults use Ink:
+viewer actions. The built-in Markdown defaults use Glow:
 
 ```json
 {
@@ -270,9 +268,9 @@ viewer actions. The built-in Markdown defaults use Ink:
   "viewers": {
     ".md": {
       "label": "Rendered",
-      "client": "ink",
-      "args": [],
-      "mode": "terminal",
+      "client": "glow",
+      "args": ["--width", "{width}"],
+      "mode": "embedded",
       "key": "3",
       "autoOpen": true
     }
@@ -306,9 +304,8 @@ and retain both filesystem invalidation and the recovery poll.
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`
 disables editing. External apps, including VS Code and Cursor, open outside
-Herdr. The built-in Markdown rule launches Ink as a terminal action. Set an
-explicit `embedded` viewer only when bounded captured output is
-preferred over the viewer's own interface.
+Herdr. The built-in Markdown rule captures bounded Glow output and displays it
+inside GitRail's own scrollable preview.
 
 Viewer and editor actions materialize the exact selected commit, Against-base,
 or staged revision with a bounded byte-preserving copy. This allows OS-default

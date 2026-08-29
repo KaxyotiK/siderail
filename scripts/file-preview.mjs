@@ -9,6 +9,7 @@ import { loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/previe
 import { runCommand } from "../src/process.mjs";
 import { MAX_SEARCH_QUERY_SCALARS, PreviewSearchIndex } from "../src/preview-search.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
+import { debugLog } from "../src/debug-log.mjs";
 import { retainExternalPreviewCopy } from "../src/temporary-copy-retention.mjs";
 import {
   commitComparisonSource,
@@ -44,6 +45,7 @@ const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
 const { config, errors: configErrors } = loadConfig();
 const viewerActions = resolveViewerActions(config, filePath);
 let activeMode = previewInitialMode(descriptor, metadata);
+let documentMode = activeMode;
 let scrollOffset = 0;
 let horizontalOffset = 0;
 let statusMessage = configErrors[0] || "Read-only preview";
@@ -214,6 +216,7 @@ function moveMatch(direction) {
 async function loadMode(mode) {
   const generation = ++loadGeneration;
   activeMode = mode;
+  documentMode = mode;
   activeEmbeddedAction = undefined;
   clearTimeout(embeddedResizeTimer);
   loading = true;
@@ -448,7 +451,7 @@ function render() {
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
-    `${C.dim}${fit(`w wrap:${wrapping() ? "on" : "off"} · j/k scroll · PgUp/PgDn${horizontalHelp} · / search · q close`, width)}${C.reset}`,
+    `${C.dim}${fit(`w wrap:${wrapping() ? "on" : "off"} · j/k scroll · PgUp/PgDn${horizontalHelp} · / search · q ${activeEmbeddedAction ? "back" : "close"}`, width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   visibleBodyRows = bodyHeight;
@@ -485,14 +488,26 @@ function cleanup() {
   if (temporaryDirectory) { try { fs.rmSync(temporaryDirectory, { recursive: true, force: true }); } catch {} temporaryDirectory = ""; }
   process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
-function quit() { cleanup(); process.exit(0); }
+function quit(reason = "requested") {
+  debugLog("preview-quit", { reason });
+  cleanup();
+  process.exit(0);
+}
 
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
 process.stdin.setEncoding("utf8");
 process.stdin.setRawMode?.(true);
 process.stdin.resume();
 function handleInput(key) {
-  if (key === "\u0003" || (!searchActive && (key === "q" || key === "\u001b"))) return quit();
+  if (key === "\u0003") return quit("ctrl-c");
+  if (!searchActive && key === "q") {
+    if (activeEmbeddedAction) {
+      reportAsync(loadMode(documentMode));
+      return;
+    }
+    return quit("q");
+  }
+  if (!searchActive && key === "\u001b") return quit("escape");
   const match = key.match(/^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/);
   if (match) {
     const button = Number(match[1]); const column = Number(match[2]); const row = Number(match[3]); const phase = match[4];
@@ -548,8 +563,8 @@ function handleInput(key) {
 }
 const inputDecoder = createTerminalInputDecoder(handleInput);
 process.stdin.on("data", (key) => inputDecoder.push(key));
-process.on("SIGTERM", quit);
-process.on("SIGINT", quit);
+process.on("SIGTERM", () => quit("sigterm"));
+process.on("SIGINT", () => quit("sigint"));
 process.on("exit", cleanup);
 process.stdout.on("resize", () => {
   invalidateLayout({ preserveAnchor: true });

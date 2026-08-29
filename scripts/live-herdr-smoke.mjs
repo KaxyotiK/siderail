@@ -233,14 +233,14 @@ function initializeFixture() {
   git(["init", "--initial-branch=main"]);
   git(["config", "user.name", "GitRail Smoke"]);
   git(["config", "user.email", "gitrail-smoke@example.invalid"]);
-  write("clean.md", "# Clean baseline\n\nInk baseline marker.\n");
+  write("clean.md", "# Clean baseline\n\nGlow baseline marker.\n");
   write("modified.md", "tracked baseline\n");
   git(["add", "."]);
   git(["commit", "-m", "baseline"]);
   append("modified.md", "unstaged marker\n");
-  write("staged.md", "# Staged Markdown\n\nInk staged marker.\n");
+  write("staged.md", "# Staged Markdown\n\nGlow staged marker.\n");
   git(["add", "staged.md"]);
-  write("untracked.md", "# Untracked Markdown\n\nInk rendered marker.\n\n```mermaid\nflowchart LR\n  A[Mermaid start] --> B[Mermaid done]\n```\n");
+  write("untracked.md", "# Untracked Markdown\n\nGlow rendered marker.\n\n- embedded viewer marker\n");
 }
 
 async function main() {
@@ -312,26 +312,23 @@ async function main() {
   assert.equal(tabPanes(previewA1.tab_id)[0].label, previewLabel);
   assert.ok(previewTabsBefore.some((tab) => tab.tab_id === previewA1.tab_id));
 
-  await eventually("automatic Ink TUI with rendered Mermaid", () => {
+  await eventually("automatic embedded Glow render", () => {
     const text = paneText(previewA1.pane_id);
-    return text.includes("Ink rendered marker") && text.includes("Mermaid start") && text.includes("Mermaid done")
-      && !text.includes("flowchart LR") && !text.includes("HERDR GITRAIL PREVIEW");
+    return text.includes("Glow rendered marker") && text.includes("embedded viewer marker")
+      && text.includes("HERDR GITRAIL PREVIEW");
   }, { timeout: 20_000 });
-  herdr(["pane", "send-text", previewA1.pane_id, "q"]);
-  await eventually("preview controls after Ink", () => /1 Diff\s+2 Raw\s+3 Rendered/.test(paneText(previewA1.pane_id)));
+  await eventually("preview controls with embedded Glow", () => /1 Diff\s+2 Raw\s+3 Rendered/.test(paneText(previewA1.pane_id)));
   herdr(["pane", "send-text", previewA1.pane_id, "1"]);
   await eventually("Diff action", () => paneText(previewA1.pane_id).includes("Untracked · index → worktree") || paneText(previewA1.pane_id).includes("Untracked · new file"));
   herdr(["pane", "send-text", previewA1.pane_id, "2"]);
-  await eventually("Raw action", () => paneText(previewA1.pane_id).includes("Ink rendered marker"));
+  await eventually("Raw action", () => paneText(previewA1.pane_id).includes("Glow rendered marker"));
   herdr(["pane", "send-text", previewA1.pane_id, "3"]);
-  await eventually("Ink TUI action with rendered Mermaid", () => {
+  await eventually("embedded Glow action", () => {
     const text = paneText(previewA1.pane_id);
-    return text.includes("Ink rendered marker") && text.includes("Mermaid start") && text.includes("Mermaid done")
-      && !text.includes("flowchart LR") && !text.includes("HERDR GITRAIL PREVIEW");
+    return text.includes("Glow rendered marker") && text.includes("embedded viewer marker")
+      && text.includes("HERDR GITRAIL PREVIEW");
   }, { timeout: 20_000 });
-  herdr(["pane", "send-text", previewA1.pane_id, "q"]);
-  await eventually("return from Ink TUI", () => paneText(previewA1.pane_id).includes("Returned from ink"));
-  observations.push("Diff/Raw/action-3 Ink TUI with Mermaid rendering and preview-tab exclusion");
+  observations.push("Diff/Raw/action-3 embedded Glow rendering and preview-tab exclusion");
 
   const beforeSourceBEvents = pluginLogCount();
   const sourceB = createTab(sourceA.workspaceId, fixtureRoot, "source-b");
