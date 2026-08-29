@@ -72,6 +72,15 @@ control's shell, instead of opening a duplicate. The command is useful when
 Dock session restore prevents config seeding or while developing the
 integration.
 
+On its first configured launch, GitRail registers the Dock surface with cmux's
+supported `surface resume` lifecycle. cmux displays its standard **Allow Resume
+Command?** dialog; choose **Auto-Restore** once. A saved Dock snapshot takes
+precedence over `dock.json` on later app launches, and this approved binding is
+what restarts GitRail inside that restored surface instead of leaving its login
+shell open. The binding is scoped to the exact Dock surface and window, uses the
+absolute launcher from the installed checkout, and remains subject to cmux's
+signed resume-command approval policy.
+
 Current cmux discovery does not expose a configured control id on every Dock
 surface. A running GitRail control therefore records its process-backed active
 instance and stable workspace/control/surface identity in the owner-only
