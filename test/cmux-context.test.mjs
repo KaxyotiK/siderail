@@ -164,6 +164,7 @@ test("cmux context resolves live main-area cwd while preserving every Dock ident
   assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
     ["/bundle/cmux", ["--json", "--id-format", "both", "identify"]],
     ["/bundle/cmux", ["--json", "--id-format", "both", "current-workspace", "--window", "window-1"]],
+    ["/bundle/cmux", ["--json", "--id-format", "both", "list-panels", "--workspace", "main-workspace"]],
   ]);
   assert.ok(calls.every((call) => call.options.env === environment));
 });
@@ -220,4 +221,90 @@ test("cmux context remains anchored to its owner window when global focus moves"
   assert.equal(result.cwd, "/repo/owner");
   assert.deepEqual(calls[0], ["--json", "--id-format", "both", "identify", "--window", "window-owner"]);
   assert.deepEqual(calls[1], ["--json", "--id-format", "both", "current-workspace", "--window", "window-owner"]);
+});
+
+test("cmux context recovers the selected project from the focused surface when workspace cwd is stale", async () => {
+  const environment = {
+    CMUX_SURFACE_ID: "dock-surface",
+    GIT_RAIL_PROJECT_CWD: "/integration/checkout",
+  };
+  const run = async (_command, args) => {
+    if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
+      window_id: "window-1", workspace_id: "workspace-1", surface_id: "main-surface",
+    } }) };
+    if (args.includes("current-workspace")) return { stdout: JSON.stringify({
+      id: "workspace-1", window_id: "window-1", current_directory: "/stale/selected/project",
+    }) };
+    return { stdout: JSON.stringify({ surfaces: [{
+      id: "main-surface",
+      focused: true,
+      requested_working_directory: "/also/stale/project",
+      resume_binding: {
+        cwd: "/selected/project",
+        launch_command: { working_directory: "/selected/project" },
+      },
+    }, {
+      id: "dock-surface",
+      dock_scope: "global",
+      focused: true,
+      requested_working_directory: "/integration/checkout",
+    }] }) };
+  };
+  const result = await resolveCmuxProjectContext({
+    run,
+    environment,
+    fallbackCwd: "/fallback",
+    isDirectory: async (candidate) => candidate === "/selected/project",
+  });
+  assert.equal(result.cwd, "/selected/project");
+  assert.equal(result.mainSurfaceId, "main-surface");
+});
+
+test("cmux context pins a valid main-surface launch folder when Dock activity contaminates workspace cwd", async () => {
+  const run = async (_command, args) => {
+    if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
+      window_id: "window-1", workspace_id: "workspace-1", surface_id: "main-surface",
+    } }) };
+    if (args.includes("current-workspace")) return { stdout: JSON.stringify({
+      id: "workspace-1", window_id: "window-1", current_directory: "/repo/other",
+    }) };
+    return { stdout: JSON.stringify({ surfaces: [{
+      id: "main-surface",
+      focused: true,
+      requested_working_directory: "/repo/selected",
+    }, {
+      id: "dock-surface",
+      dock_scope: "global",
+      focused: true,
+      requested_working_directory: "/repo/other",
+    }] }) };
+  };
+  const result = await resolveCmuxProjectContext({
+    run,
+    environment: { CMUX_SURFACE_ID: "dock-surface" },
+    isDirectory: async (candidate) => candidate === "/repo/selected" || candidate === "/repo/other",
+  });
+  assert.equal(result.cwd, "/repo/selected");
+  assert.equal(result.mainSurfaceId, "main-surface");
+});
+
+test("cmux context never substitutes the GitRail Dock cwd for a missing selected project", async () => {
+  const run = async (_command, args) => {
+    if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
+      workspace_id: "workspace-1", surface_id: "dock-surface",
+    } }) };
+    if (args.includes("current-workspace")) return { stdout: JSON.stringify({
+      id: "workspace-1", current_directory: "/missing/selected/project",
+    }) };
+    return { stdout: JSON.stringify({ surfaces: [{
+      id: "dock-surface", dock_scope: "global", requested_working_directory: "/integration/checkout",
+    }] }) };
+  };
+  const result = await resolveCmuxProjectContext({
+    run,
+    environment: { CMUX_SURFACE_ID: "dock-surface", GIT_RAIL_PROJECT_CWD: "/integration/checkout" },
+    isDirectory: async (candidate) => candidate === "/integration/checkout",
+  });
+  assert.equal(result.cwd, "/missing/selected/project");
+  assert.notEqual(result.cwd, "/integration/checkout");
 });

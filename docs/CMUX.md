@@ -87,11 +87,15 @@ cmux injects `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`,
 terminal. GitRail retains all four values as host identity, but it does not
 assume the Dock surface is the source surface.
 
-On each refresh GitRail asks cmux for the selected main workspace and uses its
-`current_directory`. This follows main-area directory changes while excluding
-the GitRail Dock surface from source selection. `cwd: "."` supplies the
-project-directory fallback if the cmux socket is temporarily unavailable.
-This also handles cmux versions where a Dock terminal's
+GitRail asks cmux for the selected main workspace and focused main-area surface,
+excluding every Dock surface from source selection. A valid launch or requested
+working directory on that main-area surface pins the selected project even when
+cmux's workspace `current_directory` was most recently updated by a window Dock
+terminal. Resume and live workspace directories remain bounded recovery paths
+when the main surface has no valid project folder. A scoped cmux event stream refreshes the provider as soon as
+workspace, pane, or surface selection changes, while the ordinary bounded poll
+remains a recovery path. `cwd: "."` supplies the project-directory fallback only
+when cmux exposes no selected source path. This also handles cmux versions where a Dock terminal's
 `CMUX_WORKSPACE_ID` names a Dock/window owner rather than the selected main
 workspace.
 
