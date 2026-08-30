@@ -33,19 +33,11 @@ Set `herdr.autoOpen` to `false` in GitRail configuration to opt out; the manual
 action remains available. `herdr.sidebarWidth` controls the initial rail width
 in terminal columns and defaults to 34.
 
-Install [Glow](https://github.com/charmbracelet/glow) to use the installed
-Markdown default. On macOS or Linux with Homebrew:
-
-```bash
-brew install glow
-```
-
-On Linux without Homebrew, install the matching binary from Glow's releases and
-ensure `glow` is on `PATH`. GitRail captures Glow's rendered output for `.md`,
-`.mdx`, and `.markdown` files and displays it in its own scrollable preview;
-action `3 Rendered` renders it again. The viewer rule can be disabled or
-replaced in configuration. When Glow
-is not on `PATH`, GitRail keeps wrapped Raw open with an installation hint.
+In Herdr, `.md`, `.mdx`, and `.markdown` files open directly in the operating
+system's default application through macOS `open` or Linux `xdg-open`; GitRail
+does not create a preview tab first. The viewer rule can be disabled or replaced
+in configuration. Glow is optional and can still be configured as an embedded
+or terminal viewer.
 
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the
 checkout, run `npm ci --ignore-scripts` and `npm run check`, relink with

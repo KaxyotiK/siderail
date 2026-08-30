@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } from "../src/cmux-context.mjs";
 import { startCmuxContextWatcher } from "../src/cmux-context-watch.mjs";
 import { openCmuxPreview } from "../src/cmux-preview-lifecycle.mjs";
+import { resolveDirectMarkdownOpen } from "../src/config.mjs";
+import { openExternalFile } from "../src/direct-file-open.mjs";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
 import {
@@ -804,6 +806,26 @@ async function openPreview(file) {
         statusAfterBusy(statusBeforeOpen, openingStatus, statusMessage),
       );
     } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
+    draw();
+    return;
+  }
+  const directMarkdown = resolveDirectMarkdownOpen(state.config, file.path);
+  if (directMarkdown) {
+    try {
+      const opened = await openExternalFile({
+        viewer: directMarkdown.viewer,
+        repoRoot: state.repoRoot || state.cwd,
+        filePath: file.path,
+        descriptor: previewDescriptor,
+        metadata: previewMetadata,
+        maxFileBytes: state.config.limits.maxFileBytes,
+        temporarySource: demoMode,
+        environment: process.env,
+      });
+      let directStatus = `Opened ${safe(file.path)} with the system app`;
+      if (opened.retentionWarning) directStatus += ` · ${safe(opened.retentionWarning)}`;
+      showTransientStatus(directStatus);
+    } catch (error) { statusMessage = `Open failed: ${safe(error.message)}`; }
     draw();
     return;
   }

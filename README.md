@@ -17,7 +17,6 @@ cmux's left/custom-sidebar interpreter or ExtensionKit. See
 - Node.js 22 or newer
 - Git 2.35 or newer
 - Herdr 0.8.x
-- Glow 2.x or newer for rendered Markdown
 - macOS or Linux
 
 The Herdr host requires Herdr 0.8.x. The cmux host instead requires a cmux
@@ -29,10 +28,9 @@ Node 22 and 24 and covers Herdr 0.8.x; other supported Node releases and newer
 Herdr versions are outside the 0.1.0 validation target.
 
 No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
-editor configuration when provided. The installed defaults open `.md`, `.mdx`,
-and `.markdown` files with Glow inside GitRail's own scrollable preview. If Glow
-is unavailable, GitRail keeps the wrapped Raw view open with an installation
-hint; Diff and Raw do not require Glow.
+editor configuration when provided. In Herdr, the installed defaults open
+`.md`, `.mdx`, and `.markdown` files directly in the operating system's default
+application, bypassing the generic Diff/Raw preview entirely.
 
 ## Install and launch
 
@@ -129,9 +127,10 @@ starts in the selected descriptor's exact diff, or Raw for a clean file. Use
 scroll by a viewport, `Ctrl-U`/`Ctrl-D` scroll by half a viewport, and the mouse
 wheel scrolls. A gold marker at the right edge shows the current position.
 Configured filename and extension matches add actions with explicit key
-bindings. Installed defaults provide `o Open` for every file and `3 Rendered`
-for `.md`, `.mdx`, and `.markdown` files. Markdown previews automatically enter
-GitRail's embedded Glow view; `q` returns to Diff/Raw and `3` renders it again. `/` searches
+bindings. Installed defaults provide `o Open` for every file. In Herdr,
+`.md`, `.mdx`, and `.markdown` automatically use that system action without
+creating a preview tab. If system open is unavailable or disabled, the generic
+preview remains the fallback. `/` searches
 the current in-preview Diff or Raw content and `n`/`N` moves through matches. `e` opens the configured
 editor; historical,
 Against-base, staged, and deleted selections use an owner-only temporary copy of
@@ -260,18 +259,18 @@ width. File-specific
 rules win if two matching actions claim the same key. Preview navigation keys
 are reserved and rejected by validation. Version-1 rules without `key` retain
 legacy automatic numeric assignment. If no enabled rule matches, the preview omits
-viewer actions. The built-in Markdown defaults use Glow:
+viewer actions. The built-in Markdown defaults use the system application:
 
 ```json
 {
   "version": 1,
   "viewers": {
     ".md": {
-      "label": "Rendered",
-      "client": "glow",
-      "args": ["--width", "{width}"],
-      "mode": "embedded",
-      "key": "3",
+      "label": "Open",
+      "client": "system",
+      "args": [],
+      "mode": "external",
+      "key": "o",
       "autoOpen": true
     }
   }
@@ -304,8 +303,9 @@ and retain both filesystem invalidation and the recovery poll.
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`
 disables editing. External apps, including VS Code and Cursor, open outside
-Herdr. The built-in Markdown rule captures bounded Glow output and displays it
-inside GitRail's own scrollable preview.
+Herdr. The built-in Markdown rule invokes macOS `open` or Linux `xdg-open`
+directly from the rail, so it never creates the generic preview tab. Embedded
+renderers such as Glow remain available through explicit viewer configuration.
 
 Viewer and editor actions materialize the exact selected commit, Against-base,
 or staged revision with a bounded byte-preserving copy. This allows OS-default

@@ -7,11 +7,11 @@
   },
   "viewers": {
     ".md": {
-      "label": "Rendered",
-      "client": "glow",
-      "args": ["--width", "{width}"],
-      "mode": "embedded",
-      "key": "3",
+      "label": "Open",
+      "client": "system",
+      "args": [],
+      "mode": "external",
+      "key": "o",
       "autoOpen": true
     },
     ".pdf": {

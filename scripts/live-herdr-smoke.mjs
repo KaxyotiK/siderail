@@ -233,14 +233,14 @@ function initializeFixture() {
   git(["init", "--initial-branch=main"]);
   git(["config", "user.name", "GitRail Smoke"]);
   git(["config", "user.email", "gitrail-smoke@example.invalid"]);
-  write("clean.md", "# Clean baseline\n\nGlow baseline marker.\n");
-  write("modified.md", "tracked baseline\n");
+  write("clean.txt", "Clean baseline\n");
+  write("modified.txt", "tracked baseline\n");
   git(["add", "."]);
   git(["commit", "-m", "baseline"]);
-  append("modified.md", "unstaged marker\n");
-  write("staged.md", "# Staged Markdown\n\nGlow staged marker.\n");
-  git(["add", "staged.md"]);
-  write("untracked.md", "# Untracked Markdown\n\nGlow rendered marker.\n\n- embedded viewer marker\n");
+  append("modified.txt", "unstaged marker\n");
+  write("staged.txt", "Staged text marker\n");
+  git(["add", "staged.txt"]);
+  write("untracked.txt", "Untracked text marker\n");
 }
 
 async function main() {
@@ -266,7 +266,7 @@ async function main() {
     const text = paneText(railA.pane_id);
     return text.includes("Staged") && text.includes("Untracked") ? text : "";
   });
-  for (const expected of ["Staged", "Unstaged", "Untracked", "staged.md", "modified.md", "untracked.md", "?"]) {
+  for (const expected of ["Staged", "Unstaged", "Untracked", "staged.txt", "modified.txt", "untracked.txt", "?"]) {
     assert.match(railState, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   observations.push("auto-open and Staged/Unstaged/Untracked separation");
@@ -306,29 +306,18 @@ async function main() {
   observations.push("manual Toggle and automatic/manual unsafe-layout skips without pane reconstruction");
 
   focusTab(sourceA.tabId);
-  const previewA1 = await openFileFromRail(rebuiltRailA.pane_id, "untracked.md");
+  const previewA1 = await openFileFromRail(rebuiltRailA.pane_id, "untracked.txt");
   const previewTabsBefore = tabs();
   await eventually("preview tab auto-open exclusion", () => tabPanes(previewA1.tab_id).length === 1);
   assert.equal(tabPanes(previewA1.tab_id)[0].label, previewLabel);
   assert.ok(previewTabsBefore.some((tab) => tab.tab_id === previewA1.tab_id));
 
-  await eventually("automatic embedded Glow render", () => {
-    const text = paneText(previewA1.pane_id);
-    return text.includes("Glow rendered marker") && text.includes("embedded viewer marker")
-      && text.includes("HERDR GITRAIL PREVIEW");
-  }, { timeout: 20_000 });
-  await eventually("preview controls with embedded Glow", () => /1 Diff\s+2 Raw\s+3 Rendered/.test(paneText(previewA1.pane_id)));
+  await eventually("preview controls", () => /1 Diff\s+2 Raw/.test(paneText(previewA1.pane_id)));
   herdr(["pane", "send-text", previewA1.pane_id, "1"]);
   await eventually("Diff action", () => paneText(previewA1.pane_id).includes("Untracked · index → worktree") || paneText(previewA1.pane_id).includes("Untracked · new file"));
   herdr(["pane", "send-text", previewA1.pane_id, "2"]);
-  await eventually("Raw action", () => paneText(previewA1.pane_id).includes("Glow rendered marker"));
-  herdr(["pane", "send-text", previewA1.pane_id, "3"]);
-  await eventually("embedded Glow action", () => {
-    const text = paneText(previewA1.pane_id);
-    return text.includes("Glow rendered marker") && text.includes("embedded viewer marker")
-      && text.includes("HERDR GITRAIL PREVIEW");
-  }, { timeout: 20_000 });
-  observations.push("Diff/Raw/action-3 embedded Glow rendering and preview-tab exclusion");
+  await eventually("Raw action", () => paneText(previewA1.pane_id).includes("Untracked text marker"));
+  observations.push("Diff/Raw preview controls and preview-tab exclusion");
 
   const beforeSourceBEvents = pluginLogCount();
   const sourceB = createTab(sourceA.workspaceId, fixtureRoot, "source-b");
@@ -336,11 +325,11 @@ async function main() {
   run(process.execPath, ["scripts/auto-open-herdr-tabs.mjs"], { timeout: 45_000 });
   const railB = await railFor(sourceB.tabId);
   focusTab(sourceB.tabId);
-  const previewB1 = await openFileFromRail(railB.pane_id, "staged.md");
+  const previewB1 = await openFileFromRail(railB.pane_id, "staged.txt");
   assertPaneExists(previewA1.pane_id);
 
   focusTab(sourceA.tabId);
-  const previewA2 = await openFileFromRail(rebuiltRailA.pane_id, "modified.md");
+  const previewA2 = await openFileFromRail(rebuiltRailA.pane_id, "modified.txt");
   await eventually("source-A preview replacement", () => !panes().some((pane) => pane.pane_id === previewA1.pane_id), { timeout: 30_000 });
   assertPaneExists(previewA2.pane_id);
   assertPaneExists(previewB1.pane_id);

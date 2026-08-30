@@ -530,7 +530,7 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
   assert.doesNotMatch(renderedOutput, /Renderer returned no content/);
 });
 
-test("the built-in Markdown action auto-opens embedded Glow and action 3 renders it again", async (t) => {
+test("a configured Markdown action auto-opens embedded Glow and action 3 renders it again", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-default-glow-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const renderer = path.join(root, "glow");
@@ -545,6 +545,12 @@ printf 'Glow rendered from stdin\n'
   await fs.chmod(renderer, 0o700);
   await fs.writeFile(path.join(root, "README.md"), "# Source heading\n");
   const { environment } = hermeticEnvironment(t, { PATH: `${root}${path.delimiter}${process.env.PATH || ""}` });
+  await writeUserConfig(environment, {
+    version: 1,
+    viewers: {
+      ".md": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    },
+  });
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
   const metadata = Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url");
   const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {

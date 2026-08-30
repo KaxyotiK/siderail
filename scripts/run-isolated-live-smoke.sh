@@ -5,7 +5,6 @@ candidate_root=$(cd "$(dirname "$0")/.." && pwd -P)
 herdr_bin=${HERDR_BIN_PATH:-$(command -v herdr)}
 node_bin=$(command -v node)
 git_bin=$(command -v git)
-glow_bin=$(command -v glow)
 node_major=$($node_bin -p 'process.versions.node.split(".")[0]')
 case "$node_major" in
   22|24) ;;
@@ -34,7 +33,6 @@ mkdir -p "$release_bin"
 ln -s "$git_bin" "$release_bin/git"
 ln -s "$node_bin" "$release_bin/node"
 ln -s "$herdr_bin" "$release_bin/herdr"
-ln -s "$glow_bin" "$release_bin/glow"
 ln -s /bin/bash "$release_bin/bash"
 ln -s "$(command -v dirname)" "$release_bin/dirname"
 export HERDR_BIN_PATH=$herdr_bin
@@ -85,5 +83,5 @@ for watch_mode in watch-only poll-only; do
   stop_server
 done
 
-printf 'isolated live smoke passed with %s, %s, and %s\n' \
-  "$($herdr_bin --version)" "$($node_bin --version)" "$($glow_bin --version | head -1)"
+printf 'isolated live smoke passed with %s and %s\n' \
+  "$($herdr_bin --version)" "$($node_bin --version)"

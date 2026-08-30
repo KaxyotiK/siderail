@@ -11,8 +11,8 @@ intentional configuration changes documented here.
   Herdr tab, with exact Against-base, Commit, Staged, Unstaged, Untracked, and
   clean-file preview semantics.
 - Adds descriptor-aware Diff and Raw views plus bounded in-preview search.
-  Markdown files expose action `3 Rendered`, which opens exact revision bytes
-  with Glow inside GitRail's bounded, scrollable preview.
+  In Herdr, Markdown files open exact revision bytes directly in the operating
+  system's default application, bypassing the generic file preview entirely.
 - Separates Untracked from Unstaged with Git's `?` marker and makes all file
   rows keyboard reachable while materializing only the visible viewport.
 - Auto-opens one unfocused rail per Git-backed tab. Automatic and manual opening

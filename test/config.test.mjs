@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { clientMode, DEFAULT_CONFIG, executableAvailable, launchExecutable, loadConfig, resolveViewer, resolveViewerActions, resolveViewers, validateConfig } from "../src/config.mjs";
+import { clientMode, DEFAULT_CONFIG, executableAvailable, launchExecutable, loadConfig, resolveDirectMarkdownOpen, resolveViewer, resolveViewerActions, resolveViewers, validateConfig } from "../src/config.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 async function writeUserConfig(environment, value) {
@@ -35,6 +35,8 @@ test("file previews open in a dedicated Herdr tab", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
   const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
   assert.match(manifest, /id = "file-preview"[\s\S]*?placement = "tab"/);
+  assert.match(rail, /resolveDirectMarkdownOpen\(state\.config, file\.path\)/);
+  assert.match(rail, /openExternalFile/);
   assert.match(rail, /"--entrypoint", "file-preview", "--placement", "tab"/);
   assert.match(rail, /oldSubmodule: file\.oldSubmodule/);
   assert.match(rail, /oldSymlink: file\.oldSymlink/);
@@ -129,13 +131,13 @@ test("configuration requires a version and rejects nested unknown keys", () => {
 
 test("viewer actions resolve conditionally by selected filename", () => {
   const markdown = resolveViewer(DEFAULT_CONFIG, "docs/README.md");
-  assert.equal(markdown.client, "glow");
-  assert.equal(markdown.label, "Rendered");
-  assert.equal(markdown.mode, "embedded");
-  assert.deepEqual(markdown.args, ["--width", "{width}"]);
+  assert.equal(markdown.client, "system");
+  assert.equal(markdown.label, "Open");
+  assert.equal(markdown.mode, "external");
+  assert.deepEqual(markdown.args, []);
   assert.equal(markdown.autoOpen, true);
   assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.md").map(({ key, viewer }) => [key, viewer.label]), [
-    ["3", "Rendered"], ["o", "Open"],
+    ["o", "Open"],
   ]);
   assert.deepEqual(resolveViewerActions(DEFAULT_CONFIG, "docs/README.txt").map(({ key, viewer }) => [key, viewer.label]), [
     ["o", "Open"],
@@ -182,6 +184,22 @@ test("viewer executable preflight detects commands without invoking them", async
   assert.equal(executableAvailable({ client: "builtin", mode: "auto" }, { PATH: "" }), true);
   assert.equal(launchExecutable({ client: "system" }, "darwin"), "open");
   assert.equal(launchExecutable({ client: "system" }, "linux"), "xdg-open");
+});
+
+test("installed Markdown rules bypass the generic preview only when system open is directly usable", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-direct-markdown-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const open = path.join(root, "open");
+  await fs.writeFile(open, "#!/bin/sh\nexit 0\n");
+  await fs.chmod(open, 0o700);
+  const environment = { PATH: root };
+
+  assert.equal(resolveDirectMarkdownOpen(DEFAULT_CONFIG, "docs/README.md", environment, "darwin")?.viewer.client, "system");
+  assert.equal(resolveDirectMarkdownOpen(DEFAULT_CONFIG, "docs/README.MDX", environment, "darwin")?.key, "o");
+  assert.equal(resolveDirectMarkdownOpen(DEFAULT_CONFIG, "docs/README.txt", environment, "darwin"), null);
+  assert.equal(resolveDirectMarkdownOpen(DEFAULT_CONFIG, "docs/README.md", { PATH: "" }, "darwin"), null);
+  assert.equal(resolveDirectMarkdownOpen({ viewers: { ".md": { client: "system", mode: "external", autoOpen: false, key: "o" } } }, "README.md", environment, "darwin"), null);
+  assert.equal(resolveDirectMarkdownOpen({ viewers: { ".md": { client: "glow", mode: "embedded", autoOpen: true, key: "3" } } }, "README.md", environment, "darwin"), null);
 });
 
 test("configuration rejects mistyped structured values", () => {

@@ -10,9 +10,9 @@ export const DEFAULT_CONFIG = deepFreeze({
   herdr: { autoOpen: true, sidebarWidth: 34 },
   editor: { client: "none", args: [], mode: "auto" },
   viewers: {
-    ".md": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
-    ".mdx": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
-    ".markdown": { label: "Rendered", client: "glow", args: ["--width", "{width}"], mode: "embedded", key: "3", autoOpen: true },
+    ".md": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: true },
+    ".mdx": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: true },
+    ".markdown": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: true },
     "*": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: false },
   },
   refresh: { pollIntervalMs: 10_000 },
@@ -258,6 +258,16 @@ export function executableAvailable(config, env = process.env, platform = proces
   return candidates.some((candidate) => {
     try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
   });
+}
+
+export function resolveDirectMarkdownOpen(config, filePath, env = process.env, platform = process.platform) {
+  if (!/\.(?:md|mdx|markdown)$/i.test(path.basename(filePath))) return null;
+  const action = resolveViewerActions(config, filePath).find(({ viewer }) => (
+    viewer.autoOpen
+    && clientMode(viewer) === "external"
+    && viewer.client === "system"
+  ));
+  return action && executableAvailable(action.viewer, env, platform) ? action : null;
 }
 
 export function clientMode(config) {
