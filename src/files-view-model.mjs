@@ -1,5 +1,19 @@
 import path from "node:path";
 
+export function folderCollapseKeys(files, { mode, scope = "files" }) {
+  const keys = new Set();
+  for (const file of files) {
+    const parts = file.path.split("/");
+    if (mode === "grouped") {
+      const folder = path.dirname(file.path) === "." ? "" : path.dirname(file.path);
+      if (folder) keys.add(`${scope}:${folder}`);
+      continue;
+    }
+    for (let index = 1; index < parts.length; index += 1) keys.add(parts.slice(0, index).join("/"));
+  }
+  return keys;
+}
+
 function treeRows(files, collapsed) {
   const root = { children: new Map() };
   for (const file of files) {

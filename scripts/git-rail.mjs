@@ -16,7 +16,7 @@ import {
   shouldInstallRecoveryPoll,
   shouldInstallWatchers,
 } from "../src/git-watch.mjs";
-import { FilesViewModelCache, treeBranchPrefix } from "../src/files-view-model.mjs";
+import { FilesViewModelCache, folderCollapseKeys, treeBranchPrefix } from "../src/files-view-model.mjs";
 import { debugLog } from "../src/debug-log.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resolveHerdrTabCwd } from "../src/herdr-context.mjs";
@@ -226,6 +226,7 @@ const expanded = { against: false, commits: false, staged: true, unstaged: true,
 const sectionIds = ["against", "commits", "staged", "unstaged", "untracked"];
 const collapsedGroups = new Set();
 const collapsedFolders = new Map();
+const knownFolders = new Map();
 const expandedCommits = new Set();
 const commitFiles = new Map();
 const filesViewModels = new FilesViewModelCache();
@@ -345,23 +346,50 @@ function fileRow(file, width, prefix = " ", keyboardItem = keyboardItemForFile(f
     return row;
   } };
 }
-function renderTree(files, width, scope) {
-  if (!collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
-  const collapsed = collapsedFolders.get(scope);
+function folderState(files, mode, scope, expandByDefault = false) {
+  if (mode === "tree" && !collapsedFolders.has(scope)) collapsedFolders.set(scope, new Set());
+  const collapsed = mode === "tree" ? collapsedFolders.get(scope) : collapsedGroups;
+  if (!knownFolders.has(`${mode}:${scope}`)) knownFolders.set(`${mode}:${scope}`, new Set());
+  const known = knownFolders.get(`${mode}:${scope}`);
+  for (const key of folderCollapseKeys(files, { mode, scope })) {
+    if (!known.has(key) && !expandByDefault) collapsed.add(key);
+    known.add(key);
+  }
+  return collapsed;
+}
+function folderKeyboardItem({ mode, scope, key, label, collapsed }) {
+  const identity = `${state.repoRoot || state.cwd}\0folder\0${mode}\0${scope}\0${key}`;
+  return {
+    identity,
+    status: `Folder · ${label}`,
+    action: () => {
+      const open = !collapsed.has(key);
+      if (open) collapsed.add(key); else collapsed.delete(key);
+      filesViewModels.invalidate();
+      statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(label)}`;
+    },
+  };
+}
+function renderTree(files, width, scope, expandByDefault = false) {
+  const collapsed = folderState(files, "tree", scope, expandByDefault);
   const cacheKey = `${filesViewGeneration}:tree:${scope}:${files.length}:${[...collapsed].sort().join("\0")}`;
   return filesViewModels.rows(cacheKey, files, { mode: "tree", collapsed, scope }).map((row) => {
     const guides = treeGuides(row, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
     const open = !collapsed.has(row.path);
-    return { materialize: () => interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
-      if (open) collapsed.add(row.path); else collapsed.delete(row.path);
-      filesViewModels.invalidate();
-      statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
-    }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`) };
+    const keyboardItem = folderKeyboardItem({ mode: "tree", scope, key: row.path, label: row.path, collapsed });
+    return { keyboardIdentity: keyboardItem.identity, keyboardItem, materialize: () => interactive(
+      keyboardItem.identity === selectedIdentity
+        ? focusedLine(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width)
+        : fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width),
+      () => { selectKeyboardItem(keyboardItem); keyboardItem.action(); },
+      `${open ? "Collapse" : "Expand"} folder: ${row.path}`,
+    ) };
   });
 }
-function renderGrouped(files, width, scope) {
+function renderGrouped(files, width, scope, expandByDefault = false) {
   const lines = [];
+  folderState(files, "grouped", scope, expandByDefault);
   const cacheKey = `${filesViewGeneration}:grouped:${scope}:${files.length}:${[...collapsedGroups].sort().join("\0")}`;
   for (const row of filesViewModels.rows(cacheKey, files, { mode: "grouped", collapsed: collapsedGroups, scope })) {
     if (row.kind === "file") {
@@ -369,18 +397,20 @@ function renderGrouped(files, width, scope) {
       lines.push(fileRow(row.file, width, prefix));
       continue;
     }
-    lines.push({ materialize: () => interactive(
-      `${C.fog} ${row.open ? "⌄" : "›"} ${compactPath(row.folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${row.count}${C.reset}`,
-      () => { if (row.open) collapsedGroups.add(row.key); else collapsedGroups.delete(row.key); filesViewModels.invalidate(); },
+    const keyboardItem = folderKeyboardItem({ mode: "grouped", scope, key: row.key, label: row.folder, collapsed: collapsedGroups });
+    const line = `${C.fog} ${row.open ? "⌄" : "›"} ${compactPath(row.folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${row.count}${C.reset}`;
+    lines.push({ keyboardIdentity: keyboardItem.identity, keyboardItem, materialize: () => interactive(
+      keyboardItem.identity === selectedIdentity ? focusedLine(line, width) : line,
+      () => { selectKeyboardItem(keyboardItem); keyboardItem.action(); },
       `${row.open ? "Collapse" : "Expand"} folder: ${row.folder}`,
     ) });
   }
   return lines;
 }
-function renderFilesList(files, width, scope) {
+function renderFilesList(files, width, scope, expandByDefault = false) {
   return resolvedViewMode(width) === "tree"
-    ? renderTree(files, width, scope)
-    : renderGrouped(files, width, scope);
+    ? renderTree(files, width, scope, expandByDefault)
+    : renderGrouped(files, width, scope, expandByDefault);
 }
 function search(files, rawQuery) {
   const query = rawQuery.trim().toLocaleLowerCase();
@@ -451,7 +481,7 @@ function renderChanges(width) {
     lines.push(sectionHeader(section.id, section.label, count, index, width, forced));
     if (!forced && !expanded[section.id]) return;
     if (section.files) {
-      lines.push(...renderFilesList(section.files, width, `${section.id}:${query}`));
+      lines.push(...renderFilesList(section.files, width, `${section.id}:${query}`, Boolean(query)));
       return;
     }
     for (const commit of section.commits) {
@@ -482,7 +512,7 @@ function renderChanges(width) {
           ? expansion.showAllFiles ? loaded : search(loaded, query)
           : commit.matchingPaths.map((filePath) => ({ path: filePath, status: "modified", additions: 0, deletions: 0, descriptor: { kind: "commit", commitHash: commit.hash } }));
         if (expansion.loading) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
-        else lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`));
+        else lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`, true));
       } else if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
@@ -496,35 +526,42 @@ function renderFiles(width) {
   const query = fileSearchQuery.trim();
   const mode = resolvedViewMode(width);
   const scope = `files:${query}`;
-  const collapsed = mode === "tree" ? (collapsedFolders.get(scope) || new Set()) : collapsedGroups;
-  if (mode === "tree" && !collapsedFolders.has(scope)) collapsedFolders.set(scope, collapsed);
+  const sourceKey = [filesViewGeneration, mode, width, query].join(":");
+  const files = filesTabViewCache?.sourceKey === sourceKey
+    ? filesTabViewCache.files
+    : search(canonicalFiles(), query);
+  const collapsed = folderState(files, mode, scope, Boolean(query));
   const cacheKey = [
-    filesViewGeneration,
-    mode,
-    width,
-    query,
+    sourceKey,
     [...collapsed].sort().join("\0"),
   ].join(":");
   if (filesTabViewCache?.key !== cacheKey) {
-    const files = search(canonicalFiles(), query);
     const rows = files.length
       ? filesViewModels.rows(cacheKey, files, { mode, collapsed, scope })
       : [];
-    const rowKeyboardItems = rows
-      .filter((row) => row.kind === "file")
-      .map((row) => keyboardItemForFile(row.file));
+    const rowKeyboardItems = rows.map((row) => row.kind === "file"
+      ? keyboardItemForFile(row.file)
+      : folderKeyboardItem({
+        mode,
+        scope,
+        key: row.kind === "folder" ? row.path : row.key,
+        label: row.kind === "folder" ? row.path : row.folder,
+        collapsed,
+      }));
     filesTabViewCache = {
+      sourceKey,
       key: cacheKey,
       files,
       rows,
       keyboardItems: rowKeyboardItems,
+      keyboardItemByRow: new Map(rows.map((row, index) => [row, rowKeyboardItems[index]])),
       keyboardIndexByIdentity: new Map(rowKeyboardItems.map((item, index) => [item.identity, index])),
-      rowIndexByIdentity: new Map(rows.flatMap((row, index) => row.kind === "file"
-        ? [[selectionKey(state.repoRoot || state.cwd, row.file), index]]
-        : [])),
+      rowIndexByIdentity: new Map(rowKeyboardItems.map((item, index) => [item.identity, index])),
+      mode,
+      scope,
+      collapsed,
     };
   }
-  const { files } = filesTabViewCache;
   const fixed = [
     interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
     toolbar(width), rule(width),
@@ -538,32 +575,29 @@ function renderFiles(width) {
 
 function materializeFilesTabRow(row, width) {
   if (typeof row === "string") return row;
+  const item = filesTabViewCache.keyboardItemByRow.get(row);
   if (row.kind === "file") {
     const prefix = Number.isInteger(row.depth)
       ? ` ${treeGuides(row, width)}`
       : row.prefix === "last" ? `  ${C.faint}└─${C.reset} `
         : row.prefix === "middle" ? `  ${C.faint}├─${C.reset} ` : " ";
-    const item = filesTabViewCache.keyboardItems[filesTabViewCache.keyboardIndexByIdentity.get(
-      selectionKey(state.repoRoot || state.cwd, row.file),
-    )];
     return fileRow(row.file, width, prefix, item).materialize();
   }
   if (row.kind === "folder") {
     const guides = treeGuides(row, width);
-    const collapsed = collapsedFolders.get(`files:${fileSearchQuery.trim()}`) || new Set();
+    const collapsed = filesTabViewCache.collapsed;
     const open = !collapsed.has(row.path);
-    return interactive(fitAnsi(` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`, width), () => {
-      if (open) collapsed.add(row.path); else collapsed.delete(row.path);
-      filesViewModels.invalidate();
-      statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(row.path)}`;
-    }, `${open ? "Collapse" : "Expand"} folder: ${row.path}`);
+    const line = ` ${guides}${C.fog}${open ? "⌄" : "›"} ${safe(row.name)}/${C.reset}`;
+    return interactive(
+      item.identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
+      () => { selectKeyboardItem(item); item.action(); },
+      `${open ? "Collapse" : "Expand"} folder: ${row.path}`,
+    );
   }
+  const line = `${C.fog} ${row.open ? "⌄" : "›"} ${compactPath(row.folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${row.count}${C.reset}`;
   return interactive(
-    `${C.fog} ${row.open ? "⌄" : "›"} ${compactPath(row.folder, Math.max(5, width - 8))}${C.reset} ${C.dim}${row.count}${C.reset}`,
-    () => {
-      if (row.open) collapsedGroups.add(row.key); else collapsedGroups.delete(row.key);
-      filesViewModels.invalidate();
-    },
+    item.identity === selectedIdentity ? focusedLine(line, width) : line,
+    () => { selectKeyboardItem(item); item.action(); },
     `${row.open ? "Collapse" : "Expand"} folder: ${row.folder}`,
   );
 }
@@ -591,7 +625,8 @@ function helpRows(width) {
   keyboardItems = [];
   const keys = [
     " ↑/↓ · j/k   Select row",
-    " Enter · o   Open selected",
+    " Enter       Open / toggle selected",
+    " o           Open selected file",
     " J/K         Scroll viewport",
     " h/l · Space Select/toggle section",
     " Tab         Changes / Files",
@@ -895,6 +930,7 @@ async function refreshState(announce = false) {
         expandedCommits.clear();
         collapsedGroups.clear();
         collapsedFolders.clear();
+        knownFolders.clear();
       }
       if ((state.repoRoot || state.cwd) !== invalidationRepoRoot) reportAsync(startInvalidation());
       else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();

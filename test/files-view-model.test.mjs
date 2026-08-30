@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FilesViewModelCache, treeBranchPrefix } from "../src/files-view-model.mjs";
+import { FilesViewModelCache, folderCollapseKeys, treeBranchPrefix } from "../src/files-view-model.mjs";
+
+test("folder collapse keys cover every tree ancestor and grouped folder", () => {
+  const files = [
+    { path: "docs/screenshots/capture.png" },
+    { path: "docs/INSTALLATION.md" },
+    { path: "README.md" },
+  ];
+  assert.deepEqual([...folderCollapseKeys(files, { mode: "tree" })].sort(), ["docs", "docs/screenshots"]);
+  assert.deepEqual([...folderCollapseKeys(files, { mode: "grouped", scope: "files" })].sort(), [
+    "files:docs",
+    "files:docs/screenshots",
+  ]);
+});
 
 test("tree rows retain enough ancestry to distinguish siblings from nested children", () => {
   const files = [

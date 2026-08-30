@@ -31,6 +31,8 @@ intentional configuration changes documented here.
 
 ### Fixed
 
+- Starts folders collapsed in both Tree and Folders layouts while automatically
+  expanding matching search paths so nested files remain keyboard-accessible.
 - Distinguishes provider failures from an ordinary non-Git directory and keeps
   the last usable state after transient refresh failures.
 - Resolves per-worktree and shared Git directories for filesystem invalidation,

@@ -46,9 +46,10 @@ for (const width of [25, 36, 52, 100]) {
     assert.match(plain, /Staged/);
     assert.match(plain, /Unstaged/);
     if (width === 25) {
-      assert.match(plain, /status\.mjs/);
       assert.match(plain, /Untracked/);
-      assert.match(plain, /\? binary\.dat/);
+      assert.match(plain, /› src 1/);
+      assert.match(plain, /› assets 1/);
+      assert.doesNotMatch(plain, /status\.mjs|binary\.dat/);
     }
     assert.doesNotMatch(plain, /Read-only demo preview|const panel = "files"/);
     assert.ok(plain.split("\n").every((line) => [...line].length <= width));
@@ -70,17 +71,15 @@ test("demo snapshot ignores ambient user configuration and GitRail overrides", a
 });
 
 for (const width of [25, 100]) {
-  test(`Files view puts repository-root files after folders at ${width} columns`, async (t) => {
+  test(`Files view starts with folders collapsed at ${width} columns`, async (t) => {
     const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
-    assert.match(plain, /⊞ preview\.md/);
     assert.match(plain, /□ README\.md/);
-    if (width === 100) {
-      assert.match(plain, /├─ ⊞ preview\.md/);
-      assert.match(plain, /└─ □ usage\.md/);
-    }
+    assert.match(plain, /› docs/);
+    assert.match(plain, /› src/);
+    assert.doesNotMatch(plain, /preview\.md|usage\.md|rail\.mjs|status\.mjs/);
   });
 }
 
@@ -103,7 +102,7 @@ test("production Files repaint materializes only the 20k-path viewport", async (
   }
 });
 
-test("keyboard navigation reaches the first, middle, and final 20k-path Files rows", async (t) => {
+test("Files search expands matching paths from collapsed folders for keyboard access", async (t) => {
   const child = spawnHermetic(t, process.execPath, [
     "scripts/git-rail.mjs",
     "--demo",
@@ -116,13 +115,33 @@ test("keyboard navigation reaches the first, middle, and final 20k-path Files ro
   let stdout = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => { stdout += chunk; });
-  await waitFor(() => stdout.includes("file-00000.txt"), "first Files row did not render");
+  await waitFor(() => stdout.includes("folder-000"), "collapsed Files folders did not render");
+  assert.equal(stdout.includes("file-00000.txt"), false);
+  child.stdin.write("/file-19999.txt\r");
+  await waitFor(() => stdout.includes("file-19999.txt"), "matching Files path did not expand for search");
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "first Files row was not keyboard selected");
-  child.stdin.write("j".repeat(10_000));
-  await waitFor(() => stdout.includes("file-00050.txt"), "middle Files row was not revealed");
-  child.stdin.write("j".repeat(20_000));
-  await waitFor(() => stdout.includes("file-19999.txt"), "final Files row was not revealed");
+  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "matching Files row was not keyboard selected");
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
+test("keyboard navigation expands an initially collapsed Files folder", async (t) => {
+  const child = spawnHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
+  ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => stdout.includes("› assets"), "collapsed Files folder did not render");
+  assert.equal(stdout.includes("binary.dat"), false);
+  child.stdin.write("j");
+  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "collapsed Files folder was not selected");
+  child.stdin.write("\r");
+  await waitFor(() => stdout.includes("binary.dat"), "selected Files folder did not expand");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -203,7 +222,8 @@ test("non-repository Files stays browsable with one neutral file icon", async (t
   const script = path.resolve("scripts/git-rail.mjs");
   const files = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root }, { HERDR_BIN_PATH: path.join(root, "missing-herdr") });
   const filesPlain = files.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-  assert.match(filesPlain, /⊠ index\.mjs/);
+  assert.match(filesPlain, /› src 1/);
+  assert.doesNotMatch(filesPlain, /⊠ index\.mjs/);
   assert.match(filesPlain, /⊠ README\.md/);
   assert.match(filesPlain, /⊠ settings\.toml/);
   assert.doesNotMatch(filesPlain, /Enter a Git worktree/);
