@@ -68,9 +68,10 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /relaunches GitRail in the same verified Dock terminal/);
   assert.match(guide, /Staged · Index · read-only/);
   assert.match(guide, /before deletion/);
-  assert.match(guide, /stable GitRail Dock control identity/);
-  assert.match(guide, /retried on the next preview open/);
-  assert.match(guide, /migrates validated surface-keyed ownership/);
+  assert.match(guide, /stable GitRail\s+Dock control identity/);
+  assert.match(guide, /Opening file B never closes or\s+reuses the tab previously opened for file A/);
+  assert.match(guide, /retried on the next\s+preview open/);
+  assert.match(guide, /migrates surface-keyed and replacement-era ownership records/);
   assert.deepEqual(dock.controls.map(({ id, title, cwd }) => ({ id, title, cwd })), [
     { id: "git-rail", title: "GitRail", cwd: "." },
   ]);

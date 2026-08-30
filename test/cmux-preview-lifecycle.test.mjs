@@ -81,13 +81,13 @@ test("clean rows open an exact read-only materialization in cmux's native file v
   assert.match(materializedPath, /Clean_Worktree_read-only-file-/);
   assert.equal(await fs.readFile(materializedPath, "utf8"), "# Native\n");
   assert.equal((await fs.stat(materializedPath)).mode & 0o777, 0o400);
-  assert.ok(calls.some((call) => call.args.join(" ") === "close-surface --workspace main-workspace --surface old-file"));
-  await assert.rejects(fs.access(oldDirectory), (error) => error.code === "ENOENT");
+  assert.equal(calls.some((call) => call.args[0] === "close-surface"), false);
+  await fs.access(oldDirectory);
 
   const registry = JSON.parse(await fs.readFile(statePath, "utf8"));
-  assert.equal(registry.version, 2);
-  assert.deepEqual(registry.pending, []);
-  const state = registry.active;
+  assert.equal(registry.version, 3);
+  assert.deepEqual(registry.open.map((entry) => entry.surfaceId), ["old-file", "new-file"]);
+  const state = registry.open.at(-1);
   assert.deepEqual({
     surfaceId: state.surfaceId,
     workspaceId: state.workspaceId,
@@ -144,7 +144,7 @@ test("changed rows open their exact selected revision in cmux's native file view
   ]);
 
   const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerSurfaceId: "dock-source", environment });
-  const state = JSON.parse(await fs.readFile(statePath, "utf8")).active;
+  const state = JSON.parse(await fs.readFile(statePath, "utf8")).open.at(-1);
   assert.equal(state.surfaceId, "changed-file");
   assert.equal(state.panelType, "filepreview");
   assert.equal(state.viewer, "file");
@@ -202,7 +202,7 @@ test("a missing stale surface releases its retained native-file materialization"
   await assert.rejects(fs.access(oldDirectory), (error) => error.code === "ENOENT");
 });
 
-test("stable control ownership survives Dock surface rotation", async (t) => {
+test("each open adds a new native tab and stable ownership survives Dock surface rotation", async (t) => {
   const { environment } = await fixture(t);
   const calls = [];
   let openCount = 0;
@@ -215,16 +215,16 @@ test("stable control ownership survives Dock surface rotation", async (t) => {
   const stable = { ownerControlId: "git-rail" };
   await openCmuxPreview(previewOptions(environment, run, { ...stable, ownerSurfaceId: "dock-old" }));
   const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerControlId: "git-rail", environment });
-  const oldDirectory = JSON.parse(await fs.readFile(statePath, "utf8")).active.materializedDirectory;
+  const oldDirectory = JSON.parse(await fs.readFile(statePath, "utf8")).open[0].materializedDirectory;
 
   await openCmuxPreview(previewOptions(environment, run, { ...stable, ownerSurfaceId: "dock-new" }));
 
-  assert.ok(calls.some((args) => args.join(" ") === "close-surface --workspace main-workspace --surface preview-1"));
-  await assert.rejects(fs.access(oldDirectory), (error) => error.code === "ENOENT");
+  assert.equal(calls.some((args) => args[0] === "close-surface"), false);
+  await fs.access(oldDirectory);
   const registry = JSON.parse(await fs.readFile(statePath, "utf8"));
-  assert.equal(registry.active.surfaceId, "preview-2");
-  assert.equal(registry.active.ownerSurfaceId, "dock-new");
-  assert.deepEqual(registry.pending, []);
+  assert.equal(registry.version, 3);
+  assert.deepEqual(registry.open.map((state) => state.surfaceId), ["preview-1", "preview-2"]);
+  assert.equal(registry.open.at(-1).ownerSurfaceId, "dock-new");
 });
 
 test("stable control ownership migrates legacy surface-keyed preview state", async (t) => {
@@ -252,12 +252,42 @@ test("stable control ownership migrates legacy surface-keyed preview state", asy
     if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [{ id: "legacy-preview", type: "filepreview" }] }) };
     return { stdout: "{}" };
   }, { ownerControlId: "git-rail", ownerSurfaceId: "dock-current" }));
-  assert.ok(calls.some((args) => args.join(" ") === "close-surface --workspace main-workspace --surface legacy-preview"));
-  await assert.rejects(fs.access(legacyDirectory), (error) => error.code === "ENOENT");
+  assert.equal(calls.some((args) => args[0] === "close-surface"), false);
+  await fs.access(legacyDirectory);
   await assert.rejects(fs.access(legacyPath), (error) => error.code === "ENOENT");
   const registry = JSON.parse(await fs.readFile(stablePath, "utf8"));
-  assert.equal(registry.active.surfaceId, "current-preview");
-  assert.deepEqual(registry.pending, []);
+  assert.equal(registry.version, 3);
+  assert.deepEqual(registry.open.map((state) => state.surfaceId), ["legacy-preview", "current-preview"]);
+});
+
+test("replacement-era ownership migrates without closing its native tabs", async (t) => {
+  const { environment } = await fixture(t);
+  const statePath = cmuxPreviewStatePath({
+    workspaceId: "main-workspace", ownerControlId: "git-rail", environment,
+  });
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(statePath, JSON.stringify({
+    version: 2,
+    active: { surfaceId: "active-preview", workspaceId: "main-workspace", panelType: "filepreview" },
+    pending: [{ surfaceId: "pending-preview", workspaceId: "main-workspace", panelType: "markdown" }],
+  }));
+  const calls = [];
+  await openCmuxPreview(previewOptions(environment, async (_command, args) => {
+    calls.push(args);
+    if (args.includes("open")) return nativeFileResponse("new-preview", "filepreview");
+    if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [
+      { id: "active-preview", type: "filepreview" },
+      { id: "pending-preview", type: "markdown" },
+    ] }) };
+    return { stdout: "{}" };
+  }, { ownerControlId: "git-rail" }));
+
+  assert.equal(calls.some((args) => args[0] === "close-surface"), false);
+  const registry = JSON.parse(await fs.readFile(statePath, "utf8"));
+  assert.equal(registry.version, 3);
+  assert.deepEqual(registry.open.map((state) => state.surfaceId), [
+    "active-preview", "pending-preview", "new-preview",
+  ]);
 });
 
 test("unreadable legacy ownership is reported without blocking a new preview", async (t) => {
@@ -360,7 +390,7 @@ test("native identity names the actual bytes for clean and deletion fallbacks", 
   }
 });
 
-test("transient cleanup failures retain and retry every stale preview generation", async (t) => {
+test("transient discovery failures retain open tabs and later prune only closed tabs", async (t) => {
   const { environment } = await fixture(t);
   const calls = [];
   let openCount = 0;
@@ -370,34 +400,29 @@ test("transient cleanup failures retain and retry every stale preview generation
     if (args.includes("open")) return nativeFileResponse(`preview-${++openCount}`, "filepreview");
     if (args.includes("list-panels")) {
       if (!cleanupAvailable) throw new Error("surface discovery offline");
-      return { stdout: JSON.stringify({ surfaces: [
-        { id: "preview-1", type: "filepreview" },
-        { id: "preview-2", type: "filepreview" },
-      ] }) };
+      return { stdout: JSON.stringify({ surfaces: [{ id: "preview-2", type: "filepreview" }] }) };
     }
     return { stdout: "{}" };
   };
   const stable = { ownerControlId: "git-rail" };
   await openCmuxPreview(previewOptions(environment, run, stable));
   const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerControlId: "git-rail", environment });
-  const firstDirectory = JSON.parse(await fs.readFile(statePath, "utf8")).active.materializedDirectory;
+  const firstDirectory = JSON.parse(await fs.readFile(statePath, "utf8")).open[0].materializedDirectory;
   const second = await openCmuxPreview(previewOptions(environment, run, stable));
   assert.match(second.cleanupWarning, /surface discovery offline/);
   const afterFailure = JSON.parse(await fs.readFile(statePath, "utf8"));
-  const secondDirectory = afterFailure.active.materializedDirectory;
-  assert.deepEqual(afterFailure.pending.map((state) => state.surfaceId), ["preview-1"]);
+  const secondDirectory = afterFailure.open.at(-1).materializedDirectory;
+  assert.deepEqual(afterFailure.open.map((state) => state.surfaceId), ["preview-1", "preview-2"]);
   await fs.access(firstDirectory);
 
   cleanupAvailable = true;
   await openCmuxPreview(previewOptions(environment, run, stable));
 
-  const closed = calls.filter((args) => args[0] === "close-surface").map((args) => args.at(-1)).sort();
-  assert.deepEqual(closed, ["preview-1", "preview-2"]);
+  assert.equal(calls.some((args) => args[0] === "close-surface"), false);
   await assert.rejects(fs.access(firstDirectory), (error) => error.code === "ENOENT");
-  await assert.rejects(fs.access(secondDirectory), (error) => error.code === "ENOENT");
+  await fs.access(secondDirectory);
   const recovered = JSON.parse(await fs.readFile(statePath, "utf8"));
-  assert.equal(recovered.active.surfaceId, "preview-3");
-  assert.deepEqual(recovered.pending, []);
+  assert.deepEqual(recovered.open.map((state) => state.surfaceId), ["preview-2", "preview-3"]);
 });
 
 test("malformed ownership is ignored while an unreadable ownership path fails before cmux mutation", async (t) => {
@@ -497,7 +522,7 @@ test("direct file-open payloads and fallback filenames remain supported", async 
   assert.equal(result.surfaceId, "direct-file");
   assert.equal(path.basename(openedPath), "preview.txt");
   const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", environment });
-  assert.equal(JSON.parse(await fs.readFile(statePath, "utf8")).active.panelType, "filepreview");
+  assert.equal(JSON.parse(await fs.readFile(statePath, "utf8")).open[0].panelType, "filepreview");
 });
 
 test("stale preview inspection failures are warnings and retain the old materialization", async (t) => {

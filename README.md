@@ -108,9 +108,11 @@ Against-base and Commits begin collapsed; Staged, Unstaged, and Untracked begin
 expanded. Untracked is a separate section immediately after Unstaged and uses
 Git's `?` marker, so a staged addition (`⊞`) cannot be confused with a file Git
 has not begun tracking.
-Folders begin collapsed in both Tree and Folders layouts. Searching expands the
-matching paths so nested results remain keyboard-accessible. Select a folder
-with `j`/`k` and press `Enter` to expand or collapse it.
+Folders begin collapsed in both Tree and Folders layouts. Expanding a folder
+reveals one level at a time; nested folders remain collapsed, including newly
+discovered Git subtrees. Searching expands the matching paths so nested results
+remain keyboard-accessible. Select a folder with `j`/`k` and press `Enter` to
+expand or collapse it.
 Files and Changes render every discovered path immediately, and commit history
 renders every loaded commit.
 

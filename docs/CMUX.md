@@ -139,17 +139,18 @@ available, its main-area source surface. The Dock's ambient
 `CMUX_SURFACE_ID` is cleared from the child command environment so it cannot be
 mistaken for a split or tab target.
 
-Only one GitRail-owned native preview is retained per main workspace and
-stable GitRail Dock control identity. A replacement is opened and recorded first; the prior
-surface is closed only after discovery verifies its exact id, native panel
-type, and main-area scope. A stale or foreign surface is left untouched.
-Read-only materializations remain available while their native cmux tab is
-open, then are removed after verified replacement or when a later open detects
-that the old surface was already closed. Native tabs otherwise use cmux's
-normal close behavior. Failed cleanup generations remain recorded and are
-retried on the next preview open, including after the Dock terminal restarts.
-The first open after upgrading also migrates validated surface-keyed ownership
-records from earlier cmux GitRail builds into this stable registry.
+Every selection opens a new native cmux tab. Opening file B never closes or
+reuses the tab previously opened for file A; both remain available until the
+user closes them with cmux's normal tab controls.
+
+GitRail records every open preview under the main workspace and stable GitRail
+Dock control identity so each read-only materialization remains available for
+the lifetime of its native tab. On a later open, entries for tabs that the user
+already closed are pruned and their materializations are removed. Discovery
+failures leave existing tabs and files untouched and are retried on the next
+preview open, including after the Dock terminal restarts. The first open after
+upgrading also migrates surface-keyed and replacement-era ownership records
+into this additive registry without closing their tabs.
 
 Pressing `q` in the GitRail Dock control exits the TUI. cmux then follows its
 normal Dock terminal contract and drops into the control's login shell, which
@@ -173,6 +174,6 @@ control.
 
 The automated suite uses fake cmux command execution. A final release should
 also be exercised in a live cmux build: trust/reload the project config, change
-the selected main terminal's cwd, open and replace native file tabs, close a
-preview with cmux, and confirm another window's Dock and main
-surfaces remain untouched.
+the selected main terminal's cwd, open two files and confirm both native tabs
+remain, close a preview with cmux, open another file to exercise pruning, and
+confirm another window's Dock and main surfaces remain untouched.

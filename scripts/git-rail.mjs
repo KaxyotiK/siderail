@@ -16,7 +16,12 @@ import {
   shouldInstallRecoveryPoll,
   shouldInstallWatchers,
 } from "../src/git-watch.mjs";
-import { FilesViewModelCache, folderCollapseKeys, treeBranchPrefix } from "../src/files-view-model.mjs";
+import {
+  expandFolderOneLevel,
+  FilesViewModelCache,
+  folderCollapseKeys,
+  treeBranchPrefix,
+} from "../src/files-view-model.mjs";
 import { debugLog } from "../src/debug-log.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resolveHerdrTabCwd } from "../src/herdr-context.mjs";
@@ -364,7 +369,8 @@ function folderKeyboardItem({ mode, scope, key, label, collapsed }) {
     status: `Folder · ${label}`,
     action: () => {
       const open = !collapsed.has(key);
-      if (open) collapsed.add(key); else collapsed.delete(key);
+      if (open) collapsed.add(key);
+      else expandFolderOneLevel(collapsed, knownFolders.get(`${mode}:${scope}`) || [], key);
       filesViewModels.invalidate();
       statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(label)}`;
     },

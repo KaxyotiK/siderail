@@ -93,24 +93,6 @@ async function listedSurface({ run, cmux, workspaceId, surfaceId, environment })
   ));
 }
 
-async function closeVerifiedState({ run, cmux, state, environment }) {
-  const surface = await listedSurface({
-    run,
-    cmux,
-    workspaceId: state.workspaceId,
-    surfaceId: state.surfaceId,
-    environment,
-  });
-  if (!surface) return "missing";
-  if (!surfaceIsOwnedPreview(surface, state)) return "foreign";
-  await run(cmux, ["close-surface", "--workspace", state.workspaceId, "--surface", state.surfaceId], {
-    env: environment,
-    timeoutMs: 3_000,
-    maxOutputBytes: 256 * 1_024,
-  });
-  return "closed";
-}
-
 async function removeMaterialization(state, environment) {
   if (!state?.materializedDirectory) return;
   const root = path.resolve(cacheDirectory(environment));
@@ -171,6 +153,7 @@ function revisionIdentity(descriptor, metadata, revision, previewPath) {
 
 function registryStates(stored) {
   if (!stored) return [];
+  if (stored.version === 3) return Array.isArray(stored.open) ? stored.open.filter(Boolean) : [];
   if (stored.version === 2) return [stored.active, ...(Array.isArray(stored.pending) ? stored.pending : [])].filter(Boolean);
   return [stored];
 }
@@ -341,10 +324,7 @@ export async function openCmuxPreview({
   await ensureStateDirectory(environment);
   const stored = await readState(statePath);
   const legacy = await legacyOwnership({ statePath, workspaceId, ownerControlId, environment });
-  const registry = stored?.version === 2
-    ? { active: stored.active || null, pending: Array.isArray(stored.pending) ? stored.pending : [] }
-    : { active: stored, pending: [] };
-  registry.pending.push(...legacy.states);
+  const trackedStates = [...registryStates(stored), ...legacy.states];
   const opened = await openNativeFile({
     run, cmux, cwd, workspaceId, targetSurfaceId, ownerSurfaceId, ownerControlId, previewPath,
     repoRoot, descriptor, metadata, maxFileBytes, tabName, environment, loadRawContent,
@@ -363,10 +343,10 @@ export async function openCmuxPreview({
     viewer: opened.viewer,
     ...(opened.materializedDirectory ? { materializedDirectory: opened.materializedDirectory } : {}),
   };
-  const staleStates = [...registry.pending, registry.active]
+  const previousStates = trackedStates
     .filter((candidate) => candidate?.surfaceId && candidate.surfaceId !== opened.surfaceId)
     .filter((candidate, index, candidates) => candidates.findIndex((other) => other.surfaceId === candidate.surfaceId) === index);
-  const ownedRegistry = { version: 2, active: state, pending: staleStates };
+  const ownedRegistry = { version: 3, open: [...previousStates, state] };
   try {
     await writeOwnership(statePath, ownedRegistry);
   } catch (error) {
@@ -392,19 +372,25 @@ export async function openCmuxPreview({
       if (error.code !== "ENOENT") cleanupWarnings.push(`legacy preview ownership could not be removed: ${error.message}`);
     }
   }
-  for (const staleState of staleStates) {
+  for (const previousState of previousStates) {
     try {
-      const disposition = await closeVerifiedState({ run, cmux, state: staleState, environment: nativeEnvironment(environment) });
-      if (disposition === "closed" || disposition === "missing") await removeMaterialization(staleState, environment);
-      else retained.push(staleState);
+      const surface = await listedSurface({
+        run,
+        cmux,
+        workspaceId: previousState.workspaceId,
+        surfaceId: previousState.surfaceId,
+        environment: nativeEnvironment(environment),
+      });
+      if (surface) retained.push(previousState);
+      else await removeMaterialization(previousState, environment);
     } catch (error) {
-      retained.push(staleState);
-      cleanupWarnings.push(`previous preview left open: ${error.message}`);
+      retained.push(previousState);
+      cleanupWarnings.push(`open preview state could not be refreshed: ${error.message}`);
     }
   }
-  if (retained.length !== staleStates.length) {
+  if (retained.length !== previousStates.length) {
     try {
-      await writeOwnership(statePath, { version: 2, active: state, pending: retained });
+      await writeOwnership(statePath, { version: 3, open: [...retained, state] });
     } catch (error) {
       cleanupWarnings.push(`preview cleanup state could not be updated: ${error.message}`);
     }

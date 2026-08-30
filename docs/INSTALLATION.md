@@ -57,7 +57,7 @@ can distinguish it from unrelated configured Dock controls and from its own
 post-`q` shell. Both configured and direct controls enter a login shell after
 GitRail exits; another direct launch reuses that verified terminal.
 
-See [CMUX.md](CMUX.md) for cwd resolution, preview replacement, session-seed,
+See [CMUX.md](CMUX.md) for cwd resolution, additive preview tabs, session-seed,
 upgrade, and removal behavior.
 
 ## Uninstall

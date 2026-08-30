@@ -14,6 +14,13 @@ export function folderCollapseKeys(files, { mode, scope = "files" }) {
   return keys;
 }
 
+export function expandFolderOneLevel(collapsed, knownFolders, key) {
+  for (const candidate of knownFolders) {
+    if (candidate.startsWith(`${key}/`)) collapsed.add(candidate);
+  }
+  collapsed.delete(key);
+}
+
 function treeRows(files, collapsed) {
   const root = { children: new Map() };
   for (const file of files) {

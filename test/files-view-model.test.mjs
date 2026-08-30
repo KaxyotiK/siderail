@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FilesViewModelCache, folderCollapseKeys, treeBranchPrefix } from "../src/files-view-model.mjs";
+import {
+  expandFolderOneLevel,
+  FilesViewModelCache,
+  folderCollapseKeys,
+  treeBranchPrefix,
+} from "../src/files-view-model.mjs";
 
 test("folder collapse keys cover every tree ancestor and grouped folder", () => {
   const files = [
@@ -13,6 +18,15 @@ test("folder collapse keys cover every tree ancestor and grouped folder", () => 
     "files:docs",
     "files:docs/screenshots",
   ]);
+});
+
+test("reopening a folder expands one level and collapses its existing and newly added descendants", () => {
+  const collapsed = new Set(["src"]);
+  const known = new Set(["src", "src/components", "src/components/forms", "src/new-tree", "test"]);
+
+  expandFolderOneLevel(collapsed, known, "src");
+
+  assert.deepEqual([...collapsed].sort(), ["src/components", "src/components/forms", "src/new-tree"]);
 });
 
 test("tree rows retain enough ancestry to distinguish siblings from nested children", () => {
