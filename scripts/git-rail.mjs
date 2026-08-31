@@ -17,9 +17,10 @@ import {
   shouldInstallWatchers,
 } from "../src/git-watch.mjs";
 import {
-  expandFolderOneLevel,
   FilesViewModelCache,
   folderCollapseKeys,
+  syncFolderCollapseState,
+  toggleFolderCollapseState,
   treeBranchPrefix,
 } from "../src/files-view-model.mjs";
 import { debugLog } from "../src/debug-log.mjs";
@@ -356,10 +357,7 @@ function folderState(files, mode, scope, expandByDefault = false) {
   const collapsed = mode === "tree" ? collapsedFolders.get(scope) : collapsedGroups;
   if (!knownFolders.has(`${mode}:${scope}`)) knownFolders.set(`${mode}:${scope}`, new Set());
   const known = knownFolders.get(`${mode}:${scope}`);
-  for (const key of folderCollapseKeys(files, { mode, scope })) {
-    if (!known.has(key) && !expandByDefault) collapsed.add(key);
-    known.add(key);
-  }
+  syncFolderCollapseState(collapsed, known, folderCollapseKeys(files, { mode, scope }), expandByDefault);
   return collapsed;
 }
 function folderKeyboardItem({ mode, scope, key, label, collapsed }) {
@@ -369,8 +367,7 @@ function folderKeyboardItem({ mode, scope, key, label, collapsed }) {
     status: `Folder · ${label}`,
     action: () => {
       const open = !collapsed.has(key);
-      if (open) collapsed.add(key);
-      else expandFolderOneLevel(collapsed, knownFolders.get(`${mode}:${scope}`) || [], key);
+      toggleFolderCollapseState(collapsed, key);
       filesViewModels.invalidate();
       statusMessage = `${open ? "Collapsed" : "Expanded"} ${safe(label)}`;
     },

@@ -14,11 +14,16 @@ export function folderCollapseKeys(files, { mode, scope = "files" }) {
   return keys;
 }
 
-export function expandFolderOneLevel(collapsed, knownFolders, key) {
-  for (const candidate of knownFolders) {
-    if (candidate.startsWith(`${key}/`)) collapsed.add(candidate);
+export function syncFolderCollapseState(collapsed, knownFolders, discoveredFolders, expandByDefault = false) {
+  for (const key of discoveredFolders) {
+    if (!knownFolders.has(key) && !expandByDefault) collapsed.add(key);
+    knownFolders.add(key);
   }
-  collapsed.delete(key);
+}
+
+export function toggleFolderCollapseState(collapsed, key) {
+  if (collapsed.has(key)) collapsed.delete(key);
+  else collapsed.add(key);
 }
 
 function treeRows(files, collapsed) {

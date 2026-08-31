@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  expandFolderOneLevel,
   FilesViewModelCache,
   folderCollapseKeys,
+  syncFolderCollapseState,
+  toggleFolderCollapseState,
   treeBranchPrefix,
 } from "../src/files-view-model.mjs";
 
@@ -20,13 +21,21 @@ test("folder collapse keys cover every tree ancestor and grouped folder", () => 
   ]);
 });
 
-test("reopening a folder expands one level and collapses its existing and newly added descendants", () => {
-  const collapsed = new Set(["src"]);
-  const known = new Set(["src", "src/components", "src/components/forms", "src/new-tree", "test"]);
+test("folder expansion survives an ancestor collapse while newly discovered descendants start collapsed", () => {
+  const collapsed = new Set();
+  const known = new Set();
+  syncFolderCollapseState(collapsed, known, ["A", "A/B"]);
+  assert.deepEqual([...collapsed].sort(), ["A", "A/B"]);
 
-  expandFolderOneLevel(collapsed, known, "src");
+  toggleFolderCollapseState(collapsed, "A");
+  toggleFolderCollapseState(collapsed, "A/B");
+  toggleFolderCollapseState(collapsed, "A");
+  syncFolderCollapseState(collapsed, known, ["A", "A/B", "A/B/C"]);
+  assert.deepEqual([...collapsed].sort(), ["A", "A/B/C"]);
 
-  assert.deepEqual([...collapsed].sort(), ["src/components", "src/components/forms", "src/new-tree"]);
+  toggleFolderCollapseState(collapsed, "A");
+  assert.equal(collapsed.has("A/B"), false);
+  assert.equal(collapsed.has("A/B/C"), true);
 });
 
 test("tree rows retain enough ancestry to distinguish siblings from nested children", () => {
