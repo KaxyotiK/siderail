@@ -66,15 +66,15 @@ export function displayState(file) {
 
 export function filesAgainstBase(files, workspaceChanges, workspaceDescriptor) {
   const byPath = new Map(workspaceChanges.map((file) => [file.path, file]));
-  return files.map((file) => {
+  return files.flatMap((file) => {
     const untracked = file.states.find((state) => state.descriptor?.kind === "untracked");
-    if (untracked) return { ...file, ...untracked };
+    if (untracked) return [{ ...file, ...untracked }];
     const workspaceChange = byPath.get(file.path);
-    if (workspaceChange) return { ...file, ...workspaceChange };
+    if (workspaceChange) return workspaceChange.status === "deleted" ? [] : [{ ...file, ...workspaceChange }];
     if (!workspaceDescriptor && file.states.length) {
       const state = file.states.find((item) => item.descriptor?.kind === "staged") || file.states[0];
-      return { ...file, ...state };
+      return file.states.some((item) => item.status === "deleted") ? [] : [{ ...file, ...state }];
     }
-    return { ...file, status: "clean", additions: 0, deletions: 0, descriptor: workspaceDescriptor || { kind: "clean" } };
+    return [{ ...file, status: "clean", additions: 0, deletions: 0, descriptor: workspaceDescriptor || { kind: "clean" } }];
   });
 }

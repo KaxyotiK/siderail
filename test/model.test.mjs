@@ -27,6 +27,38 @@ test("Files view combines base-branch diffs with grey unchanged files", () => {
   assert.deepEqual(byPath.get("new.txt").descriptor, { kind: "untracked" });
 });
 
+test("Files view omits deleted paths but keeps files recreated at the same path", () => {
+  const descriptor = { kind: "workspace", baseRef: "main", mergeBase: "abc123" };
+  const files = buildPathIndex({
+    tracked: ["present.txt", "deleted.txt"],
+    againstBase: [
+      { path: "deleted.txt", status: "deleted", descriptor: { kind: "against", baseRef: "main" } },
+      { path: "recreated.txt", status: "deleted", descriptor: { kind: "against", baseRef: "main" } },
+    ],
+    untracked: [
+      { path: "recreated.txt", status: "added", descriptor: { kind: "untracked" } },
+    ],
+  });
+
+  const entries = filesAgainstBase(files, [
+    { path: "deleted.txt", status: "deleted", descriptor },
+    { path: "recreated.txt", status: "modified", descriptor },
+  ], descriptor);
+
+  assert.deepEqual(entries.map((file) => file.path), ["present.txt", "recreated.txt"]);
+  assert.deepEqual(entries.find((file) => file.path === "recreated.txt").descriptor, { kind: "untracked" });
+});
+
+test("Files view omits deleted paths when no base comparison is available", () => {
+  const files = buildPathIndex({
+    tracked: ["deleted.txt"],
+    staged: [{ path: "deleted.txt", status: "modified", descriptor: { kind: "staged" } }],
+    unstaged: [{ path: "deleted.txt", status: "deleted", descriptor: { kind: "unstaged" } }],
+  });
+
+  assert.deepEqual(filesAgainstBase(files, [], null), []);
+});
+
 test("canonical clean files preserve tracked mode metadata", () => {
   const files = buildPathIndex({
     tracked: [

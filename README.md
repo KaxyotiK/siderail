@@ -116,10 +116,11 @@ expand or collapse it.
 Files and Changes render every discovered path immediately, and commit history
 renders every loaded commit.
 
-Files contains every tracked and untracked worktree path. Files changed since
-the merge base use the same status and statistics as Against-base; unchanged
-files use the neutral grey `□` and have no diff statistics. Outside a Git
-worktree, Files scans the current directory without following directory
+Files contains every tracked and untracked path that currently exists in the
+worktree; deleted paths remain available in Changes and history only. Files
+changed since the merge base use the same status and statistics as Against-base;
+unchanged files use the neutral grey `□` and have no diff statistics. Outside a
+Git worktree, Files scans the current directory without following directory
 symlinks or entering `.git`, applies file/depth/time safety bounds, and keeps
 every file visually neutral with the distinct filesystem-only `⊠`. Changes
 remains Git-only.
