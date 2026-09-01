@@ -279,7 +279,7 @@ function statusGlyph(file) {
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
   if (status === "deleted") return `${C.red}⊟${C.reset}`;
   if (status === "renamed") return `${C.blue}↪${C.reset}`;
-  if (status === "copied") return `${C.purple}⧉${C.reset}`;
+  if (status === "copied") return `${C.purple}◫${C.reset}`;
   if (status === "conflicted") return `${C.red}!${C.reset}`;
   if (status === "type-changed") return `${C.blue}◇${C.reset}`;
   return `${C.amber}⊡${C.reset}`;
@@ -657,7 +657,7 @@ function helpRows(width) {
     helpEntry("⊞", "Added", C.leaf),
     helpEntry("⊟", "Deleted", C.red),
     helpEntry("↪", "Renamed", C.blue),
-    helpEntry("⧉", "Copied", C.purple),
+    helpEntry("◫", "Copied", C.purple),
     helpEntry("!", "Conflicted", C.red),
     helpEntry("◇", "Type changed", C.blue),
     helpEntry("◆", "Binary", C.purple),
@@ -695,7 +695,7 @@ function renderHeader(width) {
   const half = Math.floor(width / 2);
   return { half, lines: [
     ` ${C.bold}${truncate(safe(state.repository || "repository"), width - 1)}${C.reset}`,
-    `  ${C.fog}⑂ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
+    `  ${C.fog}↱ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
     rule(width),
     `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
   ] };

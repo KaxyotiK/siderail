@@ -22,8 +22,8 @@ Never hand-edit totals or diff statistics.
 GitRail pins no 24-bit colors of its own; see [Colors and glyphs](../THEMING.md).
 The captures therefore resolve its indexed colors through the reference dark
 palette in `scripts/render-screenshots.py`, which is what a conventional dark
-terminal theme shows. They also apply the same font fallback a terminal does:
-Menlo carries every glyph except `⑂` and `⧉`, which come from Apple Symbols.
+terminal theme shows. Menlo carries every glyph GitRail draws, so the captures need no font
+fallback; see the glyph-coverage note in that document.
 
 ## Regenerating
 

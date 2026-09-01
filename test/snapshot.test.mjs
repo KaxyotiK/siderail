@@ -257,7 +257,7 @@ test("rendered status matrix includes Git glyphs, numeric stats, and binary labe
   const plain = plainTerminal(stdout);
   assert.match(plain, /⊞ added\.txt\s+\+1/);
   assert.match(plain, /⊞ added-link\s+\+1/);
-  assert.match(plain, /⧉ copy-target\.txt/);
+  assert.match(plain, /◫ copy-target\.txt/);
   assert.match(plain, /↪ rename-new\.txt/);
   assert.match(plain, /◆ binary\.dat\s+binary/);
   assert.match(plain, /⊟ delete\.txt\s+−1/);
@@ -268,7 +268,7 @@ test("rendered status matrix includes Git glyphs, numeric stats, and binary labe
   const filesPlain = plainTerminal(filesSnapshot.stdout);
   assert.match(filesPlain, /⊞ added\.txt\s+\+1/);
   assert.match(filesPlain, /⊞ added-link\s+\+1/);
-  assert.match(filesPlain, /⧉ copy-target\.txt/);
+  assert.match(filesPlain, /◫ copy-target\.txt/);
   assert.match(filesPlain, /↪ rename-new\.txt/);
   assert.match(filesPlain, /◆ binary\.dat\s+binary/);
   assert.match(filesPlain, /⊡ modified\.txt\s+\+2 −1/);
@@ -526,7 +526,7 @@ test("selection survives edit, stage, and commit refreshes while Files drops a l
   child.stdin.write("\t");
   await waitFor(() => /⊡ live\.txt\s+\+2 −1/.test(latestPlainFrame(stdout)) && latestPlainFrame(stdout).includes("Against main · live.txt"), "Files tab did not show the selected committed file descriptor");
   await fs.rm(path.join(root, "live.txt"));
-  await waitFor(() => !/[□?⊠⊡⊞⊟↪⧉!◇◆]\s+live\.txt/.test(latestPlainFrame(stdout)), "Files tab retained a deleted path", 8_000);
+  await waitFor(() => !/[□?⊠⊡⊞⊟↪◫!◇◆]\s+live\.txt/.test(latestPlainFrame(stdout)), "Files tab retained a deleted path", 8_000);
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);

@@ -57,15 +57,32 @@ track a built-in theme, set the tokens explicitly under `[theme.custom]`.
 
 ## Glyph width
 
-The status marks `⊡ ⊞ ⊟ ⊠ ↪ ⧉` are East Asian Neutral and always occupy one
+The status marks `⊡ ⊞ ⊟ ⊠ ↪ ◫` are East Asian Neutral and always occupy one
 cell. The tree scaffolding `─ └ ├`, the selection bar `▏`, the shapes `□ ◆ ◇`,
-and the `·` separator are East Asian Ambiguous, so a terminal configured to
-render ambiguous characters as double width will shift those rows by a cell.
-GitRail measures them as one cell, which matches Ghostty, WezTerm, and modern
-xterm defaults. Terminals with the CJK double-width setting enabled, and tmux
-with `utf8-ambiguous-width` set wide, will misalign. Every box-drawing character
-is Ambiguous, so there is no narrow Unicode substitute; only an ASCII tier would
-remove the risk.
+the `·` separator, and accented Latin characters such as `é` in a filename are
+East Asian Ambiguous. A terminal decides for itself whether those take one cell
+or two, and the two answers disagree by a column per character.
+
+GitRail measures them as one cell, matching Ghostty, WezTerm, and modern xterm
+defaults. If your terminal is set to render ambiguous characters as double
+width, which iTerm2 and Terminal.app both offer and CJK users commonly enable,
+tell GitRail so its columns line up:
+
+```bash
+GIT_RAIL_AMBIGUOUS_WIDTH=wide
+```
+
+Set it in the Herdr pane environment, or leave it unset for the narrow default.
+The setting affects measurement only. Unambiguously wide characters such as `界`
+and plain ASCII are never affected either way. In tmux, match it to
+`utf8-ambiguous-width`.
+
+## Glyph coverage
+
+Every glyph GitRail draws is present in Menlo, which is Terminal.app's default
+font. The branch mark is `↱` and the copied mark is `◫` specifically because
+Menlo has no `⑂` or `⧉`, and both drew as empty boxes for anyone on the default
+font. Check any replacement glyph against Menlo before using it.
 
 ## Upstream note
 
