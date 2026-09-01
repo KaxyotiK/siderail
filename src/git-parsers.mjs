@@ -129,8 +129,21 @@ function parseNumstatZ(output) {
 export function parseLsFilesStageZ(output) {
   return splitNul(output).map((record) => {
     const tab = record.indexOf("\t");
-    const metadata = record.slice(0, tab).split(" ");
-    return { path: record.slice(tab + 1), mode: metadata[0], objectId: metadata[1], stage: Number(metadata[2]) };
+    const rawMetadata = record.slice(0, tab);
+    const tagged = rawMetadata.match(/^([A-Za-z?]) (.*)$/);
+    const metadata = (tagged?.[2] || rawMetadata).split(" ");
+    const indexTag = tagged?.[1] || "";
+    return {
+      path: record.slice(tab + 1),
+      mode: metadata[0],
+      objectId: metadata[1],
+      stage: Number(metadata[2]),
+      ...(indexTag ? {
+        indexTag,
+        assumeUnchanged: /^[a-z]$/.test(indexTag),
+        skipWorktree: indexTag.toUpperCase() === "S",
+      } : {}),
+    };
   }).filter((entry) => entry.path);
 }
 

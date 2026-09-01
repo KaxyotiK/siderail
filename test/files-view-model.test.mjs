@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   FilesViewModelCache,
   filesContentSignature,
+  filesSourceSignature,
   folderCollapseKeys,
   folderStateScope,
   syncFolderCollapseState,
@@ -17,6 +18,10 @@ test("search folder state uses one bounded scope and row signatures reflect cont
   const preview = [{ path: "preview.md", status: "modified", additions: 0, deletions: 0 }];
   const loaded = [{ path: "preview.md", status: "added", additions: 3, deletions: 0 }];
   assert.notEqual(filesContentSignature(preview), filesContentSignature(loaded));
+  assert.notEqual(
+    filesSourceSignature({ files: preview, workspaceChanges: [] }),
+    filesSourceSignature({ files: loaded, workspaceChanges: [] }),
+  );
 });
 
 test("folder collapse keys cover every tree ancestor and grouped folder", () => {

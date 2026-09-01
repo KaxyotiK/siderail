@@ -19,6 +19,7 @@ import {
 import {
   FilesViewModelCache,
   filesContentSignature,
+  filesSourceSignature,
   folderCollapseKeys,
   folderStateScope,
   syncFolderCollapseState,
@@ -46,6 +47,7 @@ import {
   padAnsiTerminalColumns,
   previewTabName,
   refreshStatusAfterSuccess,
+  reconcileSelectionStatus,
   revealScrollOffset,
   statusAfterBusy,
   sanitizeTerminalText,
@@ -205,6 +207,7 @@ let selectedSection = 0;
 let scrollOffset = 0;
 let selectedIdentity = "";
 let selectedPathIdentity = "";
+let selectedStatusMessage = "";
 let revealSelected = false;
 let keyboardItems = [];
 let keyboardIndexByIdentity = new Map();
@@ -313,9 +316,10 @@ function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot || state.cwd, file);
   selectedPathIdentity = selectionPathKey(state.repoRoot || state.cwd, file);
   revealSelected = true;
-  statusMessage = file.statsUnavailable
+  selectedStatusMessage = file.statsUnavailable
     ? `${descriptorLabel(file.descriptor)} · ${file.path} · ? stats unavailable (inspection budget)`
     : `${descriptorLabel(file.descriptor)} · ${file.path}`;
+  statusMessage = selectedStatusMessage;
 }
 function selectKeyboardItem(item) {
   if (item.file) selectFile(item.file);
@@ -323,7 +327,8 @@ function selectKeyboardItem(item) {
     selectedIdentity = item.identity;
     selectedPathIdentity = "";
     revealSelected = true;
-    statusMessage = item.status;
+    selectedStatusMessage = item.status;
+    statusMessage = selectedStatusMessage;
   }
 }
 function descriptorLabel(descriptor = { kind: "clean" }) {
@@ -542,7 +547,7 @@ function renderFiles(width) {
   const query = fileSearchQuery.trim();
   const mode = resolvedViewMode(width);
   const scope = folderStateScope("files", query);
-  const sourceKey = [filesViewGeneration, mode, width, query].join(":");
+  const sourceKey = [filesViewGeneration, filesSourceSignature(state), mode, width, query].join(":");
   const files = filesTabViewCache?.sourceKey === sourceKey
     ? filesTabViewCache.files
     : search(canonicalFiles(), query);
@@ -715,8 +720,17 @@ function renderFrame() {
     const reconciledIdentity = reconcileSelectionIdentity(selectedIdentity, selectedPathIdentity, keyboardItems);
     if (reconciledIdentity !== selectedIdentity) {
       selectedIdentity = reconciledIdentity;
-      keyboardIndexByIdentity = new Map(keyboardItems.map((item, index) => [item.identity, index]));
-      statusMessage = keyboardItems.find((item) => item.identity === reconciledIdentity)?.status || statusMessage;
+      const nextSelectionStatus = keyboardItems.find((item) => item.identity === reconciledIdentity)?.status || selectedStatusMessage;
+      const reconciledStatus = reconcileSelectionStatus({
+        currentStatus: statusMessage,
+        previousSelectionStatus: selectedStatusMessage,
+        nextSelectionStatus,
+        transientStatus: transientStatusMessage,
+        transientRestoreStatus,
+      });
+      statusMessage = reconciledStatus.currentStatus;
+      transientRestoreStatus = reconciledStatus.transientRestoreStatus;
+      selectedStatusMessage = nextSelectionStatus;
     }
   }
   const controls = helpVisible
@@ -949,6 +963,7 @@ async function refreshState(announce = false) {
       if (previousRepoRoot !== next.repoRoot || previousCwd !== next.cwd) {
         selectedIdentity = "";
         selectedPathIdentity = "";
+        selectedStatusMessage = "";
         scrollOffset = 0;
         commitFiles.clear();
         expandedCommits.clear();
@@ -1123,6 +1138,7 @@ function handleInput(key) {
     if (selectedIdentity) {
       selectedIdentity = "";
       selectedPathIdentity = "";
+      selectedStatusMessage = "";
       revealSelected = false;
       statusMessage = "Click a section or file";
       scheduleDraw(); return;

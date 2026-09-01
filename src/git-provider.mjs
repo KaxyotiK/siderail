@@ -21,7 +21,9 @@ const DIRECTORY_FILE_LIMIT = 2_000;
 const DIRECTORY_DEPTH_LIMIT = 16;
 const DIRECTORY_SCAN_TIME_MS = 250;
 const CHANGE_SUMMARY_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
-const WORKTREE_PRESENCE_CONCURRENCY = 64;
+const WORKTREE_PRESENCE_FILE_LIMIT = 2_000;
+const WORKTREE_PRESENCE_TIME_MS = 250;
+const WORKTREE_PRESENCE_CONCURRENCY = 16;
 
 // Raw metadata and numstat can share one tree walk. Exact-only copy matching
 // retains copy identity without similarity-scoring every unchanged tracked
@@ -139,18 +141,33 @@ function withDescriptor(files, descriptor) {
   return files.map((file) => ({ ...file, descriptor }));
 }
 
-async function existingWorktreeEntries(repoRoot, entries) {
+export async function existingWorktreeEntries(repoRoot, entries, candidatePaths, {
+  fileLimit = WORKTREE_PRESENCE_FILE_LIMIT,
+  timeLimitMs = WORKTREE_PRESENCE_TIME_MS,
+  concurrency = WORKTREE_PRESENCE_CONCURRENCY,
+  lstat = fs.lstat,
+  now = Date.now,
+} = {}) {
   const root = path.resolve(repoRoot);
-  const present = new Array(entries.length).fill(false);
+  const present = new Array(entries.length).fill(true);
+  const indexByPath = new Map(entries.map((entry, index) => [entry.path, index]));
+  const candidates = [...new Set(candidatePaths)].flatMap((filePath) => (
+    indexByPath.has(filePath) ? [indexByPath.get(filePath)] : []
+  ));
+  const maximum = Math.min(candidates.length, Math.max(0, fileLimit));
+  const deadline = now() + Math.max(0, timeLimitMs);
   let nextIndex = 0;
   const inspect = async () => {
-    while (nextIndex < entries.length) {
-      const index = nextIndex;
+    while (nextIndex < maximum && now() < deadline) {
+      const index = candidates[nextIndex];
       nextIndex += 1;
       const absolute = path.resolve(root, entries[index].path);
-      if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) continue;
+      if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) {
+        present[index] = false;
+        continue;
+      }
       try {
-        await fs.lstat(absolute);
+        await lstat(absolute);
         present[index] = true;
       } catch (error) {
         present[index] = !["ENOENT", "ENOTDIR"].includes(error?.code);
@@ -158,10 +175,14 @@ async function existingWorktreeEntries(repoRoot, entries) {
     }
   };
   await Promise.all(Array.from(
-    { length: Math.min(WORKTREE_PRESENCE_CONCURRENCY, entries.length) },
+    { length: Math.min(Math.max(1, concurrency), maximum) },
     inspect,
   ));
-  return entries.filter((_entry, index) => present[index]);
+  return {
+    entries: entries.filter((_entry, index) => present[index]),
+    truncated: nextIndex < candidates.length,
+    checked: nextIndex,
+  };
 }
 
 async function changedFiles(repoRoot, diffArgs, descriptor) {
@@ -437,7 +458,7 @@ export async function getRepositoryState(cwd, options = {}) {
   const { baseRef } = resolvedBase;
   const configErrors = [...loadedConfigErrors, ...(resolvedBase.error ? [resolvedBase.error] : [])];
   const workingPromise = workingFiles(repoRoot, config.limits.maxFileBytes);
-  const trackedPromise = gitMachineText(repoRoot, ["ls-files", "-z", "--stage"]).then((output) => {
+  const trackedPromise = gitMachineText(repoRoot, ["ls-files", "-v", "-z", "--stage"]).then((output) => {
     const entries = parseLsFilesStageZ(output);
     return { paths: [...new Set(entries.map((entry) => entry.path))], entries };
   });
@@ -499,11 +520,26 @@ export async function getRepositoryState(cwd, options = {}) {
       }
     }
   }
-  state.files = await existingWorktreeEntries(repoRoot, buildPathIndex({
+  const indexedEntries = buildPathIndex({
     ...state,
     tracked: trackedData.entries
       .filter((entry) => entry.stage === 0)
       .map((entry) => ({ path: entry.path, ...trackedMetadata.get(entry.path) })),
-  }));
+  });
+  const presenceCandidates = [
+    ...trackedData.entries.filter((entry) => entry.stage === 0 && (entry.assumeUnchanged || entry.skipWorktree)),
+    ...state.untracked,
+    ...state.unstaged,
+    ...state.staged,
+    ...state.workspaceChanges,
+  ].map((entry) => entry.path);
+  const presence = await existingWorktreeEntries(
+    repoRoot,
+    indexedEntries,
+    presenceCandidates,
+    options.worktreePresence,
+  );
+  state.files = presence.entries;
+  state.worktreePresenceTruncated = presence.truncated;
   return state;
 }

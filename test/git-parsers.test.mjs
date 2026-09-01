@@ -3,9 +3,24 @@ import test from "node:test";
 import {
   parseCommitLogZ,
   parseCommitPathsRawLogZ,
+  parseLsFilesStageZ,
   parsePorcelainV2Z,
   parseRawNumstatZ,
 } from "../src/git-parsers.mjs";
+
+test("ls-files stage parser retains hidden worktree-presence flags", () => {
+  const objectId = "a".repeat(40);
+  assert.deepEqual(parseLsFilesStageZ([
+    `H 100644 ${objectId} 0\tnormal.txt`,
+    `h 100644 ${objectId} 0\tassumed.txt`,
+    `S 100644 ${objectId} 0\tsparse.txt`,
+    "",
+  ].join("\0")), [
+    { path: "normal.txt", mode: "100644", objectId, stage: 0, indexTag: "H", assumeUnchanged: false, skipWorktree: false },
+    { path: "assumed.txt", mode: "100644", objectId, stage: 0, indexTag: "h", assumeUnchanged: true, skipWorktree: false },
+    { path: "sparse.txt", mode: "100644", objectId, stage: 0, indexTag: "S", assumeUnchanged: false, skipWorktree: true },
+  ]);
+});
 
 test("commit machine formats preserve control characters and unambiguous paths", () => {
   const hash = "a".repeat(40);

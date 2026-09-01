@@ -22,6 +22,7 @@ import {
   previewInitialMode,
   previewTabName,
   refreshStatusAfterSuccess,
+  reconcileSelectionStatus,
   revealScrollOffset,
   sanitizeRendererAnsi,
   sanitizeTerminalText,
@@ -54,6 +55,27 @@ test("cmux file clicks open one native preview while Herdr keeps double-click op
     activatePointerTarget(target, trackClick);
     assert.deepEqual(calls, expectedAfterSecond);
   }
+});
+
+test("selection reconciliation preserves errors and active transient status", () => {
+  assert.deepEqual(reconcileSelectionStatus({
+    currentStatus: "Refresh failed: offline",
+    previousSelectionStatus: "Unstaged · file.txt",
+    nextSelectionStatus: "Staged · file.txt",
+  }), {
+    currentStatus: "Refresh failed: offline",
+    transientRestoreStatus: "",
+  });
+  assert.deepEqual(reconcileSelectionStatus({
+    currentStatus: "Git state refreshed",
+    previousSelectionStatus: "Unstaged · file.txt",
+    nextSelectionStatus: "Staged · file.txt",
+    transientStatus: "Git state refreshed",
+    transientRestoreStatus: "Unstaged · file.txt",
+  }), {
+    currentStatus: "Git state refreshed",
+    transientRestoreStatus: "Staged · file.txt",
+  });
 });
 
 const exec = promisify(execFile);

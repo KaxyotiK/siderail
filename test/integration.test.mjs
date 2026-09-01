@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
-import { getCommitFiles, getRepositoryState, scanDirectory } from "../src/git-provider.mjs";
+import { existingWorktreeEntries, getCommitFiles, getRepositoryState, scanDirectory } from "../src/git-provider.mjs";
 import { filesAgainstBase } from "../src/model.mjs";
 import { diffArguments, loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand, runGit } from "../src/process.mjs";
@@ -14,6 +14,34 @@ function repositoryState(t, root, options = {}) {
   const { environment } = hermeticEnvironment(t, options.env || {});
   return getRepositoryState(root, { ...options, env: environment });
 }
+
+test("worktree presence validation checks only candidates and stops at its budget", async () => {
+  const entries = Array.from({ length: 5 }, (_value, index) => ({ path: `file-${index}.txt` }));
+  const checkedPaths = [];
+  const result = await existingWorktreeEntries("/repo", entries, entries.map((entry) => entry.path), {
+    fileLimit: 2,
+    timeLimitMs: 1_000,
+    concurrency: 1,
+    lstat: async (absolute) => {
+      checkedPaths.push(absolute);
+      const error = new Error("missing");
+      error.code = "ENOENT";
+      throw error;
+    },
+    now: () => 0,
+  });
+  assert.deepEqual(checkedPaths, ["/repo/file-0.txt", "/repo/file-1.txt"]);
+  assert.equal(result.checked, 2);
+  assert.equal(result.truncated, true);
+  assert.deepEqual(result.entries.map((entry) => entry.path), ["file-2.txt", "file-3.txt", "file-4.txt"]);
+
+  const untouched = await existingWorktreeEntries("/repo", entries, [], {
+    lstat: async () => { throw new Error("must not inspect clean tracked files"); },
+  });
+  assert.equal(untouched.checked, 0);
+  assert.equal(untouched.truncated, false);
+  assert.deepEqual(untouched.entries, entries);
+});
 
 async function traceGitCommands(t, run) {
   const traceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-command-trace-"));

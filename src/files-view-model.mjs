@@ -1,10 +1,14 @@
 import path from "node:path";
 
+const contentSignatures = new WeakMap();
+
 export function folderStateScope(scope, query = "") {
   return query.trim() ? `${scope}:search` : scope;
 }
 
 export function filesContentSignature(files) {
+  const cached = contentSignatures.get(files);
+  if (cached) return cached;
   let hash = 2166136261;
   for (const file of files) {
     const value = [
@@ -18,13 +22,36 @@ export function filesContentSignature(files) {
       file.descriptor?.kind,
       file.descriptor?.baseRef,
       file.descriptor?.commitHash,
+      ...(file.states || []).flatMap((state) => [
+        state.scope,
+        state.status,
+        state.additions,
+        state.deletions,
+        state.binary,
+        state.oldPath,
+        state.descriptor?.kind,
+        state.descriptor?.baseRef,
+        state.descriptor?.commitHash,
+      ]),
     ].join("\0");
     for (let index = 0; index < value.length; index += 1) {
       hash ^= value.charCodeAt(index);
       hash = Math.imul(hash, 16777619);
     }
   }
-  return `${files.length}:${(hash >>> 0).toString(36)}`;
+  const signature = `${files.length}:${(hash >>> 0).toString(36)}`;
+  contentSignatures.set(files, signature);
+  return signature;
+}
+
+export function filesSourceSignature(state) {
+  return [
+    state.files || [],
+    state.workspaceChanges || [],
+    state.untracked || [],
+    state.staged || [],
+    state.unstaged || [],
+  ].map(filesContentSignature).join(":");
 }
 
 export function folderCollapseKeys(files, { mode, scope = "files" }) {

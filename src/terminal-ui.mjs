@@ -406,6 +406,27 @@ export function filePointerActions(host, onSelect, onOpen) {
   return { click: onSelect, doubleClick: onOpen };
 }
 
+export function reconcileSelectionStatus({
+  currentStatus,
+  previousSelectionStatus,
+  nextSelectionStatus,
+  transientStatus = "",
+  transientRestoreStatus = "",
+}) {
+  if (transientStatus && currentStatus === transientStatus) {
+    return {
+      currentStatus,
+      transientRestoreStatus: transientRestoreStatus === previousSelectionStatus
+        ? nextSelectionStatus
+        : transientRestoreStatus,
+    };
+  }
+  return {
+    currentStatus: currentStatus === previousSelectionStatus ? nextSelectionStatus : currentStatus,
+    transientRestoreStatus,
+  };
+}
+
 export function interruptPointerClickSequence({ key = "", button = -1, phase = "" } = {}, trackClick) {
   const interrupted = Boolean(key) || phase === "M" && (button === 64 || button === 65);
   if (interrupted) trackClick("");
