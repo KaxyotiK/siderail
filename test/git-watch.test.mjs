@@ -29,6 +29,7 @@ test("the release witness can isolate the recovery poll from filesystem watchers
   assert.equal(shouldInstallRecoveryPoll({}), true);
   assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "poll-only" }), true);
   assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "watch-only" }), false);
+  assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "watch-only" }, { watchFailed: true }), true);
 });
 
 test("git watcher resolves and deduplicates per-worktree and common git directories", async () => {

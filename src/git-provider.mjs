@@ -21,6 +21,7 @@ const DIRECTORY_FILE_LIMIT = 2_000;
 const DIRECTORY_DEPTH_LIMIT = 16;
 const DIRECTORY_SCAN_TIME_MS = 250;
 const CHANGE_SUMMARY_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
+const WORKTREE_PRESENCE_CONCURRENCY = 64;
 
 // Raw metadata and numstat can share one tree walk. Exact-only copy matching
 // retains copy identity without similarity-scoring every unchanged tracked
@@ -136,6 +137,31 @@ async function resolveBase(repoRoot, requested) {
 
 function withDescriptor(files, descriptor) {
   return files.map((file) => ({ ...file, descriptor }));
+}
+
+async function existingWorktreeEntries(repoRoot, entries) {
+  const root = path.resolve(repoRoot);
+  const present = new Array(entries.length).fill(false);
+  let nextIndex = 0;
+  const inspect = async () => {
+    while (nextIndex < entries.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const absolute = path.resolve(root, entries[index].path);
+      if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) continue;
+      try {
+        await fs.lstat(absolute);
+        present[index] = true;
+      } catch (error) {
+        present[index] = !["ENOENT", "ENOTDIR"].includes(error?.code);
+      }
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(WORKTREE_PRESENCE_CONCURRENCY, entries.length) },
+    inspect,
+  ));
+  return entries.filter((_entry, index) => present[index]);
 }
 
 async function changedFiles(repoRoot, diffArgs, descriptor) {
@@ -473,11 +499,11 @@ export async function getRepositoryState(cwd, options = {}) {
       }
     }
   }
-  state.files = buildPathIndex({
+  state.files = await existingWorktreeEntries(repoRoot, buildPathIndex({
     ...state,
     tracked: trackedData.entries
       .filter((entry) => entry.stage === 0)
       .map((entry) => ({ path: entry.path, ...trackedMetadata.get(entry.path) })),
-  });
+  }));
   return state;
 }

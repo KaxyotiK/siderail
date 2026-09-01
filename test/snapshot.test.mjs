@@ -35,6 +35,14 @@ async function waitFor(check, message, timeoutMs = 5_000) {
   assert.ok(check(), message);
 }
 
+function plainTerminal(text) {
+  return text.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+}
+
+function latestPlainFrame(text) {
+  return plainTerminal(text.split("\u001b[?2026h\u001b[H").at(-1));
+}
+
 for (const width of [25, 36, 52, 100]) {
   test(`demo snapshot is coherent at ${width} columns`, async (t) => {
     const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
@@ -168,6 +176,118 @@ test("commit-history search filters expanded commit children", async (t) => {
   assert.doesNotMatch(plain, /rail\.mjs|status\.mjs/);
 });
 
+test("loaded commit search rows replace preview glyphs with real status and stats", async (t) => {
+  const child = spawnHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--search", "preview.md", "--width", "52", "--height", "32",
+  ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => latestPlainFrame(stdout).includes("⊡ preview.md"), "commit preview row did not render");
+  child.stdin.write("jjj\r");
+  await waitFor(() => (latestPlainFrame(stdout).match(/⊞ preview\.md\s+\+3/g) || []).length === 2, "loaded commit row retained placeholder status");
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
+test("Tree and Folders layouts render identical file status and stats", async (t) => {
+  const narrow = await execHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "status.mjs", "--width", "52", "--height", "28",
+  ]);
+  const narrowPlain = plainTerminal(narrow.stdout);
+  assert.match(narrowPlain, /≣ Folders/);
+  assert.equal((narrowPlain.match(/⊡ status\.mjs\s+\+2 −1/g) || []).length, 2);
+
+  const child = spawnHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--search", "status.mjs", "--width", "100", "--height", "28",
+  ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => latestPlainFrame(stdout).includes("≡ Tree"), "wide Tree layout did not render");
+  assert.equal((latestPlainFrame(stdout).match(/⊡ status\.mjs\s+\+2 −1/g) || []).length, 2);
+  child.stdin.write("g");
+  await waitFor(() => latestPlainFrame(stdout).includes("≣ Folders"), "g did not switch the layout label");
+  assert.equal((latestPlainFrame(stdout).match(/⊡ status\.mjs\s+\+2 −1/g) || []).length, 2);
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
+test("rendered status matrix includes Git glyphs, numeric stats, and binary labels", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-render-matrix-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "modified.txt"), "before\n");
+  await fs.writeFile(path.join(root, "delete.txt"), "delete me\n");
+  await fs.writeFile(path.join(root, "rename-old.txt"), "rename me\n");
+  await fs.writeFile(path.join(root, "copy-source.txt"), "copy me exactly\n");
+  await fs.symlink("copy-source.txt", path.join(root, "type-target.txt"));
+  await fs.writeFile(path.join(root, "binary.dat"), Buffer.from([0, 1, 2]));
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await fs.writeFile(path.join(root, "modified.txt"), "after\nextra\n");
+  await fs.rm(path.join(root, "delete.txt"));
+  await runGit(root, ["mv", "rename-old.txt", "rename-new.txt"]);
+  await fs.copyFile(path.join(root, "copy-source.txt"), path.join(root, "copy-target.txt"));
+  await fs.rm(path.join(root, "type-target.txt"));
+  await fs.writeFile(path.join(root, "type-target.txt"), "regular now\n");
+  await fs.writeFile(path.join(root, "binary.dat"), Buffer.from([0, 9, 2]));
+  await fs.writeFile(path.join(root, "added.txt"), "added\n");
+  await fs.symlink("missing-target", path.join(root, "added-link"));
+  await runGit(root, ["add", "added.txt", "added-link", "copy-target.txt"]);
+
+  const script = path.resolve("scripts/git-rail.mjs");
+  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "100", "--height", "60"], { cwd: root });
+  const plain = plainTerminal(stdout);
+  assert.match(plain, /⊞ added\.txt\s+\+1/);
+  assert.match(plain, /⊞ added-link\s+\+1/);
+  assert.match(plain, /⧉ copy-target\.txt/);
+  assert.match(plain, /↪ rename-new\.txt/);
+  assert.match(plain, /◆ binary\.dat\s+binary/);
+  assert.match(plain, /⊟ delete\.txt\s+−1/);
+  assert.match(plain, /⊡ modified\.txt\s+\+2 −1/);
+  assert.match(plain, /◇ type-target\.txt\s+\+1 −1/);
+
+  const filesSnapshot = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "100", "--height", "60"], { cwd: root });
+  const filesPlain = plainTerminal(filesSnapshot.stdout);
+  assert.match(filesPlain, /⊞ added\.txt\s+\+1/);
+  assert.match(filesPlain, /⊞ added-link\s+\+1/);
+  assert.match(filesPlain, /⧉ copy-target\.txt/);
+  assert.match(filesPlain, /↪ rename-new\.txt/);
+  assert.match(filesPlain, /◆ binary\.dat\s+binary/);
+  assert.match(filesPlain, /⊡ modified\.txt\s+\+2 −1/);
+  assert.match(filesPlain, /◇ type-target\.txt\s+\+1 −1/);
+  assert.doesNotMatch(filesPlain, /delete\.txt|rename-old\.txt/);
+});
+
+test("conflicted files render their dedicated on-screen glyph", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-render-conflict-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "conflict.txt"), "base\n");
+  await runGit(root, ["add", "conflict.txt"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["switch", "-c", "other"]);
+  await fs.writeFile(path.join(root, "conflict.txt"), "other\n");
+  await runGit(root, ["commit", "-am", "other"], { env: identity });
+  await runGit(root, ["switch", "main"]);
+  await fs.writeFile(path.join(root, "conflict.txt"), "main\n");
+  await runGit(root, ["commit", "-am", "main"], { env: identity });
+  await assert.rejects(runGit(root, ["merge", "other"], { env: identity }));
+  const { stdout } = await execHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--snapshot", "--width", "100", "--height", "36"], { cwd: root });
+  assert.match(plainTerminal(stdout), /! conflict\.txt/);
+});
+
 test("large repositories fully render Changes and Files without continuation controls", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -186,6 +306,36 @@ test("large repositories fully render Changes and Files without continuation con
   assert.match(filesPlain, /file-000\.txt/);
   assert.match(filesPlain, /file-249\.txt/);
   assert.doesNotMatch(filesPlain, /Show \d+ more/);
+});
+
+test("Files render includes current untracked paths and excludes every deleted path", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-files-render-current-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "present.txt"), "present\n");
+  await fs.writeFile(path.join(root, "committed-delete.txt"), "committed\n");
+  await fs.writeFile(path.join(root, "staged-delete.txt"), "staged\n");
+  await fs.writeFile(path.join(root, "unstaged-delete.txt"), "unstaged\n");
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature/files"]);
+  await fs.rm(path.join(root, "committed-delete.txt"));
+  await runGit(root, ["commit", "-am", "commit deletion"], { env: identity });
+  await fs.rm(path.join(root, "staged-delete.txt"));
+  await runGit(root, ["add", "--all"]);
+  await fs.rm(path.join(root, "unstaged-delete.txt"));
+  await fs.writeFile(path.join(root, "never-committed.txt"), "staged then removed\n");
+  await runGit(root, ["add", "never-committed.txt"]);
+  await fs.rm(path.join(root, "never-committed.txt"));
+  await fs.writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+  const script = path.resolve("scripts/git-rail.mjs");
+  const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root });
+  const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+  assert.match(plain, /□ present\.txt/);
+  assert.match(plain, /\? untracked\.txt/);
+  assert.doesNotMatch(plain, /committed-delete\.txt|never-committed\.txt|staged-delete\.txt|unstaged-delete\.txt/);
 });
 
 test("sidebar rows stay within terminal width for wide filenames", async (t) => {
@@ -336,6 +486,83 @@ test("fatal rail errors restore terminal modes before exiting nonzero", async (t
   assert.equal(exitCode, 1);
   assert.match(stdout, /\u001b\[\?1000l\u001b\[\?1006l\u001b\[\?25h\u001b\[\?1049l/);
   assert.match(stderr, /GitRail fatal error: Error: injected fatal error/);
+});
+
+test("selection survives edit, stage, and commit refreshes while Files drops a later deletion", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-live-transitions-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "live.txt"), "base\n");
+  await runGit(root, ["add", "live.txt"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature/live"]);
+  await fs.writeFile(path.join(root, "live.txt"), "edited\nextra\n");
+
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--width", "100", "--height", "32"], {
+    cwd: root,
+    stdio: ["pipe", "pipe", "pipe"],
+  }, { GIT_RAIL_POLL_INTERVAL_MS: "1000" });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => /⊡ live\.txt\s+\+2 −1/.test(latestPlainFrame(stdout)), "live edit did not render");
+  child.stdin.write("j");
+  await waitFor(() => latestPlainFrame(stdout).includes("Unstaged · live.txt"), "unstaged row was not selected");
+
+  await runGit(root, ["add", "live.txt"]);
+  await waitFor(() => latestPlainFrame(stdout).includes("Staged · live.txt") && latestPlainFrame(stdout).includes("▏"), "selection did not survive staging", 8_000);
+
+  await runGit(root, ["commit", "-m", "live update"], { env: identity });
+  await waitFor(() => /Commits\s+1/.test(latestPlainFrame(stdout)) && /Against main\s+1/.test(latestPlainFrame(stdout)), "commit transition did not refresh", 8_000);
+  child.stdin.write("\t");
+  await waitFor(() => /⊡ live\.txt\s+\+2 −1/.test(latestPlainFrame(stdout)) && latestPlainFrame(stdout).includes("Against main · live.txt"), "Files tab did not show the selected committed file descriptor");
+  await fs.rm(path.join(root, "live.txt"));
+  await waitFor(() => !/[□?⊠⊡⊞⊟↪⧉!◇◆]\s+live\.txt/.test(latestPlainFrame(stdout)), "Files tab retained a deleted path", 8_000);
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
+test("terminal editor return and manual reload both re-read preview content", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-reload-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const editor = path.join(root, "test-editor");
+  await fs.writeFile(editor, "#!/bin/sh\nprintf 'after editor\\n' > \"$1\"\n");
+  await fs.chmod(editor, 0o700);
+  await fs.writeFile(path.join(root, "note.txt"), "before editor\n");
+  const { environment } = hermeticEnvironment(t);
+  await writeUserConfig(environment, { version: 1, editor: { client: editor, args: [], mode: "terminal" } });
+  const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "52", "--height", "20"], {
+    cwd: root,
+    env: {
+      ...environment,
+      GIT_RAIL_PREVIEW_PATH: "note.txt",
+      GIT_RAIL_PREVIEW_REPO: root,
+      GIT_RAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
+      GIT_RAIL_PREVIEW_METADATA: Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url"),
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stdin.write("2");
+  await waitFor(() => latestPlainFrame(stdout).includes("before editor"), "raw preview did not render initial content");
+  child.stdin.write("e");
+  await waitFor(() => latestPlainFrame(stdout).includes("after editor") && latestPlainFrame(stdout).includes("preview reloaded"), "editor return did not reload preview content");
+  await fs.writeFile(path.join(root, "note.txt"), "after manual reload\n");
+  child.stdin.write("r");
+  await waitFor(() => latestPlainFrame(stdout).includes("after manual reload"), "r did not reload preview content");
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
 });
 
 test("preview processes coalesced search input, advances matches, and exposes horizontal navigation", async (t) => {

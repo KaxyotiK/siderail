@@ -18,7 +18,9 @@ import {
 } from "../src/git-watch.mjs";
 import {
   FilesViewModelCache,
+  filesContentSignature,
   folderCollapseKeys,
+  folderStateScope,
   syncFolderCollapseState,
   toggleFolderCollapseState,
   treeBranchPrefix,
@@ -26,7 +28,7 @@ import {
 import { debugLog } from "../src/debug-log.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resolveHerdrTabCwd } from "../src/herdr-context.mjs";
-import { displayState, filesAgainstBase, selectionKey } from "../src/model.mjs";
+import { displayState, filesAgainstBase, reconcileSelectionIdentity, selectionKey, selectionPathKey } from "../src/model.mjs";
 import { runCommand } from "../src/process.mjs";
 import { openOwnedPreview } from "../src/preview-pane-lifecycle.mjs";
 import {
@@ -201,6 +203,7 @@ let viewModePreference = "auto";
 let selectedSection = 0;
 let scrollOffset = 0;
 let selectedIdentity = "";
+let selectedPathIdentity = "";
 let revealSelected = false;
 let keyboardItems = [];
 let keyboardIndexByIdentity = new Map();
@@ -218,6 +221,7 @@ let refreshVisible = false;
 let refreshQueued = false;
 let refreshQueuedAnnounce = false;
 let refreshTimer;
+let watchRecoveryPoll = false;
 let cmuxContextWatcher;
 let invalidationScheduler;
 let renderTimer;
@@ -306,6 +310,7 @@ function treeGuides(row, width) { return `${C.faint}${treeBranchPrefix(row, widt
 
 function selectFile(file) {
   selectedIdentity = selectionKey(state.repoRoot || state.cwd, file);
+  selectedPathIdentity = selectionPathKey(state.repoRoot || state.cwd, file);
   revealSelected = true;
   statusMessage = file.statsUnavailable
     ? `${descriptorLabel(file.descriptor)} · ${file.path} · ? stats unavailable (inspection budget)`
@@ -315,6 +320,7 @@ function selectKeyboardItem(item) {
   if (item.file) selectFile(item.file);
   else {
     selectedIdentity = item.identity;
+    selectedPathIdentity = "";
     revealSelected = true;
     statusMessage = item.status;
   }
@@ -330,6 +336,7 @@ function keyboardItemForFile(file) {
   const identity = selectionKey(state.repoRoot || state.cwd, file);
   return {
     identity,
+    pathIdentity: selectionPathKey(state.repoRoot || state.cwd, file),
     file,
     status: `${descriptorLabel(file.descriptor)} · ${file.path}`,
     action: () => reportAsync(requestPreview(file)),
@@ -375,7 +382,7 @@ function folderKeyboardItem({ mode, scope, key, label, collapsed }) {
 }
 function renderTree(files, width, scope, expandByDefault = false) {
   const collapsed = folderState(files, "tree", scope, expandByDefault);
-  const cacheKey = `${filesViewGeneration}:tree:${scope}:${files.length}:${[...collapsed].sort().join("\0")}`;
+  const cacheKey = `${filesViewGeneration}:tree:${scope}:${filesContentSignature(files)}:${[...collapsed].sort().join("\0")}`;
   return filesViewModels.rows(cacheKey, files, { mode: "tree", collapsed, scope }).map((row) => {
     const guides = treeGuides(row, width);
     if (row.kind === "file") return fileRow(row.file, width, ` ${guides}`);
@@ -393,7 +400,7 @@ function renderTree(files, width, scope, expandByDefault = false) {
 function renderGrouped(files, width, scope, expandByDefault = false) {
   const lines = [];
   folderState(files, "grouped", scope, expandByDefault);
-  const cacheKey = `${filesViewGeneration}:grouped:${scope}:${files.length}:${[...collapsedGroups].sort().join("\0")}`;
+  const cacheKey = `${filesViewGeneration}:grouped:${scope}:${filesContentSignature(files)}:${[...collapsedGroups].sort().join("\0")}`;
   for (const row of filesViewModels.rows(cacheKey, files, { mode: "grouped", collapsed: collapsedGroups, scope })) {
     if (row.kind === "file") {
       const prefix = row.prefix === "last" ? `  ${C.faint}└─${C.reset} ` : row.prefix === "middle" ? `  ${C.faint}├─${C.reset} ` : " ";
@@ -484,7 +491,7 @@ function renderChanges(width) {
     lines.push(sectionHeader(section.id, section.label, count, index, width, forced));
     if (!forced && !expanded[section.id]) return;
     if (section.files) {
-      lines.push(...renderFilesList(section.files, width, `${section.id}:${query}`, Boolean(query)));
+      lines.push(...renderFilesList(section.files, width, folderStateScope(section.id, query), Boolean(query)));
       return;
     }
     for (const commit of section.commits) {
@@ -515,7 +522,7 @@ function renderChanges(width) {
           ? expansion.showAllFiles ? loaded : search(loaded, query)
           : commit.matchingPaths.map((filePath) => ({ path: filePath, status: "modified", additions: 0, deletions: 0, descriptor: { kind: "commit", commitHash: commit.hash } }));
         if (expansion.loading) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
-        else lines.push(...renderFilesList(matchingFiles, width, `commit:${commit.hash}:${query}`, true));
+        else lines.push(...renderFilesList(matchingFiles, width, folderStateScope(`commit:${commit.hash}`, query), true));
       } else if (!commitFiles.has(commit.hash)) lines.push(`   ${C.dim}Loading commit files…${C.reset}`);
       else lines.push(...renderFilesList(commitFiles.get(commit.hash), width, `commit:${commit.hash}`));
     }
@@ -528,7 +535,7 @@ function canonicalFiles() {
 function renderFiles(width) {
   const query = fileSearchQuery.trim();
   const mode = resolvedViewMode(width);
-  const scope = `files:${query}`;
+  const scope = folderStateScope("files", query);
   const sourceKey = [filesViewGeneration, mode, width, query].join(":");
   const files = filesTabViewCache?.sourceKey === sourceKey
     ? filesTabViewCache.files
@@ -699,6 +706,12 @@ function renderFrame() {
     keyboardIndexByIdentity = body?.virtualFiles
       ? body.keyboardIndexByIdentity
       : new Map(keyboardItems.map((item, index) => [item.identity, index]));
+    const reconciledIdentity = reconcileSelectionIdentity(selectedIdentity, selectedPathIdentity, keyboardItems);
+    if (reconciledIdentity !== selectedIdentity) {
+      selectedIdentity = reconciledIdentity;
+      keyboardIndexByIdentity = new Map(keyboardItems.map((item, index) => [item.identity, index]));
+      statusMessage = keyboardItems.find((item) => item.identity === reconciledIdentity)?.status || statusMessage;
+    }
   }
   const controls = helpVisible
     ? "↑/↓ or j/k scroll · ?/Esc/q close help"
@@ -901,6 +914,7 @@ async function toggleCommit(commit) {
   if (!commitFiles.has(commit.hash)) {
     try { commitFiles.set(commit.hash, await getCommitFiles(state.repoRoot, commit.hash, state.config.limits.maxDiffBytes)); }
     catch (error) { commitFiles.set(commit.hash, []); statusMessage = `Commit files failed: ${error.message}`; }
+    filesViewModels.invalidate();
   }
   draw();
 }
@@ -928,6 +942,7 @@ async function refreshState(announce = false) {
       filesViewModels.invalidate();
       if (previousRepoRoot !== next.repoRoot || previousCwd !== next.cwd) {
         selectedIdentity = "";
+        selectedPathIdentity = "";
         scrollOffset = 0;
         commitFiles.clear();
         expandedCommits.clear();
@@ -960,14 +975,16 @@ async function startInvalidation() {
   const generation = ++invalidationGeneration;
   const watchRoot = state.repoRoot || state.cwd;
   let gitRoots = [];
+  let watchFailed = false;
   if (state.repoRoot) {
     try { gitRoots = await resolveGitWatchRoots(state.repoRoot); }
-    catch (error) { debugLog("watch", { outcome: "poll-fallback", error: safe(error.message) }); }
+    catch (error) { watchFailed = true; debugLog("watch", { outcome: "poll-fallback", error: safe(error.message) }); }
   }
   const signature = JSON.stringify([watchRoot, ...gitRoots]);
   if (generation !== invalidationGeneration) return;
   if (invalidationSignature === signature && refreshTimer) return;
   stopInvalidation(false);
+  watchRecoveryPoll = false;
   if (cleanupComplete) return;
   invalidationGeneration = generation;
   invalidationRepoRoot = watchRoot || "";
@@ -982,6 +999,7 @@ async function startInvalidation() {
     closeWatcherOnError(watcher, (error) => {
       watchers = watchers.filter((candidate) => candidate !== watcher);
       debugLog("watch", { target, outcome: "poll-fallback", error: safe(error.message) });
+      resetRefreshTimer(true);
     });
   };
   if (watchRoot && shouldInstallWatchers()) {
@@ -990,18 +1008,19 @@ async function startInvalidation() {
         if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
         debounce();
       }), watchRoot);
-    } catch (error) { debugLog("watch", { target: watchRoot, outcome: "poll-fallback", error: safe(error.message) }); }
+    } catch (error) { watchFailed = true; debugLog("watch", { target: watchRoot, outcome: "poll-fallback", error: safe(error.message) }); }
     for (const root of gitRoots) {
       try { addWatcher(fs.watch(root, { recursive: true }, debounce), root); }
-      catch (error) { debugLog("watch", { target: root, outcome: "poll-fallback", error: safe(error.message) }); }
+      catch (error) { watchFailed = true; debugLog("watch", { target: root, outcome: "poll-fallback", error: safe(error.message) }); }
     }
   } else if (watchRoot) debugLog("watch", { target: watchRoot, outcome: "poll-only" });
-  resetRefreshTimer();
+  resetRefreshTimer(watchFailed);
 }
-function resetRefreshTimer() {
+function resetRefreshTimer(watchFailed = false) {
   clearTimeout(refreshTimer);
   refreshTimer = undefined;
-  if (!shouldInstallRecoveryPoll()) {
+  watchRecoveryPoll ||= watchFailed;
+  if (!shouldInstallRecoveryPoll(process.env, { watchFailed: watchRecoveryPoll })) {
     debugLog("watch", { outcome: "watch-only" });
     return;
   }
@@ -1097,6 +1116,7 @@ function handleInput(key) {
   if (!activeSearch && key === "\u001b") {
     if (selectedIdentity) {
       selectedIdentity = "";
+      selectedPathIdentity = "";
       revealSelected = false;
       statusMessage = "Click a section or file";
       scheduleDraw(); return;
@@ -1138,7 +1158,7 @@ function handleInput(key) {
   else if (key === "J") scrollOffset += 3;
   else if (key === "K") scrollOffset = Math.max(0, scrollOffset - 3);
   else if (key === " ") expanded[sectionIds[selectedSection]] = !expanded[sectionIds[selectedSection]];
-  else if (key === "g") toggleViewMode(Math.max(24, process.stdout.columns || 52));
+  else if (key === "g") toggleViewMode(Math.max(24, forcedWidth || process.stdout.columns || 52));
   else if (key === "r") { reportAsync(refreshState(true)); return; }
   scheduleDraw();
 }

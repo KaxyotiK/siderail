@@ -257,9 +257,9 @@ function resume() {
   process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
 }
 function launch(configValue, sourcePath, label) {
-  if (!configValue || configValue.client === "builtin") return;
+  if (!configValue || configValue.client === "builtin") return { mode: "builtin" };
   const mode = clientMode(configValue);
-  if (mode === "disabled") { statusMessage = `${label} is disabled`; return; }
+  if (mode === "disabled") { statusMessage = `${label} is disabled`; return { mode }; }
   const executable = launchExecutable(configValue);
   if (mode === "external") {
     const child = spawn(executable, [...configValue.args, sourcePath], { detached: true, stdio: "ignore", shell: false });
@@ -276,12 +276,13 @@ function launch(configValue, sourcePath, label) {
       temporaryDirectory = "";
     }
     statusMessage = `Opened with ${safe(path.basename(configValue.client))}`;
-    return;
+    return { mode };
   }
   suspend();
   const result = spawnSync(executable, [...configValue.args, sourcePath], { stdio: "inherit", shell: false });
   resume();
   statusMessage = result.error ? `${label} failed: ${safe(result.error.message)}` : result.status === 0 ? `Returned from ${safe(path.basename(configValue.client))}` : `${label} exited with status ${result.status}`;
+  return { mode, message: statusMessage };
 }
 async function materializedRawSource() {
   if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
@@ -391,11 +392,19 @@ async function launchEditor() {
       statusMessage = "Opening read-only temporary revision copy";
       render();
     }
-    launch(config.editor, source, "Editor");
+    const launched = launch(config.editor, source, "Editor");
     if (materializedRevision) statusMessage += " · read-only temporary revision copy";
     else if (temporarySource) statusMessage += " · temporary demo copy";
+    else if (launched?.mode === "terminal") {
+      await loadMode(documentMode);
+      statusMessage = `${launched.message} · preview reloaded`;
+    }
   } catch (error) { statusMessage = `File unavailable: ${safe(error.message)}`; }
   render();
+}
+async function reloadPreview() {
+  if (activeEmbeddedAction) return loadEmbeddedViewer(activeEmbeddedAction.viewer, activeEmbeddedAction.key);
+  return loadMode(documentMode);
 }
 function renderTabs(width) {
   const modes = [
@@ -451,7 +460,7 @@ function render() {
   const footer = [
     `${C.faint}${"─".repeat(width)}${C.reset}`,
     `${C.dim}${fit(safe(statusMessage), width)}${C.reset}`,
-    `${C.dim}${fit(`w wrap:${wrapping() ? "on" : "off"} · j/k scroll · PgUp/PgDn${horizontalHelp} · / search · q ${activeEmbeddedAction ? "back" : "close"}`, width)}${C.reset}`,
+    `${C.dim}${fit(`w wrap:${wrapping() ? "on" : "off"} · r reload · j/k scroll · PgUp/PgDn${horizontalHelp} · / search · q ${activeEmbeddedAction ? "back" : "close"}`, width)}${C.reset}`,
   ];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   visibleBodyRows = bodyHeight;
@@ -538,6 +547,7 @@ function handleInput(key) {
     if (viewerAction) reportAsync(launchViewer(viewerAction.viewer, viewerAction.key));
     if (key === "\t") reportAsync(loadMode(activeMode === "diff" ? "raw" : "diff"));
     if (key === "e") reportAsync(launchEditor());
+    if (key === "r") reportAsync(reloadPreview());
     if (key === "/") searchActive = true;
     if (key === "n") moveMatch(1);
     if (key === "N") moveMatch(-1);

@@ -2,11 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FilesViewModelCache,
+  filesContentSignature,
   folderCollapseKeys,
+  folderStateScope,
   syncFolderCollapseState,
   toggleFolderCollapseState,
   treeBranchPrefix,
 } from "../src/files-view-model.mjs";
+
+test("search folder state uses one bounded scope and row signatures reflect content", () => {
+  assert.equal(folderStateScope("files", ""), "files");
+  assert.equal(folderStateScope("files", "alpha"), "files:search");
+  assert.equal(folderStateScope("files", "beta"), "files:search");
+  const preview = [{ path: "preview.md", status: "modified", additions: 0, deletions: 0 }];
+  const loaded = [{ path: "preview.md", status: "added", additions: 3, deletions: 0 }];
+  assert.notEqual(filesContentSignature(preview), filesContentSignature(loaded));
+});
 
 test("folder collapse keys cover every tree ancestor and grouped folder", () => {
   const files = [

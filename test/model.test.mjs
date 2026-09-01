@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPathIndex, filesAgainstBase } from "../src/model.mjs";
+import {
+  buildPathIndex,
+  filesAgainstBase,
+  reconcileSelectionIdentity,
+  selectionKey,
+  selectionPathKey,
+} from "../src/model.mjs";
+
+test("selection follows the same path when a refresh changes its descriptor", () => {
+  const unstaged = { path: "src/app.mjs", descriptor: { kind: "unstaged" } };
+  const staged = { path: "src/app.mjs", descriptor: { kind: "staged" } };
+  const selected = selectionKey("/repo", unstaged);
+  const pathIdentity = selectionPathKey("/repo", unstaged);
+  const next = [{
+    identity: selectionKey("/repo", staged),
+    pathIdentity: selectionPathKey("/repo", staged),
+  }];
+  assert.equal(reconcileSelectionIdentity(selected, pathIdentity, next), next[0].identity);
+});
 
 test("Files view combines base-branch diffs with grey unchanged files", () => {
   const files = buildPathIndex({
@@ -57,6 +75,17 @@ test("Files view omits deleted paths when no base comparison is available", () =
   });
 
   assert.deepEqual(filesAgainstBase(files, [], null), []);
+});
+
+test("Files view omits an indexed addition deleted before its first commit", () => {
+  const files = buildPathIndex({
+    tracked: ["never-committed.txt"],
+    staged: [{ path: "never-committed.txt", status: "added", descriptor: { kind: "staged" } }],
+    unstaged: [{ path: "never-committed.txt", status: "deleted", descriptor: { kind: "unstaged" } }],
+  });
+  const descriptor = { kind: "workspace", baseRef: "main", mergeBase: "abc123" };
+
+  assert.deepEqual(filesAgainstBase(files, [], descriptor), []);
 });
 
 test("canonical clean files preserve tracked mode metadata", () => {

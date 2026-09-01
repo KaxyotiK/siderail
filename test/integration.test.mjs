@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createFixtureRepository, removeFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState, scanDirectory } from "../src/git-provider.mjs";
+import { filesAgainstBase } from "../src/model.mjs";
 import { diffArguments, loadDiff, loadRaw, loadRawBytes, safeWorktreePath } from "../src/preview-provider.mjs";
 import { runCommand, runGit } from "../src/process.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
@@ -50,6 +51,62 @@ test("fixture state is derived by the production provider", async (t) => {
   assert.ok(state.commits[0].hash.length === 40);
   const files = await getCommitFiles(root, state.commits[0].hash);
   assert.ok(files.every((file) => file.descriptor.commitHash === state.commits[0].hash));
+});
+
+test("Files projection follows real committed, staged, unstaged, untracked, and recreated paths", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-files-current-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  for (const name of ["assume-missing.txt", "committed-delete.txt", "skip-missing.txt", "staged-delete.txt", "unstaged-delete.txt", "present.txt"]) {
+    await fs.writeFile(path.join(root, name), `${name}\n`);
+  }
+  await runGit(root, ["add", "--all"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature/files"]);
+
+  await fs.rm(path.join(root, "committed-delete.txt"));
+  await runGit(root, ["commit", "-am", "commit deletion"], { env: identity });
+  await fs.rm(path.join(root, "staged-delete.txt"));
+  await runGit(root, ["add", "--all"]);
+  await fs.rm(path.join(root, "unstaged-delete.txt"));
+  await fs.writeFile(path.join(root, "never-committed.txt"), "staged then removed\n");
+  await runGit(root, ["add", "never-committed.txt"]);
+  await fs.rm(path.join(root, "never-committed.txt"));
+  await runGit(root, ["update-index", "--assume-unchanged", "assume-missing.txt"]);
+  await runGit(root, ["update-index", "--skip-worktree", "skip-missing.txt"]);
+  await fs.rm(path.join(root, "assume-missing.txt"));
+  await fs.rm(path.join(root, "skip-missing.txt"));
+  await fs.writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+  let state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  let projected = new Map(filesAgainstBase(state.files, state.workspaceChanges, state.workspaceDescriptor)
+    .map((file) => [file.path, file]));
+  assert.equal(state.againstBase.find((file) => file.path === "committed-delete.txt").status, "deleted");
+  assert.equal(state.staged.find((file) => file.path === "staged-delete.txt").status, "deleted");
+  assert.equal(state.unstaged.find((file) => file.path === "unstaged-delete.txt").status, "deleted");
+  assert.equal(state.staged.find((file) => file.path === "never-committed.txt").status, "added");
+  assert.equal(state.unstaged.find((file) => file.path === "never-committed.txt").status, "deleted");
+  assert.equal(projected.has("assume-missing.txt"), false);
+  assert.equal(projected.has("committed-delete.txt"), false);
+  assert.equal(projected.has("never-committed.txt"), false);
+  assert.equal(projected.has("skip-missing.txt"), false);
+  assert.equal(projected.has("staged-delete.txt"), false);
+  assert.equal(projected.has("unstaged-delete.txt"), false);
+  assert.equal(projected.has("present.txt"), true);
+  assert.equal(projected.get("untracked.txt").descriptor.kind, "untracked");
+
+  await fs.rm(path.join(root, "untracked.txt"));
+  state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  projected = new Map(filesAgainstBase(state.files, state.workspaceChanges, state.workspaceDescriptor)
+    .map((file) => [file.path, file]));
+  assert.equal(projected.has("untracked.txt"), false);
+
+  await fs.writeFile(path.join(root, "committed-delete.txt"), "recreated but untracked\n");
+  state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  projected = new Map(filesAgainstBase(state.files, state.workspaceChanges, state.workspaceDescriptor)
+    .map((file) => [file.path, file]));
+  assert.equal(projected.get("committed-delete.txt").descriptor.kind, "untracked");
 });
 
 test("inspection leaves HEAD, refs, index, status, and worktree bytes unchanged", async (t) => {

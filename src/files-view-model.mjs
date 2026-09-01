@@ -1,5 +1,32 @@
 import path from "node:path";
 
+export function folderStateScope(scope, query = "") {
+  return query.trim() ? `${scope}:search` : scope;
+}
+
+export function filesContentSignature(files) {
+  let hash = 2166136261;
+  for (const file of files) {
+    const value = [
+      file.path,
+      file.status,
+      file.additions,
+      file.deletions,
+      file.binary,
+      file.statsUnavailable,
+      file.oldPath,
+      file.descriptor?.kind,
+      file.descriptor?.baseRef,
+      file.descriptor?.commitHash,
+    ].join("\0");
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `${files.length}:${(hash >>> 0).toString(36)}`;
+}
+
 export function folderCollapseKeys(files, { mode, scope = "files" }) {
   const keys = new Set();
   for (const file of files) {

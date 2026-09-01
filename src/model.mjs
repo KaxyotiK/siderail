@@ -8,6 +8,15 @@ export function selectionKey(repoRoot, file) {
   return `${repoRoot}\0${file.path}\0${descriptorKey(file.descriptor)}`;
 }
 
+export function selectionPathKey(repoRoot, file) {
+  return `${repoRoot}\0${file.path}`;
+}
+
+export function reconcileSelectionIdentity(selectedIdentity, selectedPathIdentity, items) {
+  if (!selectedIdentity || items.some((item) => item.identity === selectedIdentity)) return selectedIdentity;
+  return items.find((item) => item.pathIdentity === selectedPathIdentity)?.identity || selectedIdentity;
+}
+
 export function buildPathIndex({ tracked = [], againstBase = [], staged = [], unstaged = [], untracked = [] }) {
   const byPath = new Map();
   const ensure = (filePath) => {
@@ -69,6 +78,7 @@ export function filesAgainstBase(files, workspaceChanges, workspaceDescriptor) {
   return files.flatMap((file) => {
     const untracked = file.states.find((state) => state.descriptor?.kind === "untracked");
     if (untracked) return [{ ...file, ...untracked }];
+    if (file.states.some((state) => state.descriptor?.kind === "unstaged" && state.status === "deleted")) return [];
     const workspaceChange = byPath.get(file.path);
     if (workspaceChange) return workspaceChange.status === "deleted" ? [] : [{ ...file, ...workspaceChange }];
     if (!workspaceDescriptor && file.states.length) {
