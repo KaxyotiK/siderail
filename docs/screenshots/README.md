@@ -5,8 +5,8 @@ and 100 terminal columns. Each one renders the exact bytes
 `scripts/git-rail.mjs --demo --snapshot` writes at that width, with its complete
 boundary and footer; the content is not cropped or hand-edited.
 
-- Visual source: `1a7d1d0b417614037d33b28cb70bb5d443e083c6`
-- Capture source: `1a7d1d0b417614037d33b28cb70bb5d443e083c6`
+- Visual source: `a1046a00386620c74315b93bdd92c8ffe19e1df3`
+- Capture source: `a1046a00386620c74315b93bdd92c8ffe19e1df3`
 - Herdr: `0.8.2`
 - Captured: `2026-09-01`, macOS 26.5.2
 
