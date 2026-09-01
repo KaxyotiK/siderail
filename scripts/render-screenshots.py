@@ -135,8 +135,10 @@ def render(columns, rows):
     fallback = ImageFont.truetype(FALLBACK_FONT, 18)
     faces = {}
 
-    draw.text((PAD_X, CAPTION_Y), f"Herdr GitRail · demo fixture · {columns} columns",
-              font=regular, fill=INDEXED[3])
+    caption = f"Herdr GitRail · demo fixture · {columns} columns"
+    while caption and regular.getlength(caption) > columns * CELL_W:
+        caption = caption.rsplit(" · ", 1)[0] if " · " in caption else caption[:-1]
+    draw.text((PAD_X, CAPTION_Y), caption, font=regular, fill=INDEXED[3])
 
     for row, cells in enumerate(rows):
         top = CONTENT_Y + row * CELL_H
