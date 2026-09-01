@@ -8,6 +8,13 @@ import test from "node:test";
 import { terminalColumns } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
+import { DEFAULT_PALETTE } from "../src/theme.mjs";
+
+// Hermetic runs never see a Herdr config, so the rail resolves the indexed
+// fallback palette. Assert against it rather than against literal colors.
+const SELECTED = DEFAULT_PALETTE.selected;
+const ACCENT = DEFAULT_PALETTE.gold;
+const SELECTED_BAR = `${SELECTED}${ACCENT}\u258f`;
 
 const exec = promisify(execFile);
 
@@ -128,7 +135,7 @@ test("Files search expands matching paths from collapsed folders for keyboard ac
   child.stdin.write("/file-19999.txt\r");
   await waitFor(() => stdout.includes("file-19999.txt"), "matching Files path did not expand for search");
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "matching Files row was not keyboard selected");
+  await waitFor(() => stdout.includes(SELECTED), "matching Files row was not keyboard selected");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -147,7 +154,7 @@ test("keyboard navigation expands an initially collapsed Files folder", async (t
   await waitFor(() => stdout.includes("› assets"), "collapsed Files folder did not render");
   assert.equal(stdout.includes("binary.dat"), false);
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "collapsed Files folder was not selected");
+  await waitFor(() => stdout.includes(SELECTED), "collapsed Files folder was not selected");
   child.stdin.write("\r");
   await waitFor(() => stdout.includes("binary.dat"), "selected Files folder did not expand");
   child.stdin.write("q");
@@ -426,7 +433,7 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   child.stdin.write("q");
   await waitFor(() => stdout.lastIndexOf("Search changes") > stdout.lastIndexOf("HELP & LEGEND"), "help did not close");
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m${"\u001b"}[38;2;214;176;91m▏`), "selection did not render");
+  await waitFor(() => stdout.includes(SELECTED_BAR), "selection did not render");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -438,8 +445,8 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   assert.match(plain, /⊠ Filesystem-only file/);
   assert.match(plain, /Unstaged: tracked change not staged/);
   assert.match(plain, /Untracked: not added to Git/);
-  assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
-  assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏\u001b\[0m\u001b\[48;2;45;41;34m/);
+  assert.ok(stdout.includes(`${ACCENT}\u2590`), "accent scrollbar did not render");
+  assert.ok(stdout.includes(`${SELECTED_BAR}${DEFAULT_PALETTE.reset}${SELECTED}`), "selection bar did not reapply its background");
 });
 
 test("Escape clears a keyboard selection before a second press closes the rail", async (t) => {
@@ -454,13 +461,13 @@ test("Escape clears a keyboard selection before a second press closes the rail",
   await waitFor(() => stdout.includes("? help"), "rail did not finish its initial render");
   stdout = "";
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m${"\u001b"}[38;2;214;176;91m▏`), "selection did not render");
-  assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
+  await waitFor(() => stdout.includes(SELECTED_BAR), "selection did not render");
+  assert.ok(stdout.includes(SELECTED_BAR), "selection bar did not render");
   stdout = "";
   child.stdin.write("\u001b");
   await waitFor(() => stdout.includes("Search changes"), "Escape did not repaint the cleared selection");
   assert.equal(child.exitCode, null);
-  assert.doesNotMatch(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
+  assert.ok(!stdout.includes(SELECTED_BAR), "selection bar was still rendered");
   child.stdin.write("\u001b");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -666,7 +673,7 @@ done
   while (!stdout.includes("Rendered heading") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
   assert.match(stdout, /3 Rendered/);
   assert.match(stdout, /Rendered heading/);
-  assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
+  assert.ok(stdout.includes(`${ACCENT}\u2590`), "accent scrollbar did not render");
   stdout = "";
   child.stdin.write("\u001b[6~");
   await new Promise((resolve) => setTimeout(resolve, 100));

@@ -180,6 +180,11 @@ precedence:
 3. `$EDITOR` when no editor is configured;
 4. `GIT_RAIL_*` environment overrides.
 
+Colors are not part of this file. GitRail resolves its palette from the ANSI
+indexed colors your terminal theme defines, then adopts Herdr's `accent`, `red`,
+`green`, and `selection_bg` tokens when you have set them. See
+[Colors and glyphs](docs/THEMING.md).
+
 Use [git-rail.config.example.json](git-rail.config.example.json) as a starting
 point. Configuration version 1 is validated; malformed JSON and invalid values
 are shown in the rail instead of being ignored. Repository contents are never
@@ -335,6 +340,7 @@ coverage floors locally. This repository does not use GitHub Actions.
 ## Documentation
 
 - [Installation and upgrades](docs/INSTALLATION.md)
+- [Colors and glyphs](docs/THEMING.md)
 - [cmux Dock host](docs/CMUX.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Production readiness](PRODUCTION-READINESS.md)

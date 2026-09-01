@@ -17,6 +17,10 @@ intentional configuration changes documented here.
   rows keyboard reachable while materializing only the visible viewport.
 - Auto-opens one unfocused rail per Git-backed tab. Automatic and manual opening
   skip layouts that cannot accept a safe outer-right split without reconstruction.
+- Resolves the rail and preview palette from the terminal's ANSI indexed colors
+  instead of pinned 24-bit values, so a light terminal theme is readable, then
+  adopts Herdr's `accent`, `red`, `green`, and `selection_bg` tokens when the
+  user has set them. See [Colors and glyphs](docs/THEMING.md).
 
 ### Security
 

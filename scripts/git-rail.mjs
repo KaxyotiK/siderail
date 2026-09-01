@@ -59,18 +59,12 @@ import {
   startupFailureState,
 } from "../src/terminal-ui.mjs";
 import { compactAge } from "../src/tui-format.mjs";
+import { resolvePalette } from "../src/theme.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
 const HOST = process.env.GIT_RAIL_HOST === "cmux" ? "cmux" : "herdr";
-const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
-const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
-const C = {
-  reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
-  gold: rgb(214, 176, 91), leaf: rgb(91, 190, 112), red: rgb(224, 108, 117),
-  amber: rgb(229, 180, 84), blue: rgb(105, 169, 230), purple: rgb(190, 132, 220),
-  fog: rgb(139, 139, 139), faint: rgb(84, 84, 84), selected: bg(45, 41, 34),
-};
+const C = resolvePalette(process.env, { host: HOST });
 const cliArgs = new Set(process.argv.slice(2));
 const snapshotMode = cliArgs.has("--snapshot");
 const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
