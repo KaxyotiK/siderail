@@ -114,7 +114,7 @@ or workspace happens to be visually focused later.
 
 ## Native previews and close behavior
 
-Enter or double-click opens the selection with `cmux open` as a native file tab
+Enter or a single file click opens the selection with `cmux open` as a native file tab
 beside the main-area source surface, never as another split or Dock control.
 GitRail supplies a bounded, read-only materialization of the exact selected
 revision for changed, clean, and filesystem rows. Preserving the original
@@ -160,9 +160,9 @@ relaunches GitRail in the same verified Dock terminal rather than mistaking the
 shell for an active instance or creating another control. Close the Dock tab
 with cmux when the surface itself should be removed.
 
-GitRail recognizes terminal mouse double-clicks with a fixed 700 ms interval.
-cmux does not currently expose the macOS double-click preference to terminal
-applications; Enter is the fully deterministic open action.
+GitRail opens a cmux native preview on the first file click. A second click in
+the terminal double-click interval selects the same row without opening a
+duplicate preview. Enter remains the fully deterministic keyboard open action.
 
 ## Remove or upgrade
 

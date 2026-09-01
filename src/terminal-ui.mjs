@@ -396,6 +396,16 @@ export function activatePointerTarget(target, trackClick, report = (value) => va
   return target ? "single" : "none";
 }
 
+export function filePointerActions(host, onSelect, onOpen) {
+  if (host === "cmux") {
+    return {
+      click: () => { onSelect(); return onOpen(); },
+      doubleClick: onSelect,
+    };
+  }
+  return { click: onSelect, doubleClick: onOpen };
+}
+
 export function interruptPointerClickSequence({ key = "", button = -1, phase = "" } = {}, trackClick) {
   const interrupted = Boolean(key) || phase === "M" && (button === 64 || button === 65);
   if (interrupted) trackClick("");

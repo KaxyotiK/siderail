@@ -15,6 +15,7 @@ import {
   activatePointerTarget,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
+  filePointerActions,
   jitteredPollInterval,
   interruptPointerClickSequence,
   padAnsiTerminalColumns,
@@ -35,6 +36,25 @@ import {
 } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
+
+test("cmux file clicks open one native preview while Herdr keeps double-click open", () => {
+  for (const [host, expectedAfterFirst, expectedAfterSecond] of [
+    ["cmux", ["select", "open"], ["select", "open", "select"]],
+    ["herdr", ["select"], ["select", "open"]],
+  ]) {
+    const calls = [];
+    const actions = filePointerActions(host, () => calls.push("select"), () => calls.push("open"));
+    const trackClick = createPointerClickTracker({ clock: (() => {
+      let now = 100;
+      return () => now += 100;
+    })() });
+    const target = { label: "file", action: actions.click, doubleAction: actions.doubleClick };
+    activatePointerTarget(target, trackClick);
+    assert.deepEqual(calls, expectedAfterFirst);
+    activatePointerTarget(target, trackClick);
+    assert.deepEqual(calls, expectedAfterSecond);
+  }
+});
 
 const exec = promisify(execFile);
 

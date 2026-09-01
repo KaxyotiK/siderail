@@ -40,6 +40,7 @@ import {
   createPointerClickTracker,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
+  filePointerActions,
   jitteredPollInterval,
   interruptPointerClickSequence,
   padAnsiTerminalColumns,
@@ -349,11 +350,16 @@ function fileRow(file, width, prefix = " ", keyboardItem = keyboardItemForFile(f
     const available = Math.max(1, width - visibleLength(prefix) - 2 - visibleLength(suffix) - (suffix ? 1 : 0));
     const body = `${prefix}${statusGlyph(file)} ${truncate(safe(path.basename(file.path)), available)}`;
     const line = suffix ? `${padAnsi(body, width - visibleLength(suffix) - 1)} ${suffix}` : body;
+    const pointerActions = filePointerActions(
+      HOST,
+      () => selectFile(file),
+      () => reportAsync(requestPreview(file)),
+    );
     const row = interactive(
       identity === selectedIdentity ? focusedLine(line, width) : fitAnsi(line, width),
-      () => selectFile(file),
+      pointerActions.click,
       `Select ${descriptorLabel(file.descriptor)}: ${file.path}`,
-      () => reportAsync(requestPreview(file)),
+      pointerActions.doubleClick,
     );
     row.keyboardIdentity = identity;
     return row;
