@@ -22,6 +22,10 @@ test("search folder state uses one bounded scope and row signatures reflect cont
     filesSourceSignature({ files: preview, workspaceChanges: [] }),
     filesSourceSignature({ files: loaded, workspaceChanges: [] }),
   );
+  assert.notEqual(
+    filesSourceSignature({ files: loaded, workspaceDescriptor: { kind: "against-base", baseRef: "main" } }),
+    filesSourceSignature({ files: loaded, workspaceDescriptor: { kind: "against-base", baseRef: "release" } }),
+  );
 });
 
 test("folder collapse keys cover every tree ancestor and grouped folder", () => {

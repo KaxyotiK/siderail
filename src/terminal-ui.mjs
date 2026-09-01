@@ -427,6 +427,17 @@ export function reconcileSelectionStatus({
   };
 }
 
+export function filesViewNotices(state, visibleFileCount) {
+  const notices = [];
+  if (state.directoryFilesTruncated) {
+    notices.push(`Showing the first ${visibleFileCount.toLocaleString("en-US")} files · scan limit reached`);
+  }
+  if (state.worktreePresenceTruncated) {
+    notices.push("Presence check limited · flagged file visibility may be incomplete");
+  }
+  return notices;
+}
+
 export function interruptPointerClickSequence({ key = "", button = -1, phase = "" } = {}, trackClick) {
   const interrupted = Boolean(key) || phase === "M" && (button === 64 || button === 65);
   if (interrupted) trackClick("");

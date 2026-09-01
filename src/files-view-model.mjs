@@ -45,13 +45,21 @@ export function filesContentSignature(files) {
 }
 
 export function filesSourceSignature(state) {
-  return [
+  const filesSignature = [
     state.files || [],
     state.workspaceChanges || [],
     state.untracked || [],
     state.staged || [],
     state.unstaged || [],
   ].map(filesContentSignature).join(":");
+  const descriptor = state.workspaceDescriptor || {};
+  const descriptorSignature = JSON.stringify([
+    descriptor.kind,
+    descriptor.baseRef,
+    descriptor.mergeBase,
+    descriptor.commitHash,
+  ]);
+  return `${filesSignature}:${descriptorSignature}`;
 }
 
 export function folderCollapseKeys(files, { mode, scope = "files" }) {

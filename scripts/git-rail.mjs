@@ -42,6 +42,7 @@ import {
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   filePointerActions,
+  filesViewNotices,
   jitteredPollInterval,
   interruptPointerClickSequence,
   padAnsiTerminalColumns,
@@ -587,7 +588,7 @@ function renderFiles(width) {
     interactive(searchField(fileSearchQuery, activeSearch === "files", "Search files…", query ? `${files.length} matches` : "", width), () => { activeSearch = "files"; }, "Search files"),
     toolbar(width), rule(width),
   ];
-  if (state.directoryFilesTruncated) fixed.push(` ${C.dim}Showing the first ${(state.files || []).length.toLocaleString("en-US")} files · scan limit reached${C.reset}`);
+  for (const notice of filesViewNotices(state, (state.files || []).length)) fixed.push(` ${C.dim}${notice}${C.reset}`);
   const rows = files.length
     ? filesTabViewCache.rows
     : [` ${C.dim}${query ? `No files match “${truncate(safe(query), width - 19)}”` : state.repoRoot ? "Repository has no files" : "Directory has no files"}${C.reset}`];
@@ -739,7 +740,7 @@ function renderFrame() {
   const footerMessage = helpVisible ? controls : statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
   const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
-  const fixedCount = helpVisible ? 3 : mainTab === "files" ? 3 + (state.directoryFilesTruncated ? 1 : 0) : state.repoRoot ? 3 : 0;
+  const fixedCount = helpVisible ? 3 : body?.virtualFiles ? body.fixed.length : state.repoRoot ? 3 : 0;
   const fixedSource = body?.virtualFiles ? body.fixed : body;
   const fixed = fixedSource.slice(0, Math.min(fixedCount, bodyHeight));
   const scrollable = body?.virtualFiles ? body.rows : body.slice(fixed.length);

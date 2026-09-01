@@ -16,6 +16,7 @@ import {
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   filePointerActions,
+  filesViewNotices,
   jitteredPollInterval,
   interruptPointerClickSequence,
   padAnsiTerminalColumns,
@@ -35,6 +36,17 @@ import {
   validPollInterval,
   wrapAnsiTerminalLines,
 } from "../src/terminal-ui.mjs";
+
+test("Files notices disclose independent scan and presence truncation", () => {
+  assert.deepEqual(filesViewNotices({}, 10), []);
+  assert.deepEqual(filesViewNotices({ directoryFilesTruncated: true }, 2_000), [
+    "Showing the first 2,000 files · scan limit reached",
+  ]);
+  assert.deepEqual(filesViewNotices({ worktreePresenceTruncated: true }, 2_000), [
+    "Presence check limited · flagged file visibility may be incomplete",
+  ]);
+  assert.equal(filesViewNotices({ directoryFilesTruncated: true, worktreePresenceTruncated: true }, 2_000).length, 2);
+});
 import { runGit } from "../src/process.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
