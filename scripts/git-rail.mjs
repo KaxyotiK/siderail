@@ -245,8 +245,15 @@ let filesTabViewCache = null;
 function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
 function regions(text, targets) { return { text, targets }; }
 function textOf(line) { return typeof line === "string" ? line : line.text; }
+// Muted tones sit too close to the selection background to stay legible, so a
+// selected row lifts them to the terminal's default foreground. Status colors
+// keep their meaning and are left alone.
+const SELECTED_TEXT = `${ESC}39m`;
 function focusedLine(line, width) {
   const content = sliceAnsiTerminalColumns(padAnsi(fitAnsi(line, width), width), 1, Math.max(0, width - 1))
+    .replaceAll(C.dim, SELECTED_TEXT)
+    .replaceAll(C.fog, SELECTED_TEXT)
+    .replaceAll(C.faint, SELECTED_TEXT)
     .replaceAll(C.reset, `${C.reset}${C.selected}`);
   return `${C.selected}${C.gold}▏${C.reset}${C.selected}${content}${C.reset}`;
 }

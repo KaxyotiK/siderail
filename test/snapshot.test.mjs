@@ -166,6 +166,32 @@ test("Files search expands matching paths from collapsed folders for keyboard ac
   });
 });
 
+test("a selected folder row is legible instead of muted against the selection", async (t) => {
+  const child = spawnHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
+  ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => stdout.includes("› assets"), "collapsed Files folder did not render");
+  child.stdin.write("j");
+  await waitFor(() => stdout.includes(SELECTED_BAR), "Files folder was not selected");
+
+  // Folder rows draw in the muted tone, which sits too close to the selection
+  // background to read. The selected row must lift it to the default foreground.
+  const frame = stdout.split("\u001b[?2026h\u001b[H").at(-1);
+  const selected = frame.split("\n").find((line) => line.includes(SELECTED_BAR));
+  assert.ok(selected, "no selected row in the final frame");
+  assert.ok(selected.includes("\u001b[39m"), `selected folder kept a muted tone: ${JSON.stringify(selected)}`);
+  assert.equal(selected.includes(DEFAULT_PALETTE.fog), false, "selected folder still renders the muted tone");
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
 test("keyboard navigation expands an initially collapsed Files folder", async (t) => {
   const child = spawnHermetic(t, process.execPath, [
     "scripts/git-rail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
