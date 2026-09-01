@@ -292,7 +292,12 @@ function statsLabel(file) {
   const deletions = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
   return [additions, deletions].filter(Boolean).join(" ");
 }
-function rule(width) { return `${C.faint}${"─".repeat(width)}${C.reset}`; }
+// The rule character is East Asian Ambiguous, so repeat by columns rather than
+// by count or a wide-ambiguous terminal truncates the last cell to an ellipsis.
+function rule(width) {
+  const columns = Math.max(1, visibleLength("─"));
+  return `${C.faint}${"─".repeat(Math.max(0, Math.floor(width / columns)))}${C.reset}`;
+}
 function tab(label, active, width) {
   const line = padAnsi(` ${label} `, width);
   return active ? `${C.selected}${C.gold}${C.bold}${line}${C.reset}` : `${C.dim}${line}${C.reset}`;

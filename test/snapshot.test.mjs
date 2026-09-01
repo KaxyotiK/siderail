@@ -50,6 +50,29 @@ function latestPlainFrame(text) {
   return plainTerminal(text.split("\u001b[?2026h\u001b[H").at(-1));
 }
 
+test("a wide-ambiguous terminal keeps every row inside the rail width", async (t) => {
+  const columns = 52;
+  const render = async (mode) => {
+    const { stdout } = await execHermetic(t, process.execPath, [
+      "scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(columns), "--height", "32",
+    ], { maxBuffer: 2 * 1024 * 1024 }, { GIT_RAIL_AMBIGUOUS_WIDTH: mode });
+    return plainTerminal(stdout).split("\n").map((line) => line.replace(/\r/g, ""));
+  };
+  const narrow = await render("narrow");
+  const wide = await render("wide");
+  for (const [mode, lines] of [["narrow", narrow], ["wide", wide]]) {
+    for (const line of lines) {
+      assert.ok(terminalColumns(line) <= columns, `${mode} row exceeded ${columns} columns: ${JSON.stringify(line)}`);
+    }
+  }
+  // The rule character is Ambiguous, so it must be repeated by columns and
+  // never truncated into an ellipsis at either setting.
+  const ruleOf = (lines) => lines.find((line) => line.startsWith("─")) || "";
+  assert.equal(ruleOf(narrow).length, columns);
+  assert.equal(ruleOf(wide).length, columns / 2);
+  for (const lines of [narrow, wide]) assert.doesNotMatch(ruleOf(lines), /…/);
+});
+
 for (const width of [25, 36, 52, 100]) {
   test(`demo snapshot is coherent at ${width} columns`, async (t) => {
     const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
