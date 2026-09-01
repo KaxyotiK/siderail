@@ -145,12 +145,17 @@ export async function existingWorktreeEntries(repoRoot, entries, candidatePaths,
   fileLimit = WORKTREE_PRESENCE_FILE_LIMIT,
   timeLimitMs = WORKTREE_PRESENCE_TIME_MS,
   concurrency = WORKTREE_PRESENCE_CONCURRENCY,
+  defaultAbsentPaths = [],
   lstat = fs.lstat,
   now = Date.now,
 } = {}) {
   const root = path.resolve(repoRoot);
   const present = new Array(entries.length).fill(true);
   const indexByPath = new Map(entries.map((entry, index) => [entry.path, index]));
+  for (const filePath of defaultAbsentPaths) {
+    const index = indexByPath.get(filePath);
+    if (index !== undefined) present[index] = false;
+  }
   const candidates = [...new Set(candidatePaths)].flatMap((filePath) => (
     indexByPath.has(filePath) ? [indexByPath.get(filePath)] : []
   ));
@@ -526,8 +531,11 @@ export async function getRepositoryState(cwd, options = {}) {
       .filter((entry) => entry.stage === 0)
       .map((entry) => ({ path: entry.path, ...trackedMetadata.get(entry.path) })),
   });
+  const assumeUnchangedEntries = trackedData.entries.filter((entry) => entry.stage === 0 && entry.assumeUnchanged);
+  const skipWorktreeEntries = trackedData.entries.filter((entry) => entry.stage === 0 && entry.skipWorktree);
   const presenceCandidates = [
-    ...trackedData.entries.filter((entry) => entry.stage === 0 && (entry.assumeUnchanged || entry.skipWorktree)),
+    ...assumeUnchangedEntries,
+    ...skipWorktreeEntries,
     ...state.untracked,
     ...state.unstaged,
     ...state.staged,
@@ -537,7 +545,10 @@ export async function getRepositoryState(cwd, options = {}) {
     repoRoot,
     indexedEntries,
     presenceCandidates,
-    options.worktreePresence,
+    {
+      ...options.worktreePresence,
+      defaultAbsentPaths: skipWorktreeEntries.map((entry) => entry.path),
+    },
   );
   state.files = presence.entries;
   state.worktreePresenceTruncated = presence.truncated;

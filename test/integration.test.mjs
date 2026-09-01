@@ -41,6 +41,17 @@ test("worktree presence validation checks only candidates and stops at its budge
   assert.equal(untouched.checked, 0);
   assert.equal(untouched.truncated, false);
   assert.deepEqual(untouched.entries, entries);
+
+  const sparseFallback = await existingWorktreeEntries("/repo", entries, entries.map((entry) => entry.path), {
+    fileLimit: 2,
+    timeLimitMs: 1_000,
+    concurrency: 1,
+    defaultAbsentPaths: entries.slice(2).map((entry) => entry.path),
+    lstat: async () => {},
+    now: () => 0,
+  });
+  assert.equal(sparseFallback.truncated, true);
+  assert.deepEqual(sparseFallback.entries.map((entry) => entry.path), ["file-0.txt", "file-1.txt"]);
 });
 
 async function traceGitCommands(t, run) {
