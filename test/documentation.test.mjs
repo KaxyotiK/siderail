@@ -15,6 +15,8 @@ test("documentation states the eventual refresh and user-only configuration cont
   assert.match(readme, /built-in defaults/);
   assert.match(readme, /~\/\.config\/git-rail\/config\.json/);
   assert.match(readme, /GIT_RAIL_\*/);
+  assert.match(readme, /git config --local 'branch\.feature\/my-work\.gitrail-base'/);
+  assert.match(readme, /git config --worktree --unset-all 'branch\.feature\/my-work\.gitrail-base'/);
   assert.match(readme, /Untracked is a separate section/);
   await assert.rejects(() => fs.access("schema/v1/git-rail.schema.json"), (error) => error.code === "ENOENT");
 });
