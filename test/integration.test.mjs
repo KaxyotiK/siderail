@@ -113,9 +113,14 @@ test("branch changes never report commits already reachable from main", async (t
   await runGit(root, ["push", "-u", "origin", "main"]);
   await runGit(root, ["remote", "set-head", "origin", "main"]);
 
+  await fs.writeFile(path.join(root, "local-main.txt"), "local main\n");
+  await runGit(root, ["add", "local-main.txt"]);
+  await runGit(root, ["commit", "-m", "local main ahead of origin"], { env: identity });
+  mainCommits.push((await runGit(root, ["rev-parse", "HEAD"])).stdout.trim());
+
   let state = await repositoryState(t, root);
   assert.equal(state.branch, "main");
-  assert.equal(state.baseRef, "origin/main");
+  assert.equal(state.baseRef, "main");
   assert.equal(state.totalCommits, 0);
   assert.deepEqual(state.commits, []);
   assert.deepEqual(state.againstBase, []);

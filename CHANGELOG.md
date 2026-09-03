@@ -40,6 +40,9 @@ intentional configuration changes documented here.
 
 ### Fixed
 
+- Prefers the local default branch over its remote-tracking ref so commits
+  already on local `main` never reappear as Against-base files or branch commits
+  merely because `origin/main` is stale.
 - Starts folders collapsed in both Tree and Folders layouts while automatically
   expanding matching search paths so nested files remain keyboard-accessible.
 - Distinguishes provider failures from an ordinary non-Git directory and keeps
