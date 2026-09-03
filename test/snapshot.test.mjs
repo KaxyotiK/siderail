@@ -583,6 +583,57 @@ test("selection survives edit, stage, and commit refreshes while Files drops a l
   });
 });
 
+test("the live rail clears main history when branches change", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-live-branch-switch-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  for (const [name, content] of [["one.txt", "one\n"], ["two.txt", "two\n"], ["three.txt", "three\n"]]) {
+    await fs.writeFile(path.join(root, name), content);
+    await runGit(root, ["add", name]);
+    await runGit(root, ["commit", "-m", `main ${name}`], { env: identity });
+  }
+  await runGit(root, ["switch", "-c", "feature/live-switch"]);
+  await fs.writeFile(path.join(root, "feature.txt"), "feature\n");
+  await runGit(root, ["add", "feature.txt"]);
+  await runGit(root, ["commit", "-m", "feature only"], { env: identity });
+  await runGit(root, ["switch", "main"]);
+
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--width", "100", "--height", "32"], {
+    cwd: root,
+    stdio: ["pipe", "pipe", "pipe"],
+  }, { GIT_RAIL_POLL_INTERVAL_MS: "1000" });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("↱ main") && frame.includes("No changes against main · working tree clean");
+  }, "main rendered inherited history as changes");
+
+  await runGit(root, ["switch", "feature/live-switch"]);
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("↱ feature/live-switch")
+      && /Against main\s+1/.test(frame)
+      && /Commits\s+1/.test(frame);
+  }, "feature branch did not converge to exactly its unique change", 8_000);
+
+  await runGit(root, ["switch", "main"]);
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("↱ main") && frame.includes("No changes against main · working tree clean");
+  }, "returning to main retained feature or main history", 8_000);
+
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
 test("terminal editor return and manual reload both re-read preview content", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-reload-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
