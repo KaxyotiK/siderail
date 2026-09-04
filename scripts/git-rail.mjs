@@ -59,18 +59,12 @@ import {
   startupFailureState,
 } from "../src/terminal-ui.mjs";
 import { compactAge } from "../src/tui-format.mjs";
+import { resolvePalette } from "../src/theme.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
 const HOST = process.env.GIT_RAIL_HOST === "cmux" ? "cmux" : "herdr";
-const rgb = (r, g, b) => `${ESC}38;2;${r};${g};${b}m`;
-const bg = (r, g, b) => `${ESC}48;2;${r};${g};${b}m`;
-const C = {
-  reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
-  gold: rgb(214, 176, 91), leaf: rgb(91, 190, 112), red: rgb(224, 108, 117),
-  amber: rgb(229, 180, 84), blue: rgb(105, 169, 230), purple: rgb(190, 132, 220),
-  fog: rgb(139, 139, 139), faint: rgb(84, 84, 84), selected: bg(45, 41, 34),
-};
+const C = resolvePalette(process.env, { host: HOST });
 const cliArgs = new Set(process.argv.slice(2));
 const snapshotMode = cliArgs.has("--snapshot");
 const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
@@ -251,8 +245,15 @@ let filesTabViewCache = null;
 function interactive(text, onClick, label, onDoubleClick = null) { return { text, onClick, label, onDoubleClick }; }
 function regions(text, targets) { return { text, targets }; }
 function textOf(line) { return typeof line === "string" ? line : line.text; }
+// Muted tones sit too close to the selection background to stay legible, so a
+// selected row lifts them to the terminal's default foreground. Status colors
+// keep their meaning and are left alone.
+const SELECTED_TEXT = `${ESC}39m`;
 function focusedLine(line, width) {
   const content = sliceAnsiTerminalColumns(padAnsi(fitAnsi(line, width), width), 1, Math.max(0, width - 1))
+    .replaceAll(C.dim, SELECTED_TEXT)
+    .replaceAll(C.fog, SELECTED_TEXT)
+    .replaceAll(C.faint, SELECTED_TEXT)
     .replaceAll(C.reset, `${C.reset}${C.selected}`);
   return `${C.selected}${C.gold}▏${C.reset}${C.selected}${content}${C.reset}`;
 }
@@ -285,7 +286,7 @@ function statusGlyph(file) {
   if (status === "added") return `${C.leaf}⊞${C.reset}`;
   if (status === "deleted") return `${C.red}⊟${C.reset}`;
   if (status === "renamed") return `${C.blue}↪${C.reset}`;
-  if (status === "copied") return `${C.purple}⧉${C.reset}`;
+  if (status === "copied") return `${C.purple}◫${C.reset}`;
   if (status === "conflicted") return `${C.red}!${C.reset}`;
   if (status === "type-changed") return `${C.blue}◇${C.reset}`;
   return `${C.amber}⊡${C.reset}`;
@@ -298,7 +299,12 @@ function statsLabel(file) {
   const deletions = file.deletions > 0 ? `${C.red}−${file.deletions}${C.reset}` : "";
   return [additions, deletions].filter(Boolean).join(" ");
 }
-function rule(width) { return `${C.faint}${"─".repeat(width)}${C.reset}`; }
+// The rule character is East Asian Ambiguous, so repeat by columns rather than
+// by count or a wide-ambiguous terminal truncates the last cell to an ellipsis.
+function rule(width) {
+  const columns = Math.max(1, visibleLength("─"));
+  return `${C.faint}${"─".repeat(Math.max(0, Math.floor(width / columns)))}${C.reset}`;
+}
 function tab(label, active, width) {
   const line = padAnsi(` ${label} `, width);
   return active ? `${C.selected}${C.gold}${C.bold}${line}${C.reset}` : `${C.dim}${line}${C.reset}`;
@@ -663,7 +669,7 @@ function helpRows(width) {
     helpEntry("⊞", "Added", C.leaf),
     helpEntry("⊟", "Deleted", C.red),
     helpEntry("↪", "Renamed", C.blue),
-    helpEntry("⧉", "Copied", C.purple),
+    helpEntry("◫", "Copied", C.purple),
     helpEntry("!", "Conflicted", C.red),
     helpEntry("◇", "Type changed", C.blue),
     helpEntry("◆", "Binary", C.purple),
@@ -701,7 +707,7 @@ function renderHeader(width) {
   const half = Math.floor(width / 2);
   return { half, lines: [
     ` ${C.bold}${truncate(safe(state.repository || "repository"), width - 1)}${C.reset}`,
-    `  ${C.fog}⑂ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
+    `  ${C.fog}↱ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
     rule(width),
     `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
   ] };

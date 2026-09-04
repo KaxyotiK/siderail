@@ -11,6 +11,7 @@ import { MAX_SEARCH_QUERY_SCALARS, PreviewSearchIndex } from "../src/preview-sea
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { debugLog } from "../src/debug-log.mjs";
 import { retainExternalPreviewCopy } from "../src/temporary-copy-retention.mjs";
+import { resolvePalette } from "../src/theme.mjs";
 import {
   commitComparisonSource,
   createTerminalInputDecoder,
@@ -27,12 +28,8 @@ import {
 
 const ESC = "\u001b[";
 assertSupportedNode();
-const C = {
-  reset: `${ESC}0m`, bold: `${ESC}1m`, dim: `${ESC}2m`,
-  gold: `${ESC}38;2;214;176;91m`, green: `${ESC}38;2;91;190;112m`,
-  red: `${ESC}38;2;224;108;117m`, blue: `${ESC}38;2;105;169;230m`,
-  faint: `${ESC}38;2;84;84;84m`, selected: `${ESC}48;2;45;41;34m`,
-};
+const palette = resolvePalette(process.env);
+const C = { ...palette, green: palette.leaf };
 const MAX_PREVIEW_LINES = 100_000;
 const MAX_WRAPPED_LINE_COLUMNS = 100_000;
 const forcedWidth = numberArg("--width");

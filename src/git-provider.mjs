@@ -132,7 +132,10 @@ async function resolveBase(repoRoot, requested) {
   try {
     remoteHead = (await gitText(repoRoot, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])).trim();
   } catch {}
-  const candidates = [...new Set([remoteHead, "origin/main", "origin/master", "main", "master"].filter(Boolean))];
+  const localRemoteHead = remoteHead.startsWith("origin/") ? remoteHead.slice("origin/".length) : "";
+  const candidates = [...new Set([
+    localRemoteHead, "main", "master", remoteHead, "origin/main", "origin/master",
+  ].filter(Boolean))];
   for (const candidate of candidates) if (await commitRefExists(repoRoot, candidate)) return { baseRef: candidate, error: "" };
   return { baseRef: await commitRefExists(repoRoot, "HEAD") ? "HEAD" : "", error: "" };
 }

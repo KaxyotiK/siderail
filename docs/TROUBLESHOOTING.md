@@ -57,10 +57,13 @@ layouts Herdr's minimum split ratio may keep it wider than the requested value.
 ## Base ref is wrong or missing
 
 Set `baseRef` in configuration or `GIT_RAIL_BASE`. Without an override, GitRail
-tries the remote HEAD, `origin/main`, `origin/master`, `main`, and `master`.
-Unborn repositories have no Against-base or commit range until the first commit.
-An explicit base must resolve to a commit. Missing refs and blob/tree object
-expressions are reported instead of silently falling back to another branch.
+prefers the local counterpart of the remote HEAD, then local `main` or `master`,
+before falling back to the corresponding remote refs. This keeps commits already
+on the local base branch out of Changes even when its remote-tracking ref is
+stale. Unborn repositories have no Against-base or commit range until the first
+commit. An explicit base must resolve to a commit. Missing refs and blob/tree
+object expressions are reported instead of silently falling back to another
+branch.
 
 ## Configuration error
 

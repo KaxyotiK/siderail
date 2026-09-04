@@ -23,9 +23,11 @@ import {
   previewInitialMode,
   previewTabName,
   refreshStatusAfterSuccess,
+  resolveAmbiguousWidth,
   reconcileSelectionStatus,
   revealScrollOffset,
   sanitizeRendererAnsi,
+  setAmbiguousWidth,
   sanitizeTerminalText,
   statusAfterBusy,
   sliceAnsiTerminalColumns,
@@ -131,6 +133,31 @@ test("preview tab names use a safe capped basename", () => {
   const wide = previewTabName(`src/${"界".repeat(20)}.md`);
   assert.equal(wide, `${"界".repeat(15)}…`);
   assert.ok([...wide].length <= 32);
+});
+
+test("ambiguous-width characters follow the configured terminal setting", () => {
+  // GitRail's own tree guides, rules, and separators are all East Asian
+  // Ambiguous, so a terminal set to render them wide shifts every column.
+  try {
+    assert.equal(resolveAmbiguousWidth({}), 1);
+    assert.equal(resolveAmbiguousWidth({ GIT_RAIL_AMBIGUOUS_WIDTH: "narrow" }), 1);
+    assert.equal(resolveAmbiguousWidth({ GIT_RAIL_AMBIGUOUS_WIDTH: "wide" }), 2);
+
+    setAmbiguousWidth(1);
+    assert.equal(terminalColumns("└─ a"), 4);
+    assert.equal(terminalColumns("café"), 4);
+    assert.equal(terminalColumns("界界"), 4);
+
+    setAmbiguousWidth(2);
+    assert.equal(terminalColumns("└─ a"), 6);
+    assert.equal(terminalColumns("café"), 5);
+    // Unambiguously wide and unambiguously narrow characters never move.
+    assert.equal(terminalColumns("界界"), 4);
+    assert.equal(terminalColumns("abc"), 3);
+    assert.equal(truncateTerminalColumns("└─└─", 5), "└─…");
+  } finally {
+    setAmbiguousWidth(1);
+  }
 });
 
 test("terminal layout helpers measure, truncate, pad, and compact by display columns", () => {

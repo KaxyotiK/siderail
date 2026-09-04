@@ -8,6 +8,13 @@ import test from "node:test";
 import { terminalColumns } from "../src/terminal-ui.mjs";
 import { runGit } from "../src/process.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
+import { DEFAULT_PALETTE } from "../src/theme.mjs";
+
+// Hermetic runs never see a Herdr config, so the rail resolves the indexed
+// fallback palette. Assert against it rather than against literal colors.
+const SELECTED = DEFAULT_PALETTE.selected;
+const ACCENT = DEFAULT_PALETTE.gold;
+const SELECTED_BAR = `${SELECTED}${ACCENT}\u258f`;
 
 const exec = promisify(execFile);
 
@@ -42,6 +49,29 @@ function plainTerminal(text) {
 function latestPlainFrame(text) {
   return plainTerminal(text.split("\u001b[?2026h\u001b[H").at(-1));
 }
+
+test("a wide-ambiguous terminal keeps every row inside the rail width", async (t) => {
+  const columns = 52;
+  const render = async (mode) => {
+    const { stdout } = await execHermetic(t, process.execPath, [
+      "scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(columns), "--height", "32",
+    ], { maxBuffer: 2 * 1024 * 1024 }, { GIT_RAIL_AMBIGUOUS_WIDTH: mode });
+    return plainTerminal(stdout).split("\n").map((line) => line.replace(/\r/g, ""));
+  };
+  const narrow = await render("narrow");
+  const wide = await render("wide");
+  for (const [mode, lines] of [["narrow", narrow], ["wide", wide]]) {
+    for (const line of lines) {
+      assert.ok(terminalColumns(line) <= columns, `${mode} row exceeded ${columns} columns: ${JSON.stringify(line)}`);
+    }
+  }
+  // The rule character is Ambiguous, so it must be repeated by columns and
+  // never truncated into an ellipsis at either setting.
+  const ruleOf = (lines) => lines.find((line) => line.startsWith("─")) || "";
+  assert.equal(ruleOf(narrow).length, columns);
+  assert.equal(ruleOf(wide).length, columns / 2);
+  for (const lines of [narrow, wide]) assert.doesNotMatch(ruleOf(lines), /…/);
+});
 
 for (const width of [25, 36, 52, 100]) {
   test(`demo snapshot is coherent at ${width} columns`, async (t) => {
@@ -128,7 +158,33 @@ test("Files search expands matching paths from collapsed folders for keyboard ac
   child.stdin.write("/file-19999.txt\r");
   await waitFor(() => stdout.includes("file-19999.txt"), "matching Files path did not expand for search");
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "matching Files row was not keyboard selected");
+  await waitFor(() => stdout.includes(SELECTED), "matching Files row was not keyboard selected");
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
+test("a selected folder row is legible instead of muted against the selection", async (t) => {
+  const child = spawnHermetic(t, process.execPath, [
+    "scripts/git-rail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
+  ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => stdout.includes("› assets"), "collapsed Files folder did not render");
+  child.stdin.write("j");
+  await waitFor(() => stdout.includes(SELECTED_BAR), "Files folder was not selected");
+
+  // Folder rows draw in the muted tone, which sits too close to the selection
+  // background to read. The selected row must lift it to the default foreground.
+  const frame = stdout.split("\u001b[?2026h\u001b[H").at(-1);
+  const selected = frame.split("\n").find((line) => line.includes(SELECTED_BAR));
+  assert.ok(selected, "no selected row in the final frame");
+  assert.ok(selected.includes("\u001b[39m"), `selected folder kept a muted tone: ${JSON.stringify(selected)}`);
+  assert.equal(selected.includes(DEFAULT_PALETTE.fog), false, "selected folder still renders the muted tone");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -147,7 +203,7 @@ test("keyboard navigation expands an initially collapsed Files folder", async (t
   await waitFor(() => stdout.includes("› assets"), "collapsed Files folder did not render");
   assert.equal(stdout.includes("binary.dat"), false);
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m`), "collapsed Files folder was not selected");
+  await waitFor(() => stdout.includes(SELECTED), "collapsed Files folder was not selected");
   child.stdin.write("\r");
   await waitFor(() => stdout.includes("binary.dat"), "selected Files folder did not expand");
   child.stdin.write("q");
@@ -250,7 +306,7 @@ test("rendered status matrix includes Git glyphs, numeric stats, and binary labe
   const plain = plainTerminal(stdout);
   assert.match(plain, /⊞ added\.txt\s+\+1/);
   assert.match(plain, /⊞ added-link\s+\+1/);
-  assert.match(plain, /⧉ copy-target\.txt/);
+  assert.match(plain, /◫ copy-target\.txt/);
   assert.match(plain, /↪ rename-new\.txt/);
   assert.match(plain, /◆ binary\.dat\s+binary/);
   assert.match(plain, /⊟ delete\.txt\s+−1/);
@@ -261,7 +317,7 @@ test("rendered status matrix includes Git glyphs, numeric stats, and binary labe
   const filesPlain = plainTerminal(filesSnapshot.stdout);
   assert.match(filesPlain, /⊞ added\.txt\s+\+1/);
   assert.match(filesPlain, /⊞ added-link\s+\+1/);
-  assert.match(filesPlain, /⧉ copy-target\.txt/);
+  assert.match(filesPlain, /◫ copy-target\.txt/);
   assert.match(filesPlain, /↪ rename-new\.txt/);
   assert.match(filesPlain, /◆ binary\.dat\s+binary/);
   assert.match(filesPlain, /⊡ modified\.txt\s+\+2 −1/);
@@ -426,7 +482,7 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   child.stdin.write("q");
   await waitFor(() => stdout.lastIndexOf("Search changes") > stdout.lastIndexOf("HELP & LEGEND"), "help did not close");
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m${"\u001b"}[38;2;214;176;91m▏`), "selection did not render");
+  await waitFor(() => stdout.includes(SELECTED_BAR), "selection did not render");
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -438,8 +494,8 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   assert.match(plain, /⊠ Filesystem-only file/);
   assert.match(plain, /Unstaged: tracked change not staged/);
   assert.match(plain, /Untracked: not added to Git/);
-  assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
-  assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏\u001b\[0m\u001b\[48;2;45;41;34m/);
+  assert.ok(stdout.includes(`${ACCENT}\u2590`), "accent scrollbar did not render");
+  assert.ok(stdout.includes(`${SELECTED_BAR}${DEFAULT_PALETTE.reset}${SELECTED}`), "selection bar did not reapply its background");
 });
 
 test("Escape clears a keyboard selection before a second press closes the rail", async (t) => {
@@ -454,13 +510,13 @@ test("Escape clears a keyboard selection before a second press closes the rail",
   await waitFor(() => stdout.includes("? help"), "rail did not finish its initial render");
   stdout = "";
   child.stdin.write("j");
-  await waitFor(() => stdout.includes(`${"\u001b"}[48;2;45;41;34m${"\u001b"}[38;2;214;176;91m▏`), "selection did not render");
-  assert.match(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
+  await waitFor(() => stdout.includes(SELECTED_BAR), "selection did not render");
+  assert.ok(stdout.includes(SELECTED_BAR), "selection bar did not render");
   stdout = "";
   child.stdin.write("\u001b");
   await waitFor(() => stdout.includes("Search changes"), "Escape did not repaint the cleared selection");
   assert.equal(child.exitCode, null);
-  assert.doesNotMatch(stdout, /\u001b\[48;2;45;41;34m\u001b\[38;2;214;176;91m▏/);
+  assert.ok(!stdout.includes(SELECTED_BAR), "selection bar was still rendered");
   child.stdin.write("\u001b");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -519,7 +575,58 @@ test("selection survives edit, stage, and commit refreshes while Files drops a l
   child.stdin.write("\t");
   await waitFor(() => /⊡ live\.txt\s+\+2 −1/.test(latestPlainFrame(stdout)) && latestPlainFrame(stdout).includes("Against main · live.txt"), "Files tab did not show the selected committed file descriptor");
   await fs.rm(path.join(root, "live.txt"));
-  await waitFor(() => !/[□?⊠⊡⊞⊟↪⧉!◇◆]\s+live\.txt/.test(latestPlainFrame(stdout)), "Files tab retained a deleted path", 8_000);
+  await waitFor(() => !/[□?⊠⊡⊞⊟↪◫!◇◆]\s+live\.txt/.test(latestPlainFrame(stdout)), "Files tab retained a deleted path", 8_000);
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
+test("the live rail clears main history when branches change", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-live-branch-switch-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  for (const [name, content] of [["one.txt", "one\n"], ["two.txt", "two\n"], ["three.txt", "three\n"]]) {
+    await fs.writeFile(path.join(root, name), content);
+    await runGit(root, ["add", name]);
+    await runGit(root, ["commit", "-m", `main ${name}`], { env: identity });
+  }
+  await runGit(root, ["switch", "-c", "feature/live-switch"]);
+  await fs.writeFile(path.join(root, "feature.txt"), "feature\n");
+  await runGit(root, ["add", "feature.txt"]);
+  await runGit(root, ["commit", "-m", "feature only"], { env: identity });
+  await runGit(root, ["switch", "main"]);
+
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--width", "100", "--height", "32"], {
+    cwd: root,
+    stdio: ["pipe", "pipe", "pipe"],
+  }, { GIT_RAIL_POLL_INTERVAL_MS: "1000" });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("↱ main") && frame.includes("No changes against main · working tree clean");
+  }, "main rendered inherited history as changes");
+
+  await runGit(root, ["switch", "feature/live-switch"]);
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("↱ feature/live-switch")
+      && /Against main\s+1/.test(frame)
+      && /Commits\s+1/.test(frame);
+  }, "feature branch did not converge to exactly its unique change", 8_000);
+
+  await runGit(root, ["switch", "main"]);
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("↱ main") && frame.includes("No changes against main · working tree clean");
+  }, "returning to main retained feature or main history", 8_000);
+
   child.stdin.write("q");
   await new Promise((resolve, reject) => {
     child.once("exit", resolve);
@@ -666,7 +773,7 @@ done
   while (!stdout.includes("Rendered heading") && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
   assert.match(stdout, /3 Rendered/);
   assert.match(stdout, /Rendered heading/);
-  assert.match(stdout, /\u001b\[38;2;214;176;91m▐/);
+  assert.ok(stdout.includes(`${ACCENT}\u2590`), "accent scrollbar did not render");
   stdout = "";
   child.stdin.write("\u001b[6~");
   await new Promise((resolve) => setTimeout(resolve, 100));

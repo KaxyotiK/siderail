@@ -25,9 +25,9 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@eslint/js": "9.39.1",
-    "eslint": "9.39.1",
-    "knip": "5.80.0"
+    "@eslint/js": "10.0.1",
+    "eslint": "10.9.1",
+    "knip": "6.34.0"
   },
   "knip": {
     "entry": ["scripts/*.mjs", "test/*.test.mjs"],
