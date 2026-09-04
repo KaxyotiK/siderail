@@ -108,9 +108,28 @@ test("provider resolves branch Git config after explicit bases and validates it 
   await fs.writeFile(path.join(root, "feature.txt"), "feature\n");
   await runGit(root, ["add", "feature.txt"]);
   await runGit(root, ["commit", "-m", "feature"], { env: identity });
+
+  const globalConfigEnvironment = hermeticEnvironment(t);
+  const globalConfigPath = path.join(globalConfigEnvironment.home, ".gitconfig");
+  await runGit(root, [
+    "config", "--file", globalConfigPath,
+    "branch.feature/configured.gitrail-base", "release-base",
+  ]);
+  const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
+  process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
+  let state;
+  try {
+    state = await repositoryState(t, root);
+  } finally {
+    if (previousGlobalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = previousGlobalConfig;
+  }
+  assert.equal(state.baseRef, "main");
+  assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
+
   await runGit(root, ["config", "--local", "branch.feature/configured.gitrail-base", "release-base"]);
 
-  let state = await repositoryState(t, root);
+  state = await repositoryState(t, root);
   assert.equal(state.baseRef, "release-base");
   assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt", "main.txt"]);
 
