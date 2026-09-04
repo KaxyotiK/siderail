@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -81,6 +82,10 @@ function validatedSurfaceControlState(state, { surfaceId = "", controlId = "git-
     || normalized(state.controlId) !== normalized(controlId)
     || !normalized(state.surfaceId)
     || !normalized(state.instanceId)
+    // A version 3 record always carries a start marker. Without that rule a
+    // markerless record would be process-id only for ever, and the process-id
+    // only compatibility would outlive the single version 2 cycle it is for.
+    || !normalized(state.processStartedAt)
     || !Number.isInteger(state.processId)
     || state.processId <= 0) return null;
   if (surfaceId && normalized(state.surfaceId) !== normalized(surfaceId)) return null;
@@ -124,7 +129,10 @@ export async function cmuxProcessStartMarker(processId, { run = runCommand, envi
   if (!Number.isInteger(processId) || processId <= 0) return "";
   try {
     const result = await run("/bin/ps", ["-p", String(processId), "-o", "pid=,lstart="], {
-      env: environment,
+      // lstart is rendered with the caller's locale and zone, so a marker
+      // recorded under one environment would not match the same process read
+      // back under another. The forced values come last so they always win.
+      env: { ...environment, LC_ALL: "C", LANG: "C", TZ: "UTC" },
       timeoutMs: 3_000,
       maxOutputBytes: 8 * 1_024,
     });
@@ -142,22 +150,47 @@ export async function cmuxDockControlRegistrationIsActive(
 ) {
   if (!validatedControlState(state, { controlId: state?.controlId })) return false;
   if (!isProcessAlive(state.processId)) return false;
-  const recorded = normalized(state.processStartedAt);
-  // Version 2 records predate the marker, so they stay process-id only rather
-  // than reporting a live control as dead during the compatibility cycle.
-  if (!recorded) return true;
+  // Version 2 records predate the marker and stay process-id only for one
+  // compatibility cycle. Every version 3 record carries one and is always
+  // checked against it, so a reassigned process id cannot revive a control.
+  if (state.version !== 3) return true;
   const observed = normalized(await readStartMarker(state.processId));
-  return Boolean(observed) && observed === recorded;
+  return Boolean(observed) && observed === normalized(state.processStartedAt);
 }
 
-async function writeControlState(statePath, record) {
+async function stagedControlState(statePath, record) {
   const directory = path.dirname(statePath);
-  const temporary = `${statePath}.${process.pid}.tmp`;
+  const temporary = `${statePath}.${process.pid}.${randomUUID()}.tmp`;
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   await fs.chmod(directory, 0o700);
   await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
   await fs.chmod(temporary, 0o600);
-  await fs.rename(temporary, statePath);
+  return temporary;
+}
+
+async function writeControlState(statePath, record) {
+  await fs.rename(await stagedControlState(statePath, record), statePath);
+}
+
+/**
+ * Publish without clobbering. A control registering for real must be able to
+ * replace its own record, but a migration must never overwrite one: a GitRail
+ * that started between the version 3 miss and this write owns the surface now,
+ * and replacing its registration would make the launcher act on a stale record
+ * and interrupt a healthy control. `link` fails rather than replacing, which
+ * makes losing the race observable instead of silent.
+ */
+async function publishControlState(statePath, record) {
+  const temporary = await stagedControlState(statePath, record);
+  try {
+    await fs.link(temporary, statePath);
+    return true;
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    return false;
+  } finally {
+    await fs.rm(temporary, { force: true });
+  }
 }
 
 export async function registerCmuxDockControl({
@@ -175,13 +208,18 @@ export async function registerCmuxDockControl({
   controlId = normalized(controlId);
   instanceId = normalized(instanceId);
   if (!surfaceId || !controlId || !instanceId || !Number.isInteger(processId) || processId <= 0) return false;
+  // The marker is obtained before anything is written. A version 3 record
+  // without one cannot exist, so an unreadable marker fails registration rather
+  // than producing a record that would be process-id only for ever.
+  const processStartedAt = normalized(await readStartMarker(processId, { environment }));
+  if (!processStartedAt) return false;
   await writeControlState(cmuxDockControlSurfaceStatePath({ surfaceId, controlId, environment }), {
     version: 3,
     surfaceId,
     controlId,
     instanceId,
     processId,
-    processStartedAt: normalized(await readStartMarker(processId, { environment })),
+    processStartedAt,
     workspaceId,
     updatedAt: now(),
   });
@@ -237,28 +275,49 @@ async function readLegacyRegistrations({ workspaceId, controlId, visibleSurfaceI
  * touched. Every step is best effort: a failed migration still returns the
  * version 2 record, because losing a live control is worse than a duplicate.
  */
-async function migrateLegacyRegistration(selected, duplicates, { controlId, environment, now }) {
+async function migrateLegacyRegistration(selected, duplicates, { controlId, environment, now, readStartMarker }) {
   const surfaceId = normalized(selected.state.surfaceId);
   const statePath = cmuxDockControlSurfaceStatePath({ surfaceId, controlId, environment });
+  let record;
+  let published;
   try {
-    await writeControlState(statePath, {
+    // Promotion needs a marker for the recorded process. Without one the record
+    // stays explicitly version 2, so compatibility remains where it belongs
+    // rather than being carried forward as a markerless version 3 record.
+    const processStartedAt = normalized(await readStartMarker(selected.state.processId, { environment }));
+    if (!processStartedAt) return null;
+    record = {
       version: 3,
       surfaceId,
       controlId: normalized(selected.state.controlId),
       instanceId: normalized(selected.state.instanceId),
       processId: selected.state.processId,
-      processStartedAt: "",
+      processStartedAt,
       workspaceId: normalized(selected.state.workspaceId),
       updatedAt: Number(selected.state.updatedAt) || now(),
-    });
-    if (!await readControlState(statePath, { surfaceId, controlId })) return;
+    };
+    published = await publishControlState(statePath, record);
   } catch {
-    return;
+    return null;
   }
-  for (const duplicate of duplicates) {
-    if (normalized(duplicate.state.surfaceId) !== surfaceId) continue;
-    try { await fs.unlink(duplicate.statePath); } catch { /* a duplicate left behind is harmless */ }
+
+  let current;
+  try {
+    current = await readControlState(statePath, { surfaceId, controlId });
+  } catch {
+    return null;
   }
+  if (!current) return null;
+  // Legacy records are removed only when this migration published the record
+  // that is now canonical. Losing the race means another control owns the
+  // surface, and its registration is what the caller should act on.
+  if (published && JSON.stringify(current) === JSON.stringify(record)) {
+    for (const duplicate of duplicates) {
+      if (normalized(duplicate.state.surfaceId) !== surfaceId) continue;
+      try { await fs.unlink(duplicate.statePath); } catch { /* a duplicate left behind is harmless */ }
+    }
+  }
+  return current;
 }
 
 export async function readCmuxDockControlRegistration({
@@ -267,6 +326,7 @@ export async function readCmuxDockControlRegistration({
   surfaceIds = [],
   environment = process.env,
   now = Date.now,
+  readStartMarker = cmuxProcessStartMarker,
 }) {
   const visibleSurfaceIds = new Set(surfaceIds.map(normalized).filter(Boolean));
   if (!visibleSurfaceIds.size) {
@@ -280,8 +340,10 @@ export async function readCmuxDockControlRegistration({
 
   const legacy = await readLegacyRegistrations({ workspaceId, controlId, visibleSurfaceIds, environment });
   if (!legacy.length) return null;
-  await migrateLegacyRegistration(legacy[0], legacy, { controlId, environment, now });
-  return legacy[0].state;
+  const migrated = await migrateLegacyRegistration(legacy[0], legacy, {
+    controlId, environment, now, readStartMarker,
+  });
+  return migrated || legacy[0].state;
 }
 
 export function cmuxExecutable(environment = process.env) {

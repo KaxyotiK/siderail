@@ -83,7 +83,10 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /Ownership is the pair of Dock surface and control id/);
   assert.match(guide, /registers once at startup rather than on every refresh/);
   assert.match(guide, /a recorded process being dead is never a reason to remove\s+a record/);
-  assert.match(guide, /pair\s+the id with the operating system's start time/);
+  assert.match(guide, /pairs the id with the operating system's start time for it, read in a fixed\s+locale and time zone/);
+  assert.match(guide, /A version 3\s+record without that marker is not valid/);
+  assert.match(guide, /Migration publishes without clobbering/);
+  assert.match(guide, /legacy records are removed only when this migration published the\s+record that is now canonical/);
   assert.match(guide, /falls back\s+to the bounded refresh poll/);
   assert.deepEqual(dock.controls.map(({ id, title, cwd }) => ({ id, title, cwd })), [
     { id: "git-rail", title: "GitRail", cwd: "." },

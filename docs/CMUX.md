@@ -109,10 +109,22 @@ is worse than leaving a duplicate. Records for surfaces the caller cannot see
 are never touched, and a recorded process being dead is never a reason to remove
 a record: the relaunch path depends on finding exactly that.
 
+Migration publishes without clobbering. A control registering for real replaces
+its own record, but a migration links its record into place and fails if one is
+already there, because a GitRail that started during the migration owns the
+surface and overwriting its registration would make the launcher act on a stale
+record and interrupt a healthy control. Losing that race returns the winner's
+record, and legacy records are removed only when this migration published the
+record that is now canonical.
+
 A recorded process id alone cannot prove the recorded process is still running,
-because the id can be reassigned after a control exits. Version 3 records pair
-the id with the operating system's start time for it, and a control counts as
-active only when both match. Version 2 records predate the marker and stay
+because the id can be reassigned after a control exits. Every version 3 record
+pairs the id with the operating system's start time for it, read in a fixed
+locale and time zone so the same process reads back identically from any
+environment, and a control counts as active only when both match. A version 3
+record without that marker is not valid, so an unreadable marker fails
+registration and refuses promotion rather than creating a record that would be
+process-id only for ever. Version 2 records predate the marker and stay
 process-id only for one compatibility cycle, so an upgrade cannot report a live
 control as dead.
 

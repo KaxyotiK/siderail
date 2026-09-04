@@ -67,7 +67,7 @@ test("cmux Dock control registration rejects incomplete, missing, malformed, and
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-control-invalid-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
-  const marker = { readStartMarker: async () => "" };
+  const marker = { readStartMarker: async () => "start-marker" };
   assert.equal(await registerCmuxDockControl({ workspaceId: "workspace", surfaceId: "", environment, ...marker }), false);
   assert.equal(await registerCmuxDockControl({ workspaceId: "workspace", surfaceId: "surface", controlId: "", environment, ...marker }), false);
   assert.equal(await registerCmuxDockControl({ workspaceId: "workspace", surfaceId: "surface", instanceId: "", environment, ...marker }), false);
@@ -179,23 +179,58 @@ test("a reused process id cannot revive a version 3 registration", async () => {
   assert.equal(await cmuxDockControlRegistrationIsActive(registration, () => false, async () => "Thu Sep  4 08:00:00 2026"), false);
 });
 
-test("a version 3 registration written before the marker existed stays process-id only", async () => {
-  let markerReads = 0;
+test("a markerless version 3 record is invalid rather than silently process-id only", async (t) => {
   const registration = {
     version: 3,
     surfaceId: "surface",
     controlId: "git-rail",
     instanceId: "instance",
-    processId: 4242,
     processStartedAt: "",
+    processId: 4242,
     workspaceId: "workspace",
     updatedAt: 1234,
   };
-  assert.equal(await cmuxDockControlRegistrationIsActive(registration, () => true, async () => {
-    markerReads += 1;
-    return "anything";
-  }), true);
-  assert.equal(markerReads, 0);
+  assert.equal(await cmuxDockControlRegistrationIsActive(registration, () => true, async () => "marker"), false);
+
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-markerless-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const environment = { XDG_CACHE_HOME: root };
+  const statePath = cmuxDockControlSurfaceStatePath({ surfaceId: "surface", environment });
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(statePath, JSON.stringify(registration));
+  assert.equal(await readCmuxDockControlRegistration({
+    workspaceId: "workspace", surfaceIds: ["surface"], environment, readStartMarker: async () => "",
+  }), null);
+});
+
+test("registration fails rather than writing a version 3 record without a start marker", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-no-marker-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const environment = { XDG_CACHE_HOME: root };
+  assert.equal(await registerCmuxDockControl({
+    workspaceId: "ws-a",
+    surfaceId: "dock-surface",
+    instanceId: "instance",
+    processId: 4242,
+    environment,
+    readStartMarker: async () => "   ",
+  }), false);
+  await assert.rejects(
+    () => fs.access(cmuxDockControlSurfaceStatePath({ surfaceId: "dock-surface", environment })),
+    (error) => error.code === "ENOENT",
+  );
+});
+
+test("the process start marker is read in a fixed locale and zone", async () => {
+  let options;
+  await cmuxProcessStartMarker(4242, {
+    run: async (_command, _args, given) => { options = given; return { stdout: "4242 Thu Sep  4 08:00:00 2026" }; },
+    environment: { LC_ALL: "en_US.UTF-8", LANG: "en_US.UTF-8", TZ: "America/New_York", PATH: "/bin" },
+  });
+  assert.equal(options.env.LC_ALL, "C");
+  assert.equal(options.env.LANG, "C");
+  assert.equal(options.env.TZ, "UTC");
+  assert.equal(options.env.PATH, "/bin");
 });
 
 test("the process start marker rejects a row that belongs to another process", async () => {
@@ -659,6 +694,7 @@ test("cmux Dock control state paths cannot escape the GitRail cache directory", 
     instanceId: "instance",
     processId: 4242,
     environment,
+    readStartMarker: async () => "start-marker",
   }), true);
   assert.deepEqual((await fs.readdir(root)), ["herdr-gitrail"]);
 });
@@ -674,6 +710,7 @@ test("cmux Dock control lookup ignores another control's record for the same sur
     instanceId: "instance-tests",
     processId: 4242,
     environment,
+    readStartMarker: async () => "start-marker",
   });
   assert.equal(await readCmuxDockControlRegistration({
     workspaceId: "workspace-a",
@@ -688,6 +725,7 @@ test("cmux Dock control lookup ignores another control's record for the same sur
     instanceId: "instance-rail",
     processId: 4242,
     environment,
+    readStartMarker: async () => "start-marker",
   });
   assert.equal((await readCmuxDockControlRegistration({
     workspaceId: "workspace-a",
@@ -703,9 +741,11 @@ test("cmux Dock control lookup prefers the current workspace and then the newest
   const environment = { XDG_CACHE_HOME: root };
   await registerCmuxDockControl({
     workspaceId: "workspace-old", surfaceId: "dock-old", instanceId: "old", processId: 4242, environment, now: () => 10,
+    readStartMarker: async () => "start-marker",
   });
   await registerCmuxDockControl({
     workspaceId: "workspace-new", surfaceId: "dock-new", instanceId: "new", processId: 4242, environment, now: () => 20,
+    readStartMarker: async () => "start-marker",
   });
   assert.equal((await readCmuxDockControlRegistration({
     workspaceId: "workspace-old", surfaceIds: ["dock-old", "dock-new"], environment,
@@ -773,10 +813,19 @@ test("a legacy record is migrated forward and its duplicates for the same surfac
     workspaceId: "ws-d", surfaceId: "other-dock", instanceId: "instance-2", updatedAt: 40,
   });
 
-  const first = await readCmuxDockControlRegistration({
-    workspaceId: "ws-c", controlId: "git-rail", surfaceIds: ["dock-surface"], environment,
+  const lookup = (readStartMarker) => readCmuxDockControlRegistration({
+    workspaceId: "ws-c", controlId: "git-rail", surfaceIds: ["dock-surface"], environment, readStartMarker,
   });
-  assert.equal(first.version, 2);
+
+  // Without a marker for the recorded process, promotion is refused and the
+  // control stays explicitly version 2 with every legacy record intact.
+  const unpromoted = await lookup(async () => "");
+  assert.equal(unpromoted.version, 2);
+  for (const statePath of paths) await fs.access(statePath);
+
+  // The migrating call already returns the canonical record it published.
+  const first = await lookup(async () => "start-marker");
+  assert.equal(first.version, 3);
   assert.equal(first.instanceId, "instance-1");
 
   for (const statePath of paths) {
@@ -785,16 +834,14 @@ test("a legacy record is migrated forward and its duplicates for the same surfac
   // A record for a surface this caller cannot see is never touched.
   await fs.access(other);
 
-  const migrated = await readCmuxDockControlRegistration({
-    workspaceId: "ws-c", controlId: "git-rail", surfaceIds: ["dock-surface"], environment,
-  });
+  const migrated = await lookup(async () => "start-marker");
   assert.deepEqual(migrated, {
     version: 3,
     surfaceId: "dock-surface",
     controlId: "git-rail",
     instanceId: "instance-1",
     processId: 4242,
-    processStartedAt: "",
+    processStartedAt: "start-marker",
     workspaceId: "ws-c",
     updatedAt: 30,
   });
@@ -839,6 +886,7 @@ test("a failed migration still returns the legacy record rather than losing the 
 
   const found = await readCmuxDockControlRegistration({
     workspaceId: "ws-a", controlId: "git-rail", surfaceIds: ["dock-surface"], environment,
+    readStartMarker: async () => "start-marker",
   });
   assert.equal(found.version, 2);
   assert.equal(found.instanceId, "instance-1");
@@ -887,4 +935,74 @@ test("a dead process never causes a record to be pruned, so relaunch can still f
   assert.equal(found.instanceId, "exited-instance");
   assert.equal(await cmuxDockControlRegistrationIsActive(found, () => false), false);
   await fs.access(cmuxDockControlSurfaceStatePath({ surfaceId: "dock-surface", environment }));
+});
+
+test("a registration landing mid-migration is never clobbered by the legacy record", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-race-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const environment = { XDG_CACHE_HOME: root };
+  const legacy = await writeLegacyRecord(environment, {
+    workspaceId: "ws-a", surfaceId: "dock-surface", instanceId: "exited-instance", processId: 4242, updatedAt: 10,
+  });
+
+  // The marker read sits between the version 3 miss and the legacy publish, so
+  // registering here reproduces a GitRail starting inside that exact window.
+  const found = await readCmuxDockControlRegistration({
+    workspaceId: "ws-a",
+    controlId: "git-rail",
+    surfaceIds: ["dock-surface"],
+    environment,
+    readStartMarker: async () => {
+      await registerCmuxDockControl({
+        workspaceId: "ws-a",
+        surfaceId: "dock-surface",
+        instanceId: "fresh-instance",
+        processId: 9999,
+        environment,
+        now: () => 500,
+        readStartMarker: async () => "fresh-marker",
+      });
+      return "stale-marker";
+    },
+  });
+
+  // The freshly registered control wins, and its record is what the caller acts on.
+  assert.deepEqual(found, {
+    version: 3,
+    surfaceId: "dock-surface",
+    controlId: "git-rail",
+    instanceId: "fresh-instance",
+    processId: 9999,
+    processStartedAt: "fresh-marker",
+    workspaceId: "ws-a",
+    updatedAt: 500,
+  });
+  // The migration lost, so it removed nothing.
+  await fs.access(legacy);
+  // No staged temporary file is left behind.
+  const staged = (await fs.readdir(path.dirname(cmuxDockControlSurfaceStatePath({ surfaceId: "dock-surface", environment }))))
+    .filter((entry) => entry.endsWith(".tmp"));
+  assert.deepEqual(staged, []);
+});
+
+test("concurrent migrations of one legacy record agree on a single canonical winner", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-race-many-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const environment = { XDG_CACHE_HOME: root };
+  for (const workspaceId of ["ws-a", "ws-b", "ws-c", "ws-d"]) {
+    await writeLegacyRecord(environment, {
+      workspaceId, surfaceId: "dock-surface", instanceId: "instance-1", processId: 4242, updatedAt: 10,
+    });
+  }
+  const lookup = () => readCmuxDockControlRegistration({
+    workspaceId: "ws-a",
+    controlId: "git-rail",
+    surfaceIds: ["dock-surface"],
+    environment,
+    readStartMarker: async () => "start-marker",
+  });
+  const results = await Promise.all(Array.from({ length: 8 }, lookup));
+  assert.equal(results.every((result) => result?.surfaceId === "dock-surface"), true);
+  assert.equal(new Set(results.map((result) => JSON.stringify(result))).size, 1);
+  assert.deepEqual(await fs.readdir(path.join(root, "herdr-gitrail", "cmux-controls")), ["surfaces"]);
 });
