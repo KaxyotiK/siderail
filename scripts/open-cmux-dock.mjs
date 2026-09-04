@@ -39,6 +39,31 @@ function isConfiguredDockWrapper(surface) {
   return /(?:^|\/)cmux-dock-control-[^/]+\.sh(?:\s|$)/.test(String(surface.initial_command || ""));
 }
 
+function dockStartupEnvironment(context) {
+  return {
+    GIT_RAIL_HOST: "cmux",
+    GIT_RAIL_NODE_PATH: process.execPath,
+    GIT_RAIL_PROJECT_CWD: context.cwd,
+    GIT_RAIL_STAY_OPEN: "1",
+    ...(context.windowId ? { GIT_RAIL_WINDOW_ID: context.windowId } : {}),
+    CMUX_DOCK_CONTROL_ID: "git-rail",
+    CMUX_DOCK_CONTROL_TITLE: "GitRail",
+  };
+}
+
+/**
+ * `send` types into a shell that no longer carries the Dock's startup
+ * environment, so a relaunch has to restate it. Without this the restarted
+ * control loses GIT_RAIL_WINDOW_ID and GIT_RAIL_PROJECT_CWD and resolves the
+ * globally focused window instead of the Dock-owning one.
+ */
+export function cmuxDockRelaunchCommand(command, variables) {
+  const assignments = Object.entries(variables)
+    .filter(([, value]) => String(value ?? "").trim())
+    .map(([key, value]) => `${key}=${shellQuote(value)}`);
+  return assignments.length ? `env ${assignments.join(" ")} ${command}` : command;
+}
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -97,7 +122,7 @@ export async function launchCmuxDock({
       timeoutMs: 3_000,
       maxOutputBytes: 256 * 1_024,
     });
-    await run(cmux, ["send", ...target, "--", command], {
+    await run(cmux, ["send", ...target, "--", cmuxDockRelaunchCommand(command, dockStartupEnvironment(context))], {
       env: environment,
       timeoutMs: 3_000,
       maxOutputBytes: 256 * 1_024,
@@ -115,15 +140,7 @@ export async function launchCmuxDock({
       type: "terminal",
       working_directory: context.cwd,
       initial_command: command,
-      startup_environment: {
-        GIT_RAIL_HOST: "cmux",
-        GIT_RAIL_NODE_PATH: process.execPath,
-        GIT_RAIL_PROJECT_CWD: context.cwd,
-        GIT_RAIL_STAY_OPEN: "1",
-        ...(context.windowId ? { GIT_RAIL_WINDOW_ID: context.windowId } : {}),
-        CMUX_DOCK_CONTROL_ID: "git-rail",
-        CMUX_DOCK_CONTROL_TITLE: "GitRail",
-      },
+      startup_environment: dockStartupEnvironment(context),
       focus: false,
     };
     const result = await run(cmux, ["rpc", "surface.create", JSON.stringify(params)], {

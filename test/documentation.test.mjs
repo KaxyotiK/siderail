@@ -74,6 +74,12 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /Opening file B never closes or\s+reuses the tab previously opened for file A/);
   assert.match(guide, /retried on the next\s+preview open/);
   assert.match(guide, /migrates surface-keyed and replacement-era ownership records/);
+  assert.match(guide, /owned by the cmux \*\*window\*\* that contains its Dock\s+surface/);
+  assert.match(guide, /cmux reports `caller: null` for a Dock surface/);
+  assert.match(guide, /the owner is the window whose `list-panels` output contains\s+that surface/);
+  assert.match(guide, /owner\s+window id is deliberately excluded from the resume command/);
+  assert.match(guide, /prefers the first candidate\s+that is inside a repository/);
+  assert.match(guide, /Herdr identity variables and `HERDR_PLUGIN_CONTEXT_JSON` are read only under the\s+Herdr host/);
   assert.deepEqual(dock.controls.map(({ id, title, cwd }) => ({ id, title, cwd })), [
     { id: "git-rail", title: "GitRail", cwd: "." },
   ]);
