@@ -262,7 +262,7 @@ evidence_commit=$(git rev-parse HEAD)
 test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
 npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
   --evidence-commit "$evidence_commit" \
-  --repository-url "https://github.com/KaxyotiK/herdr-gitrail" \
+  --repository-url "https://github.com/KaxyotiK/git-railgun" \
   --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
 ```
 

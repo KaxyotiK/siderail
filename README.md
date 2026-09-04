@@ -1,6 +1,8 @@
-# Herdr GitRail
+# GitRail
 
-Herdr GitRail is a compact, read-only sidebar for a Herdr tab's current
+*Why Railgun? `gitrail` was taken—and because Quake. It's a sidebar.*
+
+GitRail is a compact, read-only sidebar for a Herdr tab's current
 directory. Inside a worktree, every row retains its exact Git scope, so
 Against-base, Commit, Staged, Unstaged, Untracked, and clean-file previews
 cannot be confused. Outside Git, Files remains a bounded filesystem browser

@@ -1,9 +1,17 @@
 {
-  "name": "herdr-gitrail",
+  "name": "git-railgun",
   "version": "0.1.0",
-  "description": "A compact, read-only Files and Git sidebar for Herdr",
+  "description": "A compact, read-only Files and Git sidebar for Herdr and cmux",
   "type": "module",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KaxyotiK/git-railgun.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KaxyotiK/git-railgun/issues"
+  },
+  "homepage": "https://github.com/KaxyotiK/git-railgun#readme",
   "engines": {
     "node": ">=22"
   },

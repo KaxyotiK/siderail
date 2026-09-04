@@ -731,7 +731,7 @@ state.
 ### M3 — unused schema/editor-integration artifact is broken
 
 ```
-https://raw.githubusercontent.com/KaxyotiK/herdr-gitrail/main/schema/v1/git-rail.schema.json
+https://raw.githubusercontent.com/KaxyotiK/git-railgun/main/schema/v1/git-rail.schema.json
 → 404
 ```
 
