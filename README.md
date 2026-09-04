@@ -193,8 +193,9 @@ read as configuration and cannot choose editor or viewer executables.
 Comparison bases resolve in this order: explicit `GIT_RAIL_BASE`, user
 `baseRef`, `branch.<checked-out-branch>.gitrail-base` from local or worktree Git
 config, an automatically detected local default branch, and finally its remote
-fallback. Every explicitly or branch-configured ref must resolve to a commit;
-an invalid value is reported without silently trying the next source.
+fallback. If none exists, a committed `HEAD` is the final fallback. Every
+explicitly or branch-configured ref must resolve to a commit; an invalid value
+is reported without silently trying the next source.
 
 Set and remove a branch-specific base in repository-local Git metadata (replace
 the example branch and base names with your own):

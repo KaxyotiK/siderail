@@ -74,7 +74,7 @@ git config --local extensions.worktreeConfig true
 
 Then use `--worktree` in place of `--local` in both branch commands. Precedence
 is `GIT_RAIL_BASE`, user `baseRef`, the current branch key, automatic local
-default-branch resolution, and remote fallback.
+default-branch resolution, remote fallback, and finally a committed `HEAD`.
 GitRail prefers the local counterpart of the remote HEAD, then local `main` or
 `master`, before the corresponding remote refs. This keeps local `main` clean
 even when `origin/main` is stale. Detached HEAD ignores branch keys, and unborn
