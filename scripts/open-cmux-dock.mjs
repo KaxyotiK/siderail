@@ -115,7 +115,7 @@ export async function launchCmuxDock({
   let created = false;
   let relaunched = false;
   const command = `/bin/bash ${shellQuote(NODE_LAUNCHER)} ${shellQuote(CMUX_ENTRYPOINT)}`;
-  if (registeredSurface && !isRegistrationActive(registration)) {
+  if (registeredSurface && !await isRegistrationActive(registration)) {
     const target = ["--workspace", context.workspaceId, "--surface", surfaceId(registeredSurface)];
     await run(cmux, ["send-key", ...target, "ctrl+c"], {
       env: environment,

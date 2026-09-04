@@ -23,6 +23,7 @@ export function startCmuxContextWatcher({
   windowId = "",
   onChange,
   onError = () => {},
+  onClose = () => {},
   spawnProcess = spawn,
 }) {
   const args = ["events"];
@@ -57,7 +58,12 @@ export function startCmuxContextWatcher({
   });
   child.on("error", onError);
   child.on("close", (exitCode, signal) => {
-    if (!closed && exitCode !== 0) onError(new Error(`cmux event stream exited (${signal || exitCode})`));
+    if (closed) return;
+    // A clean exit is not an error: the stream is allowed to end. It still ends
+    // this watcher's ability to follow selection, so every unrequested
+    // termination is reported so the caller can fall back to bounded polling.
+    if (exitCode !== 0) onError(new Error(`cmux event stream exited (${signal || exitCode})`));
+    onClose({ exitCode, signal });
   });
   return {
     close() {

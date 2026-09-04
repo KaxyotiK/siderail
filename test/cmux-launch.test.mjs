@@ -382,3 +382,61 @@ test("a Dock launch without a resolvable owner window omits the window variable 
   assert.equal(Object.hasOwn(params.startup_environment, "GIT_RAIL_WINDOW_ID"), false);
   assert.equal(calls.find((args) => args[0] === "rename-tab").includes("--window"), false);
 });
+
+test("a relaunch decision awaits an asynchronous liveness verdict", async () => {
+  const calls = [];
+  const run = async (_command, args) => {
+    calls.push(args);
+    if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
+      window_id: "window-1", workspace_id: "main-workspace", surface_id: "main-surface",
+    } }) };
+    if (args.includes("current-workspace")) return { stdout: JSON.stringify({ id: "main-workspace", current_directory: "/repo" }) };
+    if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [{
+      id: "reused-pid-dock", dock_scope: "global", initial_command: "/tmp/cmux-dock-control-31d9.sh",
+    }] }) };
+    return { stdout: "{}" };
+  };
+  const registration = {
+    version: 3,
+    surfaceId: "reused-pid-dock",
+    controlId: "git-rail",
+    instanceId: "exited-instance",
+    processId: 4242,
+    processStartedAt: "Thu Sep  4 08:00:00 2026",
+    workspaceId: "main-workspace",
+    updatedAt: 1234,
+  };
+  const result = await launchTest({
+    run,
+    readRegistration: async () => registration,
+    // A reused process id looks alive, so only the start marker prevents the
+    // launcher from declining to relaunch a Dock that needs it.
+    isRegistrationActive: async () => false,
+    environment: {},
+    fallbackCwd: "/repo",
+  });
+  assert.equal(result.relaunched, true);
+  assert.ok(calls.some((args) => args[0] === "send" && args.at(-1).includes("GIT_RAIL_PROJECT_CWD")));
+});
+
+test("an active registration is still adopted rather than relaunched", async () => {
+  const mocked = runner({ existing: true });
+  const result = await launchTest({
+    run: mocked.run,
+    readRegistration: async () => ({
+      version: 3,
+      surfaceId: "existing-dock",
+      controlId: "git-rail",
+      instanceId: "live-instance",
+      processId: process.pid,
+      processStartedAt: "marker",
+      workspaceId: "main-workspace",
+      updatedAt: Date.now(),
+    }),
+    isRegistrationActive: async () => true,
+    environment: {},
+    fallbackCwd: "/repo",
+  });
+  assert.deepEqual({ created: result.created, relaunched: result.relaunched }, { created: false, relaunched: false });
+  assert.equal(mocked.calls.some((call) => call.args[0] === "send"), false);
+});

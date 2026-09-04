@@ -123,8 +123,11 @@ let currentProviderCwd = initialCwd;
 let currentWorkspaceId = hostIdentity.workspaceId;
 let currentSourceTabId = hostIdentity.sourceTabId;
 const cmuxControlInstanceId = HOST === "cmux" ? randomUUID() : "";
+// Ownership is keyed by this control's own Dock surface, which does not change
+// for the life of the process, so this runs once at startup. Registering on
+// every refresh is what made a record accumulate per workspace ever visited.
 async function registerCmuxOwner(workspaceId) {
-  if (HOST !== "cmux" || !workspaceId || !cmuxDockSurfaceId) return false;
+  if (HOST !== "cmux" || !cmuxDockSurfaceId) return false;
   try {
     return await registerCmuxDockControl({
       workspaceId,
@@ -157,7 +160,6 @@ async function liveProviderCwd() {
     cmuxDockSurfaceId = resolved.dockSurfaceId || cmuxDockSurfaceId;
     cmuxMainSurfaceId = resolved.mainSurfaceId || "";
     currentProviderCwd = demoMode ? fixtureRoot : resolved.cwd || currentProviderCwd;
-    await registerCmuxOwner(currentWorkspaceId);
     return currentProviderCwd;
   }
   if (demoMode) return fixtureRoot;
@@ -175,8 +177,8 @@ async function liveProviderCwd() {
   currentProviderCwd = resolved.cwd || currentProviderCwd;
   return currentProviderCwd;
 }
-// A global Dock reports its owning window in CMUX_WORKSPACE_ID, so this is only
-// a pre-discovery placeholder; liveProviderCwd re-registers the real workspace.
+// Registered before discovery so a launcher waiting on the handshake finds this
+// control quickly. The workspace is observational only; ownership is the surface.
 await registerCmuxOwner(HOST === "cmux" ? process.env.CMUX_WORKSPACE_ID : "");
 currentProviderCwd = fixtureRoot || await liveProviderCwd();
 if (HOST === "cmux" && fixtureRoot) currentProviderCwd = await liveProviderCwd();
@@ -1079,6 +1081,10 @@ function startCmuxInvalidation() {
       reportAsync(refreshState(false));
     },
     onError: (error) => debugLog("cmux-context-watch", { outcome: "failed", error: safe(error.message) }),
+    onClose: ({ exitCode, signal }) => {
+      debugLog("cmux-context-watch", { outcome: "closed", exitCode, signal });
+      resetRefreshTimer(true);
+    },
   });
 }
 let cleanupComplete = false;

@@ -66,7 +66,7 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /`cmux open`/);
   assert.match(guide, /`cmux open` as a native file tab/);
   assert.match(guide, /ambient\s+`CMUX_SURFACE_ID` is cleared/);
-  assert.match(guide, /process-backed active\s+instance and stable workspace\/control\/surface identity/);
+  assert.match(guide, /process-backed active\s+instance and stable control\/surface identity/);
   assert.match(guide, /relaunches GitRail in the same verified Dock terminal/);
   assert.match(guide, /Staged · Index · read-only/);
   assert.match(guide, /before deletion/);
@@ -80,6 +80,14 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /owner\s+window id is deliberately excluded from the resume command/);
   assert.match(guide, /prefers the first candidate\s+that is inside a repository/);
   assert.match(guide, /Herdr identity variables and `HERDR_PLUGIN_CONTEXT_JSON` are read only under the\s+Herdr host/);
+  assert.match(guide, /Ownership is the pair of Dock surface and control id/);
+  assert.match(guide, /registers once at startup rather than on every refresh/);
+  assert.match(guide, /a recorded process being dead is never a reason to remove\s+a record/);
+  assert.match(guide, /pairs the id with the operating system's start time for it, read in a fixed\s+locale and time zone/);
+  assert.match(guide, /A version 3\s+record without that marker is not valid/);
+  assert.match(guide, /Migration publishes without clobbering/);
+  assert.match(guide, /legacy records are removed only when this migration published the\s+record that is now canonical/);
+  assert.match(guide, /falls back\s+to the bounded refresh poll/);
   assert.deepEqual(dock.controls.map(({ id, title, cwd }) => ({ id, title, cwd })), [
     { id: "git-rail", title: "GitRail", cwd: "." },
   ]);
