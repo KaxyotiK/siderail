@@ -15,12 +15,14 @@ async function safeWorktreePath(repoRoot, relativePath) {
     if (error.code !== "ENOENT") throw error;
     try {
       const entry = await fs.lstat(lexical);
-      if (entry.isSymbolicLink()) throw new Error("Refusing to follow a dangling symlink");
+      if (entry.isSymbolicLink()) throw new Error("Refusing to follow a dangling symlink", { cause: error });
     } catch (entryError) {
       if (entryError.code !== "ENOENT") throw entryError;
     }
     const parent = await fs.realpath(path.dirname(lexical));
-    if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) throw new Error("Refusing to resolve a path through a symlink outside the selected root");
+    if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
+      throw new Error("Refusing to resolve a path through a symlink outside the selected root", { cause: error });
+    }
     return lexical;
   }
 }

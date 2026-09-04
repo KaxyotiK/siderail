@@ -112,14 +112,23 @@ export async function openOwnedPreview({
         });
       } catch {}
       if (!ownedForCompensation) {
-        throw new Error(`preview ownership state could not be recorded and the newly opened pane could not be verified for safe cleanup: ${stateError.message}`);
+        throw new Error(
+          `preview ownership state could not be recorded and the newly opened pane could not be verified for safe cleanup: ${stateError.message}`,
+          { cause: stateError },
+        );
       }
       try {
         await closeVerifiedPluginPane({ run, herdr, paneId: pane.pane_id, cwd });
       } catch (closeError) {
-        throw new Error(`preview ownership state could not be recorded: ${stateError.message}; newly opened pane ${pane.pane_id} also could not be closed: ${closeError.message}`);
+        throw new Error(
+          `preview ownership state could not be recorded: ${stateError.message}; newly opened pane ${pane.pane_id} also could not be closed: ${closeError.message}`,
+          { cause: closeError },
+        );
       }
-      throw new Error(`preview ownership state could not be recorded; newly opened pane was closed: ${stateError.message}`);
+      throw new Error(
+        `preview ownership state could not be recorded; newly opened pane was closed: ${stateError.message}`,
+        { cause: stateError },
+      );
     }
   }
 

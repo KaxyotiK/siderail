@@ -22,9 +22,6 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "docs" / "screenshots"
 FONT = "/System/Library/Fonts/Menlo.ttc"
-# Menlo has no U+2442 BRANCH or U+29C9 TWO JOINED SQUARES, so fall back the way
-# a terminal does rather than drawing .notdef boxes.
-FALLBACK_FONT = "/System/Library/Fonts/Apple Symbols.ttf"
 
 WIDTHS = (36, 52, 100)
 ROWS = 69
@@ -115,16 +112,6 @@ def blend(color, other, ratio):
     return tuple(round(a + (b - a) * ratio) for a, b in zip(color, other))
 
 
-def glyph_font(character, regular, bold, fallback, style, cache):
-    """Pick a face that actually has the glyph, mirroring terminal fallback."""
-    key = (character, style["bold"])
-    if key not in cache:
-        face = bold if style["bold"] else regular
-        drawn = bytes(face.getmask(character))
-        cache[key] = fallback if drawn == bytes(face.getmask("￿")) else face
-    return cache[key]
-
-
 def render(columns, rows):
     width = columns * CELL_W + PAD_X * 2
     image = Image.new("RGB", (width, CANVAS_H), PAGE_BG)
@@ -132,8 +119,6 @@ def render(columns, rows):
     draw.rounded_rectangle([0, 0, width - 1, CANVAS_H - 1], RADIUS, fill=PANEL_BG)
     regular = ImageFont.truetype(FONT, 20)
     bold = ImageFont.truetype(FONT, 20, index=1)
-    fallback = ImageFont.truetype(FALLBACK_FONT, 18)
-    faces = {}
 
     caption = f"Herdr GitRail · demo fixture · {columns} columns"
     while caption and regular.getlength(caption) > columns * CELL_W:
@@ -153,9 +138,8 @@ def render(columns, rows):
             if background != PANEL_BG:
                 draw.rectangle([left, top, left + CELL_W - 1, top + CELL_H - 1], fill=background)
             if character != " ":
-                face = glyph_font(character, regular, bold, fallback, style, faces)
-                offset = 0 if face is not fallback else max(0, (CELL_W - round(face.getlength(character))) // 2)
-                draw.text((left + offset, top + 3), character, font=face, fill=foreground)
+                face = bold if style["bold"] else regular
+                draw.text((left, top + 3), character, font=face, fill=foreground)
     return image
 
 

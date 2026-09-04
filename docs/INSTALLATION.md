@@ -3,8 +3,8 @@
 ## Install from a checkout
 
 ```bash
-git clone https://github.com/KaxyotiK/herdr-gitrail.git
-cd herdr-gitrail
+git clone https://github.com/KaxyotiK/git-railgun.git
+cd git-railgun
 npm ci --ignore-scripts
 npm run check
 herdr plugin link .

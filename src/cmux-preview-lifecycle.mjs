@@ -266,7 +266,10 @@ async function openNativeFile({
           maxOutputBytes: 256 * 1_024,
         });
       } catch (closeError) {
-        throw new Error(`cmux returned an incomplete native preview identity; partially opened surface could not be closed: ${closeError.message}`);
+        throw new Error(
+          `cmux returned an incomplete native preview identity; partially opened surface could not be closed: ${closeError.message}`,
+          { cause: closeError },
+        );
       }
       throw new Error("cmux returned an incomplete native preview identity; partially opened surface was closed");
     }
@@ -358,9 +361,15 @@ export async function openCmuxPreview({
       });
       await removeMaterialization(state, environment);
     } catch (closeError) {
-      throw new Error(`cmux preview ownership could not be recorded: ${error.message}; newly opened preview could not be closed: ${closeError.message}`);
+      throw new Error(
+        `cmux preview ownership could not be recorded: ${error.message}; newly opened preview could not be closed: ${closeError.message}`,
+        { cause: closeError },
+      );
     }
-    throw new Error(`cmux preview ownership could not be recorded; newly opened preview was closed: ${error.message}`);
+    throw new Error(
+      `cmux preview ownership could not be recorded; newly opened preview was closed: ${error.message}`,
+      { cause: error },
+    );
   }
 
   const retained = [];
