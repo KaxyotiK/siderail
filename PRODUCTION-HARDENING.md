@@ -1,10 +1,10 @@
-# Production hardening checklist
+# Production hardening record
 
-Working checklist from the adversarial review of `main` @ `6c7d9ac` (2026-08-23).
-The highest-risk findings were reproduced or measured on macOS 15 / Node 22;
-their evidence is in the appendix. The remaining items have explicit acceptance
-witnesses in their implementation outlines. Unlike `PRODUCTION-READINESS.md`,
-this document records what is **not** yet true.
+Historical checklist from the adversarial review of `main` @ `6c7d9ac`
+(2026-08-23). It records the findings, decisions, implementation contracts, and
+evidence for that hardening effort. Completed boxes describe that reviewed
+work; they are not claims that the current checkout remains release-ready. See
+`PRODUCTION-READINESS.md` for the current release status.
 
 Legend: `[ ]` open · `[x]` done · **(Dn)** blocked on a decision below.
 
@@ -39,11 +39,11 @@ contract are retained. Repository config, JSON Schema/editor integration,
 layout rebuild, invented security contact/SLA, and automatic user-file
 migration are non-goals.
 
-This checklist and its implementation contracts are the delivery source of
-truth. Runtime `validateConfig` is the configuration source of truth, and
-`PRODUCTION-READINESS.md` may claim only guarantees traced to the evidence gates
-defined here. Pushing, publishing, and tagging remain separately authorized
-operations.
+This checklist and its implementation contracts were the delivery source of
+truth for the reviewed hardening effort. Runtime `validateConfig` remains the
+configuration source of truth, and current readiness claims must be traced to
+the release evidence. Pushing, publishing, and tagging remain separately
+authorized operations.
 
 ## Phase 1 — blockers
 
@@ -595,6 +595,10 @@ evidence bundle exists on `origin/main`. No step in this document authorizes
 pushing, publishing, or tagging without a separate explicit request.
 
 ## Appendix — evidence
+
+The following reproductions describe the original `6c7d9ac` state before the
+corresponding fixes. Paths, line numbers, output, and present-tense descriptions
+are preserved as historical evidence and do not describe the current checkout.
 
 ### B1 — repository config executes arbitrary code
 

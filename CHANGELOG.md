@@ -62,8 +62,8 @@ intentional configuration changes documented here.
   cancellation and partial-result diagnostics.
 - Caches Markdown-preview search positions with prefix candidates, eliminating
   the repeated full-result grapheme pass on every rendered search frame.
-- Binds documentation PNG bytes to their capture commit and removes the unused
-  Pillow/macOS-only screenshot renderer.
+- Binds documentation PNG bytes to their capture commit and keeps screenshot
+  regeneration explicit through a maintainer-only Pillow renderer.
 
 ### Configuration
 

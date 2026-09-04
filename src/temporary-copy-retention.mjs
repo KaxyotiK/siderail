@@ -115,7 +115,7 @@ function removeRequest(requestPath) {
 
 function sweepRetentionRequests(temporaryRoot, requestsDirectory, now = Date.now) {
   let pending = false;
-  let entries = [];
+  let entries;
   try { entries = fs.readdirSync(requestsDirectory, { withFileTypes: true }); } catch { return false; }
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json")) continue;

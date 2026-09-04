@@ -179,6 +179,7 @@ async function verifiedOwnedRail(run, herdr, pane, state, entrypoint) {
   } catch (error) {
     throw new Error(
       `unable to verify ownership of existing GitRail pane ${sanitizeTerminalText(pane.pane_id)}: ${sanitizeTerminalText(error.message)}`,
+      { cause: error },
     );
   }
 }
@@ -475,7 +476,7 @@ export async function openHerdrPanel({
       } catch (error) {
         const replacementClosed = await closeOwnedPane(run, herdr, paneId, { quiet: true });
         if (!replacementClosed) {
-          throw new Error(`${error.message}; replacement pane ${paneId} also could not be closed`);
+          throw new Error(`${error.message}; replacement pane ${paneId} also could not be closed`, { cause: error });
         }
         throw error;
       }
