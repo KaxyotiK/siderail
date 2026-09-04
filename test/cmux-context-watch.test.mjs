@@ -96,15 +96,58 @@ test("closing a cmux context watcher twice kills its child exactly once", () => 
   child.emit("close", 1, null);
 });
 
-test("a clean cmux event stream exit is not reported as a failure", () => {
+test("a clean cmux event stream exit is not an error but still reports the lost stream", () => {
   const child = fakeChild();
   const errors = [];
+  const closes = [];
   startCmuxContextWatcher({
     cmux: "cmux-test",
     onChange: () => {},
     onError: (error) => errors.push(error.message),
+    onClose: (details) => closes.push(details),
     spawnProcess: () => child,
   });
   child.emit("close", 0, null);
   assert.deepEqual(errors, []);
+  assert.deepEqual(closes, [{ exitCode: 0, signal: null }]);
+});
+
+test("an unrequested cmux event stream failure reports both the error and the lost stream", () => {
+  const child = fakeChild();
+  const errors = [];
+  const closes = [];
+  startCmuxContextWatcher({
+    cmux: "cmux-test",
+    onChange: () => {},
+    onError: (error) => errors.push(error.message),
+    onClose: (details) => closes.push(details),
+    spawnProcess: () => child,
+  });
+  child.emit("close", null, "SIGKILL");
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /event stream exited \(SIGKILL\)/);
+  assert.deepEqual(closes, [{ exitCode: null, signal: "SIGKILL" }]);
+});
+
+test("closing a cmux context watcher deliberately reports neither an error nor a lost stream", () => {
+  const child = fakeChild();
+  const errors = [];
+  const closes = [];
+  const watcher = startCmuxContextWatcher({
+    cmux: "cmux-test",
+    onChange: () => {},
+    onError: (error) => errors.push(error.message),
+    onClose: (details) => closes.push(details),
+    spawnProcess: () => child,
+  });
+  watcher.close();
+  child.emit("close", 143, "SIGTERM");
+  assert.deepEqual(errors, []);
+  assert.deepEqual(closes, []);
+});
+
+test("a cmux context watcher without a close observer still tolerates an exit", () => {
+  const child = fakeChild();
+  startCmuxContextWatcher({ cmux: "cmux-test", onChange: () => {}, spawnProcess: () => child });
+  child.emit("close", 0, null);
 });

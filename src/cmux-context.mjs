@@ -33,6 +33,8 @@ function safeToken(value) {
   return normalized(value).replace(/[^A-Za-z0-9._-]+/g, "_") || "unknown";
 }
 
+const SURFACE_STATE_DIRECTORY_NAME = "surfaces";
+
 function controlStateDirectory(environment) {
   const root = environment.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
   return path.join(root, "herdr-gitrail", "cmux-controls");
@@ -42,7 +44,20 @@ export function cmuxDockControlStatePath({ workspaceId, controlId = "git-rail", 
   return path.join(controlStateDirectory(environment), `${safeToken(workspaceId)}-${safeToken(controlId)}.json`);
 }
 
-function validatedControlState(state, { workspaceId = "", controlId = "git-rail" } = {}) {
+/**
+ * Version 3 records live in their own subdirectory so a surface-keyed name can
+ * never collide with a version 2 workspace-keyed one, and so the legacy scan
+ * skips them without needing to parse anything.
+ */
+export function cmuxDockControlSurfaceStatePath({ surfaceId, controlId = "git-rail", environment = process.env }) {
+  return path.join(
+    controlStateDirectory(environment),
+    SURFACE_STATE_DIRECTORY_NAME,
+    `${safeToken(surfaceId)}-${safeToken(controlId)}.json`,
+  );
+}
+
+function validatedLegacyControlState(state, { workspaceId = "", controlId = "git-rail" } = {}) {
   if (state?.version !== 2
     || !normalized(state.controlId)
     || normalized(state.controlId) !== normalized(controlId)
@@ -55,6 +70,29 @@ function validatedControlState(state, { workspaceId = "", controlId = "git-rail"
   return state;
 }
 
+/**
+ * Ownership is (surfaceId, controlId). The workspace a Dock happens to be
+ * following is observational only: it changes as the user switches workspaces,
+ * and keying on it made every visited workspace write another record.
+ */
+function validatedSurfaceControlState(state, { surfaceId = "", controlId = "git-rail" } = {}) {
+  if (state?.version !== 3
+    || !normalized(state.controlId)
+    || normalized(state.controlId) !== normalized(controlId)
+    || !normalized(state.surfaceId)
+    || !normalized(state.instanceId)
+    || !Number.isInteger(state.processId)
+    || state.processId <= 0) return null;
+  if (surfaceId && normalized(state.surfaceId) !== normalized(surfaceId)) return null;
+  return state;
+}
+
+function validatedControlState(state, criteria = {}) {
+  return state?.version === 3
+    ? validatedSurfaceControlState(state, criteria)
+    : validatedLegacyControlState(state, criteria);
+}
+
 async function readControlState(statePath, criteria) {
   try {
     return validatedControlState(JSON.parse(await fs.readFile(statePath, "utf8")), criteria);
@@ -64,15 +102,62 @@ async function readControlState(statePath, criteria) {
   }
 }
 
-export function cmuxDockControlRegistrationIsActive(state, isProcessAlive = (processId) => {
+function processIsAlive(processId) {
   try {
     process.kill(processId, 0);
     return true;
   } catch (error) {
     return error.code === "EPERM";
   }
-}) {
-  return Boolean(validatedControlState(state, { controlId: state?.controlId }) && isProcessAlive(state.processId));
+}
+
+/**
+ * A recorded process id alone cannot prove the recorded process is still the one
+ * running: after a GitRail control exits, its id can be reassigned, and the
+ * launcher would then decline to relaunch a Dock that needs it. Pairing the id
+ * with the kernel's start time for that id closes the reuse window.
+ *
+ * The pid is read back alongside the start time so a row for some other process
+ * can never be mistaken for a marker.
+ */
+export async function cmuxProcessStartMarker(processId, { run = runCommand, environment = process.env } = {}) {
+  if (!Number.isInteger(processId) || processId <= 0) return "";
+  try {
+    const result = await run("/bin/ps", ["-p", String(processId), "-o", "pid=,lstart="], {
+      env: environment,
+      timeoutMs: 3_000,
+      maxOutputBytes: 8 * 1_024,
+    });
+    const [, reportedId, startedAt] = /^\s*(\d+)\s+(.+?)\s*$/.exec(String(result.stdout || "")) || [];
+    return Number(reportedId) === processId ? normalized(startedAt) : "";
+  } catch {
+    return "";
+  }
+}
+
+export async function cmuxDockControlRegistrationIsActive(
+  state,
+  isProcessAlive = processIsAlive,
+  readStartMarker = cmuxProcessStartMarker,
+) {
+  if (!validatedControlState(state, { controlId: state?.controlId })) return false;
+  if (!isProcessAlive(state.processId)) return false;
+  const recorded = normalized(state.processStartedAt);
+  // Version 2 records predate the marker, so they stay process-id only rather
+  // than reporting a live control as dead during the compatibility cycle.
+  if (!recorded) return true;
+  const observed = normalized(await readStartMarker(state.processId));
+  return Boolean(observed) && observed === recorded;
+}
+
+async function writeControlState(statePath, record) {
+  const directory = path.dirname(statePath);
+  const temporary = `${statePath}.${process.pid}.tmp`;
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fs.chmod(directory, 0o700);
+  await fs.writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+  await fs.chmod(temporary, 0o600);
+  await fs.rename(temporary, statePath);
 }
 
 export async function registerCmuxDockControl({
@@ -83,29 +168,97 @@ export async function registerCmuxDockControl({
   processId = process.pid,
   environment = process.env,
   now = Date.now,
+  readStartMarker = cmuxProcessStartMarker,
 }) {
   workspaceId = normalized(workspaceId);
   surfaceId = normalized(surfaceId);
   controlId = normalized(controlId);
   instanceId = normalized(instanceId);
-  if (!workspaceId || !surfaceId || !controlId || !instanceId || !Number.isInteger(processId) || processId <= 0) return false;
-  const directory = controlStateDirectory(environment);
-  const statePath = cmuxDockControlStatePath({ workspaceId, controlId, environment });
-  const temporary = `${statePath}.${process.pid}.tmp`;
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  await fs.chmod(directory, 0o700);
-  await fs.writeFile(temporary, `${JSON.stringify({
-    version: 2,
-    workspaceId,
+  if (!surfaceId || !controlId || !instanceId || !Number.isInteger(processId) || processId <= 0) return false;
+  await writeControlState(cmuxDockControlSurfaceStatePath({ surfaceId, controlId, environment }), {
+    version: 3,
     surfaceId,
     controlId,
     instanceId,
     processId,
+    processStartedAt: normalized(await readStartMarker(processId, { environment })),
+    workspaceId,
     updatedAt: now(),
-  })}\n`, { mode: 0o600 });
-  await fs.chmod(temporary, 0o600);
-  await fs.rename(temporary, statePath);
+  });
   return true;
+}
+
+function preferCurrentWorkspace(workspaceId) {
+  return (left, right) => {
+    const leftCurrent = normalized(left.workspaceId) === normalized(workspaceId) ? 1 : 0;
+    const rightCurrent = normalized(right.workspaceId) === normalized(workspaceId) ? 1 : 0;
+    return rightCurrent - leftCurrent || Number(right.updatedAt || 0) - Number(left.updatedAt || 0);
+  };
+}
+
+async function readSurfaceRegistrations({ workspaceId, controlId, surfaceIds, environment }) {
+  const candidates = [];
+  for (const surfaceId of surfaceIds) {
+    const state = await readControlState(
+      cmuxDockControlSurfaceStatePath({ surfaceId, controlId, environment }),
+      { surfaceId, controlId },
+    );
+    if (state) candidates.push(state);
+  }
+  return candidates.sort(preferCurrentWorkspace(workspaceId));
+}
+
+async function readLegacyRegistrations({ workspaceId, controlId, visibleSurfaceIds, environment }) {
+  const directory = controlStateDirectory(environment);
+  let entries;
+  try {
+    entries = await fs.readdir(directory);
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const suffix = `-${safeToken(controlId)}.json`;
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(suffix)) continue;
+    const statePath = path.join(directory, entry);
+    const state = await readControlState(statePath, { controlId });
+    if (state?.version === 2 && visibleSurfaceIds.has(normalized(state.surfaceId))) {
+      candidates.push({ state, statePath });
+    }
+  }
+  return candidates.sort((left, right) => preferCurrentWorkspace(workspaceId)(left.state, right.state));
+}
+
+/**
+ * Copy a selected version 2 record forward, then verify the copy reads back
+ * before removing anything. Legacy duplicates are only the records naming the
+ * same surface, so a record for a surface this caller cannot see is never
+ * touched. Every step is best effort: a failed migration still returns the
+ * version 2 record, because losing a live control is worse than a duplicate.
+ */
+async function migrateLegacyRegistration(selected, duplicates, { controlId, environment, now }) {
+  const surfaceId = normalized(selected.state.surfaceId);
+  const statePath = cmuxDockControlSurfaceStatePath({ surfaceId, controlId, environment });
+  try {
+    await writeControlState(statePath, {
+      version: 3,
+      surfaceId,
+      controlId: normalized(selected.state.controlId),
+      instanceId: normalized(selected.state.instanceId),
+      processId: selected.state.processId,
+      processStartedAt: "",
+      workspaceId: normalized(selected.state.workspaceId),
+      updatedAt: Number(selected.state.updatedAt) || now(),
+    });
+    if (!await readControlState(statePath, { surfaceId, controlId })) return;
+  } catch {
+    return;
+  }
+  for (const duplicate of duplicates) {
+    if (normalized(duplicate.state.surfaceId) !== surfaceId) continue;
+    try { await fs.unlink(duplicate.statePath); } catch { /* a duplicate left behind is harmless */ }
+  }
 }
 
 export async function readCmuxDockControlRegistration({
@@ -113,32 +266,22 @@ export async function readCmuxDockControlRegistration({
   controlId = "git-rail",
   surfaceIds = [],
   environment = process.env,
+  now = Date.now,
 }) {
   const visibleSurfaceIds = new Set(surfaceIds.map(normalized).filter(Boolean));
   if (!visibleSurfaceIds.size) {
     return readControlState(cmuxDockControlStatePath({ workspaceId, controlId, environment }), { workspaceId, controlId });
   }
 
-  const directory = controlStateDirectory(environment);
-  let entries;
-  try {
-    entries = await fs.readdir(directory);
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-  const candidates = [];
-  for (const entry of entries) {
-    if (!entry.endsWith(`-${safeToken(controlId)}.json`)) continue;
-    const state = await readControlState(path.join(directory, entry), { controlId });
-    if (state && visibleSurfaceIds.has(normalized(state.surfaceId))) candidates.push(state);
-  }
-  candidates.sort((left, right) => {
-    const leftCurrent = normalized(left.workspaceId) === normalized(workspaceId) ? 1 : 0;
-    const rightCurrent = normalized(right.workspaceId) === normalized(workspaceId) ? 1 : 0;
-    return rightCurrent - leftCurrent || Number(right.updatedAt || 0) - Number(left.updatedAt || 0);
+  const current = await readSurfaceRegistrations({
+    workspaceId, controlId, surfaceIds: [...visibleSurfaceIds], environment,
   });
-  return candidates[0] || null;
+  if (current.length) return current[0];
+
+  const legacy = await readLegacyRegistrations({ workspaceId, controlId, visibleSurfaceIds, environment });
+  if (!legacy.length) return null;
+  await migrateLegacyRegistration(legacy[0], legacy, { controlId, environment, now });
+  return legacy[0].state;
 }
 
 export function cmuxExecutable(environment = process.env) {
