@@ -604,3 +604,52 @@ test("surface ownership requires exact id, native panel type, and main-area scop
     id: "legacy", initial_command: "/bin/zsh",
   }, { surfaceId: "legacy", previewScriptPath: "/plugin/file-preview.mjs" }), false);
 });
+
+test("a native open that returns no surface identity removes its materialization and fails", async (t) => {
+  const { environment } = await fixture(t);
+  const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerSurfaceId: "dock-source", environment });
+  const run = async (_command, args) => (args.includes("open")
+    ? { stdout: JSON.stringify({ opened: [{ kind: "file", payload: {} }] }) }
+    : { stdout: "{}" });
+  await assert.rejects(
+    openCmuxPreview(previewOptions(environment, run)),
+    /native main-area preview surface id and type/,
+  );
+  const previewRoot = path.dirname(statePath);
+  const remaining = await fs.readdir(previewRoot).catch(() => []);
+  assert.deepEqual(remaining.filter((entry) => !entry.endsWith(".json")), []);
+});
+
+test("an unreadable materialization target is cleaned up rather than left half written", async (t) => {
+  const { environment } = await fixture(t);
+  const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerSurfaceId: "dock-source", environment });
+  const run = async (_command, args) => (args.includes("open") ? nativeFileResponse() : { stdout: "{}" });
+  await assert.rejects(openCmuxPreview(previewOptions(environment, run, {
+    previewPath: "README.md",
+    loadRawContent: async () => { throw new Error("object is missing"); },
+  })), /object is missing/);
+  const remaining = await fs.readdir(path.dirname(statePath)).catch(() => []);
+  assert.deepEqual(remaining.filter((entry) => !entry.endsWith(".json")), []);
+});
+
+test("preview ownership survives a cache directory that does not exist yet", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-preview-missing-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const environment = { XDG_CACHE_HOME: path.join(root, "absent"), CMUX_SURFACE_ID: "ambient-dock" };
+  const run = async (_command, args) => (args.includes("open") ? nativeFileResponse() : { stdout: "{}" });
+  const opened = await openCmuxPreview(previewOptions(environment, run));
+  assert.equal(opened.surfaceId, "new-file");
+  assert.equal(opened.cleanupWarning || "", "");
+});
+
+test("a preview state path is confined to the GitRail cache for hostile identities", async (t) => {
+  const { environment } = await fixture(t);
+  const cacheRoot = environment.XDG_CACHE_HOME;
+  for (const hostile of ["../../escape", "a/b", ".."]) {
+    const statePath = cmuxPreviewStatePath({
+      workspaceId: hostile, ownerSurfaceId: hostile, environment,
+    });
+    assert.equal(path.relative(cacheRoot, statePath).startsWith(".."), false);
+    assert.doesNotMatch(path.basename(statePath), /[/\\]/);
+  }
+});

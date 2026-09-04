@@ -9,11 +9,25 @@ test("cmux Dock restart command preserves absolute paths with shell metacharacte
   );
 });
 
+test("cmux Dock restart command restates the host environment a resume binding cannot store", () => {
+  assert.equal(
+    cmuxDockRestartCommand("/checkout/scripts", {
+      GIT_RAIL_HOST: "cmux",
+      GIT_RAIL_NODE_PATH: "",
+      GIT_RAIL_STAY_OPEN: "1",
+    }),
+    "env GIT_RAIL_HOST='cmux' GIT_RAIL_STAY_OPEN='1'"
+    + " /bin/bash '/checkout/scripts/cmux-node-launcher.sh' '/checkout/scripts/cmux-git-rail.mjs'",
+  );
+});
+
 test("cmux Dock resume registration is scoped to its window and surface", async () => {
   const calls = [];
   const environment = {
     CMUX_BUNDLED_CLI_PATH: "/bundle/cmux",
-    CMUX_WORKSPACE_ID: "window-owner",
+    GIT_RAIL_WINDOW_ID: "window-owner",
+    GIT_RAIL_NODE_PATH: "/opt/node",
+    CMUX_WORKSPACE_ID: "dock-owner-workspace",
     CMUX_SURFACE_ID: "dock-surface",
     CMUX_DOCK_CONTROL_ID: "git-rail",
     CMUX_DOCK_CONTROL_TITLE: "GitRail",
@@ -26,10 +40,13 @@ test("cmux Dock resume registration is scoped to its window and surface", async 
       return { stdout: JSON.stringify({ resume_binding: { auto_resume: true } }) };
     },
   });
+  const expectedCommand = "env GIT_RAIL_HOST='cmux' GIT_RAIL_NODE_PATH='/opt/node' GIT_RAIL_STAY_OPEN='1'"
+    + " CMUX_DOCK_CONTROL_ID='git-rail' CMUX_DOCK_CONTROL_TITLE='GitRail'"
+    + " /bin/bash '/checkout/scripts/cmux-node-launcher.sh' '/checkout/scripts/cmux-git-rail.mjs'";
   assert.deepEqual(result, {
     configured: true,
     autoResume: true,
-    command: "/bin/bash '/checkout/scripts/cmux-node-launcher.sh' '/checkout/scripts/cmux-git-rail.mjs'",
+    command: expectedCommand,
     projectRoot: "/checkout",
   });
   assert.deepEqual(calls[0].args, [
@@ -41,7 +58,7 @@ test("cmux Dock resume registration is scoped to its window and surface", async 
     "--kind", "git-rail",
     "--source", "git-rail",
     "--cwd", "/checkout",
-    "--shell", "/bin/bash '/checkout/scripts/cmux-node-launcher.sh' '/checkout/scripts/cmux-git-rail.mjs'",
+    "--shell", expectedCommand,
   ]);
   assert.equal(calls[0].command, "/bundle/cmux");
   assert.equal(calls[0].options.cwd, "/checkout");
@@ -62,6 +79,22 @@ test("cmux Dock resume registration ignores foreign and incomplete controls", as
     environment: { CMUX_WORKSPACE_ID: "window", CMUX_DOCK_CONTROL_ID: "git-rail" },
   }), { configured: false, autoResume: false });
   assert.equal(calls, 0);
+});
+
+test("cmux Dock resume registration survives a restore that dropped the owner window id", async () => {
+  const calls = [];
+  const result = await ensureCmuxDockResume({
+    scriptDirectory: "/checkout/scripts",
+    environment: { CMUX_SURFACE_ID: "dock-surface", CMUX_DOCK_CONTROL_ID: "git-rail" },
+    run: async (_command, args) => {
+      calls.push(args);
+      return { stdout: JSON.stringify({ resume_binding: { auto_resume: true } }) };
+    },
+  });
+  assert.equal(result.configured, true);
+  assert.equal(calls[0].includes("--window"), false);
+  assert.deepEqual(calls[0].slice(0, 6), ["--json", "surface", "resume", "set", "--surface", "dock-surface"]);
+  assert.doesNotMatch(result.command, /GIT_RAIL_WINDOW_ID/);
 });
 
 test("cmux Dock resume registration reports a retained manual approval", async () => {

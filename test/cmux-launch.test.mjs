@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { launchCmuxDock } from "../scripts/open-cmux-dock.mjs";
+import { cmuxDockRelaunchCommand, launchCmuxDock } from "../scripts/open-cmux-dock.mjs";
 
 const CMUX_ENTRYPOINT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "scripts", "cmux-git-rail.mjs");
 const noRegistration = async () => null;
@@ -263,4 +263,122 @@ test("manual launch fails closed without a selected main workspace or Dock respo
     return args[0] === "rpc" ? { stdout: JSON.stringify({ surface_id: "wrong-area" }) } : result;
   };
   await assert.rejects(launchTest({ run: wrongAreaRun, readRegistration: noRegistration, environment: {}, fallbackCwd: "/repo" }), /Dock surface id/);
+});
+
+test("Dock relaunch command restates variables and quotes shell metacharacters", () => {
+  assert.equal(
+    cmuxDockRelaunchCommand("/bin/bash launcher", {
+      GIT_RAIL_PROJECT_CWD: "/repo with ' quote",
+      GIT_RAIL_WINDOW_ID: "window-1",
+      GIT_RAIL_NODE_PATH: "",
+      CMUX_DOCK_CONTROL_TITLE: "   ",
+    }),
+    "env GIT_RAIL_PROJECT_CWD='/repo with '\\'' quote' GIT_RAIL_WINDOW_ID='window-1' /bin/bash launcher",
+  );
+  assert.equal(cmuxDockRelaunchCommand("/bin/bash launcher", {}), "/bin/bash launcher");
+  assert.equal(cmuxDockRelaunchCommand("/bin/bash launcher", { A: undefined, B: null }), "/bin/bash launcher");
+});
+
+test("relaunching an existing Dock surface restores the owner window and project directory", async () => {
+  const calls = [];
+  const run = async (_command, args) => {
+    calls.push(args);
+    if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
+      window_id: "window-owner", workspace_id: "main-workspace", surface_id: "main-surface",
+    } }) };
+    if (args.includes("current-workspace")) return { stdout: JSON.stringify({
+      id: "main-workspace", window_id: "window-owner", current_directory: "/worktrees/branding-options",
+    }) };
+    if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [{
+      id: "stale-dock", dock_scope: "global", initial_command: "/tmp/cmux-dock-control-31d9.sh",
+    }] }) };
+    return { stdout: "{}" };
+  };
+  const result = await launchTest({
+    run,
+    readRegistration: async () => ({
+      version: 2,
+      workspaceId: "main-workspace",
+      surfaceId: "stale-dock",
+      controlId: "git-rail",
+      instanceId: "exited-instance",
+      processId: 4242,
+      updatedAt: 1234,
+    }),
+    isRegistrationActive: () => false,
+    environment: {},
+    fallbackCwd: "/repo",
+  });
+  assert.equal(result.relaunched, true);
+  const sent = calls.find((args) => args[0] === "send").at(-1);
+  assert.match(sent, /^env /);
+  assert.match(sent, /GIT_RAIL_WINDOW_ID='window-owner'/);
+  assert.match(sent, /GIT_RAIL_PROJECT_CWD='\/worktrees\/branding-options'/);
+  assert.match(sent, /GIT_RAIL_HOST='cmux'/);
+  assert.match(sent, /GIT_RAIL_STAY_OPEN='1'/);
+  assert.match(sent, /CMUX_DOCK_CONTROL_ID='git-rail'/);
+  assert.match(sent, /cmux-git-rail\.mjs'$/);
+});
+
+test("a relaunched Dock surface receives exactly the environment a created one does", async () => {
+  const environments = [];
+  const collect = async (existingSurface, registrationActive) => {
+    const run = async (_command, args) => {
+      if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
+        window_id: "window-owner", workspace_id: "main-workspace", surface_id: "main-surface",
+      } }) };
+      if (args.includes("current-workspace")) return { stdout: JSON.stringify({
+        id: "main-workspace", window_id: "window-owner", current_directory: "/repo",
+      }) };
+      if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: existingSurface }) };
+      if (args[0] === "rpc") {
+        environments.push(JSON.parse(args[2]).startup_environment);
+        return { stdout: JSON.stringify({ dock_surface_id: "new-dock" }) };
+      }
+      if (args[0] === "send") environments.push(args.at(-1));
+      return { stdout: "{}" };
+    };
+    await launchTest({
+      run,
+      readRegistration: async () => (existingSurface.length ? {
+        version: 2,
+        workspaceId: "main-workspace",
+        surfaceId: "stale-dock",
+        controlId: "git-rail",
+        instanceId: "instance",
+        processId: 4242,
+        updatedAt: 1234,
+      } : null),
+      isRegistrationActive: () => registrationActive,
+      environment: {},
+      fallbackCwd: "/repo",
+    });
+  };
+  await collect([], true);
+  await collect([{ id: "stale-dock", dock_scope: "global", initial_command: "/tmp/cmux-dock-control-31d9.sh" }], false);
+  const [created, relaunched] = environments;
+  for (const [key, value] of Object.entries(created)) {
+    assert.match(relaunched, new RegExp(`${key}='${value.replaceAll("/", "\\/")}'`), `${key} is missing from the relaunch`);
+  }
+});
+
+test("a Dock launch without a resolvable owner window omits the window variable rather than guessing", async () => {
+  const run = async (_command, args) => {
+    if (args.includes("identify")) return { stdout: JSON.stringify({ focused: { workspace_id: "main-workspace" } }) };
+    if (args.includes("current-workspace")) return { stdout: JSON.stringify({ id: "main-workspace", current_directory: "/repo" }) };
+    if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [] }) };
+    if (args[0] === "rpc") return { stdout: JSON.stringify({ dock_surface_id: "new-dock" }) };
+    return { stdout: "{}" };
+  };
+  const calls = [];
+  const result = await launchTest({
+    run: async (command, args, options) => { calls.push(args); return run(command, args, options); },
+    readRegistration: noRegistration,
+    environment: {},
+    fallbackCwd: "/repo",
+  });
+  assert.equal(result.created, true);
+  const params = JSON.parse(calls.find((args) => args[0] === "rpc")[2]);
+  assert.equal(Object.hasOwn(params.startup_environment, "GIT_RAIL_WINDOW_ID"), false);
+  assert.equal(calls.find((args) => args[0] === "rename-tab").includes("--window"), false);
 });

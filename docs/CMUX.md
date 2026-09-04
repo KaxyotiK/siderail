@@ -89,6 +89,42 @@ matches that record against live Dock discovery across main-workspace changes.
 It briefly waits for a configured control that is still starting; unrelated
 configured controls neither match nor block a GitRail launch.
 
+## Dock ownership
+
+A GitRail Dock control is owned by the cmux **window** that contains its Dock
+surface. That window, not whichever window happens to be focused, scopes every
+later lookup: the selected workspace, the main-area source surface, and the
+project directory.
+
+cmux reports `caller: null` for a Dock surface, so `identify` cannot name the
+owning window on its own. GitRail therefore discovers the owner from its own
+`CMUX_SURFACE_ID`: the owner is the window whose `list-panels` output contains
+that surface. `GIT_RAIL_WINDOW_ID` and the global-Dock convention of
+`CMUX_WORKSPACE_ID` naming a window are consulted only afterwards, and only
+when they match a live window, because both are lost across Dock restore and
+relaunch. The resolved window id is cached for the life of the process and
+rediscovered after any failed context resolution.
+
+Because cmux stores no environment beside a resume binding and `send` types into
+a shell that no longer holds the Dock's startup environment, both the relaunch
+command and the restart command restate the host variables they need. The owner
+window id is deliberately excluded from the resume command: window ids do not
+survive an app restart, and a stale one would outrank live discovery.
+
+A directory that exists is not necessarily checked out — a global Dock control's
+`cwd: "."` resolves to the home directory. GitRail prefers the first candidate
+that is inside a repository, so the Dock does not settle on a valid but
+unversioned folder and report changes as unavailable.
+
+## Host isolation
+
+GitRail runs under exactly one host per process, chosen by `GIT_RAIL_HOST`. The
+Herdr identity variables and `HERDR_PLUGIN_CONTEXT_JSON` are read only under the
+Herdr host, and the `CMUX_*` identity variables only under cmux. A Dock terminal
+started from a Herdr-managed shell inherits `HERDR_*` variables describing an
+unrelated pane; reading them would seed a cmux Dock ownership record with a
+Herdr workspace id, so they are ignored rather than merged.
+
 ## Cwd and identity rules
 
 cmux injects `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`,

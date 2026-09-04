@@ -9,9 +9,19 @@ function parseObject(stdout) {
   return value && typeof value === "object" ? value : {};
 }
 
+function parseValue(stdout) {
+  const value = JSON.parse(stdout || "{}");
+  return value && typeof value === "object" ? value : {};
+}
+
 function surfaceRows(payload) {
   if (Array.isArray(payload)) return payload;
   return payload?.surfaces || payload?.result?.surfaces || [];
+}
+
+function windowRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  return payload?.windows || payload?.result?.windows || [];
 }
 
 function normalized(value) {
@@ -137,14 +147,57 @@ export function cmuxExecutable(environment = process.env) {
     || "cmux";
 }
 
-export function selectedMainWorkspace(identifyPayload, workspacePayload, environment = process.env) {
+function cmuxCall(run, cmux, args, environment, maxOutputBytes = 512 * 1_024) {
+  return run(cmux, ["--json", "--id-format", "both", ...args], {
+    env: environment,
+    timeoutMs: 3_000,
+    maxOutputBytes,
+  });
+}
+
+function windowOwnsSurface(payload, surfaceId) {
+  return surfaceRows(payload).some((surface) => normalized(surface.id || surface.surface_id) === surfaceId);
+}
+
+/**
+ * Resolve the cmux window that owns this GitRail surface.
+ *
+ * cmux reports `caller: null` for Dock surfaces, so the owning window cannot be
+ * read back from `identify`. The surface's own id is the only durable anchor, so
+ * the owner is the window whose panel list contains it. `GIT_RAIL_WINDOW_ID` and
+ * the global-Dock `CMUX_WORKSPACE_ID` convention are checked only afterwards,
+ * because both are lost across Dock restore and relaunch.
+ */
+export async function resolveCmuxOwnerWindowId({
+  run = runCommand,
+  cmux = cmuxExecutable(),
+  environment = process.env,
+} = {}) {
+  const ownSurfaceId = normalized(environment.CMUX_SURFACE_ID);
+  if (!ownSurfaceId) return "";
+  const listed = await cmuxCall(run, cmux, ["list-windows"], environment);
+  const windowIds = windowRows(parseValue(listed.stdout))
+    .map((row) => normalized(row.id || row.window_id))
+    .filter(Boolean);
+  for (const windowId of windowIds) {
+    const panels = await cmuxCall(run, cmux, ["list-panels", "--window", windowId], environment, 2 * 1_024 * 1_024);
+    if (windowOwnsSurface(parseValue(panels.stdout), ownSurfaceId)) return windowId;
+  }
+  const hinted = normalized(environment.GIT_RAIL_WINDOW_ID);
+  if (hinted && windowIds.includes(hinted)) return hinted;
+  const dockOwner = normalized(environment.CMUX_WORKSPACE_ID);
+  return dockOwner && windowIds.includes(dockOwner) ? dockOwner : "";
+}
+
+export function selectedMainWorkspace(identifyPayload, workspacePayload, environment = process.env, ownerWindowId = "") {
   const focused = identifyPayload?.focused || identifyPayload?.active || {};
   const caller = identifyPayload?.caller || {};
   const workspace = workspacePayload?.workspace || workspacePayload || {};
   const dockSurfaceId = normalized(environment.CMUX_SURFACE_ID);
   const workspaceId = normalized(workspace.id || workspace.workspace_id || focused.workspace_id);
   const windowId = normalized(
-    workspace.window_id
+    ownerWindowId
+    || workspace.window_id
     || environment.GIT_RAIL_WINDOW_ID
     || caller.window_id
     || focused.window_id,
@@ -183,16 +236,43 @@ async function directoryExists(candidate) {
   try { return (await fs.stat(candidate)).isDirectory(); } catch { return false; }
 }
 
-async function selectedProjectDirectory(main, surface, projectFallback, isDirectory) {
-  const candidates = [...new Set(selectedDirectoryCandidates(main, surface).map((candidate) => path.resolve(candidate)))];
-  for (const candidate of candidates) if (await isDirectory(candidate)) return candidate;
-  return candidates[0] || path.resolve(projectFallback);
+/**
+ * A linked worktree carries a `.git` file rather than a directory, so presence
+ * of the entry — not its type — is what marks a candidate as checked out.
+ */
+async function withinRepository(candidate) {
+  let directory = path.resolve(candidate);
+  for (;;) {
+    try {
+      await fs.stat(path.join(directory, ".git"));
+      return true;
+    } catch { /* keep walking towards the filesystem root */ }
+    const parent = path.dirname(directory);
+    if (parent === directory) return false;
+    directory = parent;
+  }
 }
 
-async function currentWorkspace({ run, cmux, identifyPayload, environment }) {
+/**
+ * cmux happily reports a directory that is not checked out — a global Dock
+ * control's `cwd: "."` resolves to the home directory. Prefer the first
+ * candidate that is actually inside a repository so the Dock does not settle on
+ * a valid-but-unversioned folder and report Changes as unavailable.
+ */
+async function selectedProjectDirectory(main, surface, projectFallback, isDirectory, isRepository) {
+  const candidates = [...new Set(selectedDirectoryCandidates(main, surface).map((candidate) => path.resolve(candidate)))];
+  const existing = [];
+  for (const candidate of candidates) if (await isDirectory(candidate)) existing.push(candidate);
+  for (const candidate of existing) if (await isRepository(candidate)) return candidate;
+  return existing[0] || candidates[0] || path.resolve(projectFallback);
+}
+
+async function currentWorkspace({ run, cmux, identifyPayload, environment, ownerWindowId }) {
   const focused = identifyPayload?.focused || identifyPayload?.active || {};
   const caller = identifyPayload?.caller || {};
-  const windowId = normalized(environment.GIT_RAIL_WINDOW_ID || caller.window_id || focused.window_id);
+  const windowId = normalized(
+    ownerWindowId || environment.GIT_RAIL_WINDOW_ID || caller.window_id || focused.window_id,
+  );
   const args = ["--json", "--id-format", "both", "current-workspace"];
   if (windowId) args.push("--window", windowId);
   const result = await run(cmux, args, {
@@ -203,30 +283,45 @@ async function currentWorkspace({ run, cmux, identifyPayload, environment }) {
   return parseObject(result.stdout);
 }
 
+async function ownerWindow({ run, cmux, environment, ownerWindowId }) {
+  const provided = normalized(ownerWindowId);
+  if (provided) return provided;
+  try {
+    const discovered = await resolveCmuxOwnerWindowId({ run, cmux, environment });
+    if (discovered) return discovered;
+  } catch { /* discovery is best effort; the environment hint still applies */ }
+  return normalized(environment.GIT_RAIL_WINDOW_ID);
+}
+
 export async function resolveCmuxProjectContext({
   run = runCommand,
   cmux = cmuxExecutable(),
   environment = process.env,
   fallbackCwd = process.cwd(),
   isDirectory = directoryExists,
+  isRepository = withinRepository,
+  ownerWindowId = "",
 } = {}) {
   const projectFallback = normalized(environment.GIT_RAIL_PROJECT_CWD) || fallbackCwd;
   let identifyPayload = {};
   let workspacePayload = {};
   let surfacePayload = {};
+  let ownerWindowIdentity = "";
   let warning = "";
   try {
+    ownerWindowIdentity = await ownerWindow({ run, cmux, environment, ownerWindowId });
     const identifyArgs = ["--json", "--id-format", "both", "identify"];
-    const ownerWindowId = normalized(environment.GIT_RAIL_WINDOW_ID);
-    if (ownerWindowId) identifyArgs.push("--window", ownerWindowId);
+    if (ownerWindowIdentity) identifyArgs.push("--window", ownerWindowIdentity);
     const identified = await run(cmux, identifyArgs, {
       env: environment,
       timeoutMs: 3_000,
       maxOutputBytes: 512 * 1_024,
     });
     identifyPayload = parseObject(identified.stdout);
-    workspacePayload = await currentWorkspace({ run, cmux, identifyPayload, environment });
-    const main = selectedMainWorkspace(identifyPayload, workspacePayload, environment);
+    workspacePayload = await currentWorkspace({
+      run, cmux, identifyPayload, environment, ownerWindowId: ownerWindowIdentity,
+    });
+    const main = selectedMainWorkspace(identifyPayload, workspacePayload, environment, ownerWindowIdentity);
     if (main.workspaceId) {
       const listed = await run(cmux, [
         "--json", "--id-format", "both", "list-panels", "--workspace", main.workspaceId,
@@ -241,14 +336,14 @@ export async function resolveCmuxProjectContext({
     warning = `cmux context unavailable: ${error.message}`;
   }
 
-  const main = selectedMainWorkspace(identifyPayload, workspacePayload, environment);
+  const main = selectedMainWorkspace(identifyPayload, workspacePayload, environment, ownerWindowIdentity);
   const mainSurface = selectedMainSurface(
     surfacePayload,
     main.mainSurfaceId,
     normalized(environment.CMUX_SURFACE_ID),
   );
   return {
-    cwd: await selectedProjectDirectory(main, mainSurface, projectFallback, isDirectory),
+    cwd: await selectedProjectDirectory(main, mainSurface, projectFallback, isDirectory, isRepository),
     workspaceId: main.workspaceId,
     windowId: main.windowId,
     mainSurfaceId: main.mainSurfaceId,

@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } from "../src/cmux-context.mjs";
 import { startCmuxContextWatcher } from "../src/cmux-context-watch.mjs";
+import { resolveHostIdentity } from "../src/host-identity.mjs";
 import { openCmuxPreview } from "../src/cmux-preview-lifecycle.mjs";
 import { resolveDirectMarkdownOpen } from "../src/config.mjs";
 import { openExternalFile } from "../src/direct-file-open.mjs";
@@ -98,18 +99,14 @@ function truncate(value, width) { return truncateTerminalColumns(value, width); 
 function fitAnsi(value, width) { return fitAnsiTerminalColumns(value, width); }
 function padAnsi(value, width) { return padAnsiTerminalColumns(value, width); }
 function compactPath(value, width) { return compactTerminalPath(value, width); }
-function parseContext() {
-  try { return JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || "{}"); } catch { return {}; }
-}
-
-const context = parseContext();
-const initialCwd = process.env.GIT_RAIL_REPO_ROOT
-  || (HOST === "cmux" ? process.env.GIT_RAIL_PROJECT_CWD : "")
-  || context.focused_pane_cwd || context.workspace_cwd || process.env.HERDR_WORKSPACE_CWD || process.cwd();
-let sourcePaneId = process.env.GIT_RAIL_SOURCE_PANE_ID || context.focused_pane_id || "";
-let cmuxDockSurfaceId = process.env.CMUX_SURFACE_ID || "";
+const hostIdentity = resolveHostIdentity({ host: HOST, environment: process.env });
+const initialCwd = hostIdentity.cwd;
+let sourcePaneId = hostIdentity.sourcePaneId;
+let cmuxDockSurfaceId = hostIdentity.dockSurfaceId;
 let cmuxMainSurfaceId = "";
-let cmuxOwnerWindowId = process.env.GIT_RAIL_WINDOW_ID || "";
+// Discovered from CMUX_SURFACE_ID on the first resolution. Left empty so live
+// Dock ownership outranks a GIT_RAIL_WINDOW_ID inherited from another window.
+let cmuxOwnerWindowId = "";
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 let snapshotEnvironmentRoot = "";
 if (snapshotMode && demoMode) {
@@ -123,8 +120,8 @@ if (snapshotMode && demoMode) {
   process.env.XDG_STATE_HOME = path.join(snapshotEnvironmentRoot, "state");
 }
 let currentProviderCwd = initialCwd;
-let currentWorkspaceId = process.env.HERDR_WORKSPACE_ID || context.workspace_id || "";
-let currentSourceTabId = process.env.GIT_RAIL_SOURCE_TAB_ID || process.env.HERDR_TAB_ID || context.tab_id || "";
+let currentWorkspaceId = hostIdentity.workspaceId;
+let currentSourceTabId = hostIdentity.sourceTabId;
 const cmuxControlInstanceId = HOST === "cmux" ? randomUUID() : "";
 async function registerCmuxOwner(workspaceId) {
   if (HOST !== "cmux" || !workspaceId || !cmuxDockSurfaceId) return false;
@@ -132,7 +129,7 @@ async function registerCmuxOwner(workspaceId) {
     return await registerCmuxDockControl({
       workspaceId,
       surfaceId: cmuxDockSurfaceId,
-      controlId: process.env.CMUX_DOCK_CONTROL_ID || "git-rail",
+      controlId: hostIdentity.dockControlId,
       instanceId: cmuxControlInstanceId,
       processId: process.pid,
       environment: process.env,
@@ -144,16 +141,15 @@ async function registerCmuxOwner(workspaceId) {
 }
 async function liveProviderCwd() {
   if (HOST === "cmux") {
-    const environment = cmuxOwnerWindowId
-      ? { ...process.env, GIT_RAIL_WINDOW_ID: cmuxOwnerWindowId }
-      : process.env;
     const resolved = await resolveCmuxProjectContext({
       run: runCommand,
-      cmux: cmuxExecutable(environment),
-      environment,
+      cmux: cmuxExecutable(process.env),
+      environment: process.env,
       fallbackCwd: currentProviderCwd,
+      ownerWindowId: cmuxOwnerWindowId,
     });
-    if (!cmuxOwnerWindowId && resolved.windowId) {
+    if (resolved.warning) cmuxOwnerWindowId = "";
+    else if (resolved.windowId) {
       cmuxOwnerWindowId = resolved.windowId;
       process.env.GIT_RAIL_WINDOW_ID = resolved.windowId;
     }
@@ -179,7 +175,9 @@ async function liveProviderCwd() {
   currentProviderCwd = resolved.cwd || currentProviderCwd;
   return currentProviderCwd;
 }
-await registerCmuxOwner(process.env.CMUX_WORKSPACE_ID);
+// A global Dock reports its owning window in CMUX_WORKSPACE_ID, so this is only
+// a pre-discovery placeholder; liveProviderCwd re-registers the real workspace.
+await registerCmuxOwner(HOST === "cmux" ? process.env.CMUX_WORKSPACE_ID : "");
 currentProviderCwd = fixtureRoot || await liveProviderCwd();
 if (HOST === "cmux" && fixtureRoot) currentProviderCwd = await liveProviderCwd();
 let state;
@@ -866,7 +864,7 @@ async function openPreview(file) {
         workspaceId: currentWorkspaceId,
         targetSurfaceId: cmuxMainSurfaceId,
         ownerSurfaceId: cmuxDockSurfaceId,
-        ownerControlId: process.env.CMUX_DOCK_CONTROL_ID || "git-rail",
+        ownerControlId: hostIdentity.dockControlId,
         previewPath: file.path,
         repoRoot: state.repoRoot || state.cwd,
         descriptor: previewDescriptor,

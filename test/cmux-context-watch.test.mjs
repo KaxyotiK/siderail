@@ -69,3 +69,42 @@ test("cmux context watcher tolerates an unavailable stream without an error obse
   watcher.close();
   assert.equal(child.killedWith, "SIGTERM");
 });
+
+test("an unscoped watcher accepts every window while events without a window are never dropped", () => {
+  const scoped = { type: "event", name: "pane.focused", window_id: "window-2" };
+  assert.equal(cmuxContextEventTargetsWindow(scoped, ""), true);
+  assert.equal(cmuxContextEventTargetsWindow({ type: "event", name: "pane.focused" }, "window-1"), true);
+  assert.equal(cmuxContextEventTargetsWindow({ type: "event", name: "pane.focused", window_id: "" }, "window-1"), true);
+  assert.equal(cmuxContextEventTargetsWindow(null, "window-1"), false);
+  assert.equal(cmuxContextEventTargetsWindow({ name: "pane.focused", window_id: "window-1" }, "window-1"), false);
+});
+
+test("an event payload window overrides nothing when the frame already names another window", () => {
+  assert.equal(cmuxContextEventTargetsWindow({
+    type: "event", name: "workspace.selected", window_id: "window-2", payload: { window_id: "window-1" },
+  }, "window-1"), false);
+});
+
+test("closing a cmux context watcher twice kills its child exactly once", () => {
+  const child = fakeChild();
+  let kills = 0;
+  child.kill = () => { kills += 1; return true; };
+  const watcher = startCmuxContextWatcher({ cmux: "cmux-test", onChange: () => {}, spawnProcess: () => child });
+  watcher.close();
+  watcher.close();
+  assert.equal(kills, 1);
+  child.emit("close", 1, null);
+});
+
+test("a clean cmux event stream exit is not reported as a failure", () => {
+  const child = fakeChild();
+  const errors = [];
+  startCmuxContextWatcher({
+    cmux: "cmux-test",
+    onChange: () => {},
+    onError: (error) => errors.push(error.message),
+    spawnProcess: () => child,
+  });
+  child.emit("close", 0, null);
+  assert.deepEqual(errors, []);
+});
