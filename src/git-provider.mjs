@@ -139,18 +139,17 @@ async function configuredBranchBase(repoRoot, branch) {
   if (!branch) return null;
   try {
     const output = await gitMachineText(repoRoot, [
-      "config", "--show-scope", "--get-all", `branch.${branch}.gitrail-base`,
+      "config", "-z", "--show-scope", "--get-all", `branch.${branch}.gitrail-base`,
     ]);
-    const lines = output.split("\n");
-    if (lines.at(-1) === "") lines.pop();
-    const configured = lines.flatMap((line) => {
-      const separator = line.indexOf("\t");
-      if (separator === -1) return [];
-      const scope = line.slice(0, separator);
-      return scope === "local" || scope === "worktree"
-        ? [line.slice(separator + 1).trim()]
-        : [];
-    });
+    const fields = output.split("\0");
+    if (fields.at(-1) === "") fields.pop();
+    const configured = [];
+    for (let index = 0; index + 1 < fields.length; index += 2) {
+      const scope = fields[index];
+      if (scope === "local" || scope === "worktree") {
+        configured.push(fields[index + 1].trim());
+      }
+    }
     return configured.at(-1) ?? null;
   } catch (error) {
     if (error instanceof ProcessError && error.kind === "exit") return null;

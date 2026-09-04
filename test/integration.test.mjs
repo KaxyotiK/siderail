@@ -164,6 +164,11 @@ test("provider resolves branch Git config after explicit bases and validates it 
   assert.equal(state.baseRef, "");
   assert.match(state.error, /branch\.feature\/configured\.gitrail-base does not resolve to a commit: \(empty\)/i);
 
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", "main\nmissing"]);
+  state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "");
+  assert.match(state.error, /does not resolve to a commit: main\nmissing/i);
+
   await runGit(root, ["switch", "--detach"]);
   state = await repositoryState(t, root);
   assert.match(state.branch, /^detached [0-9a-f]+$/);
@@ -208,6 +213,12 @@ test("live branch switches reload configured bases and keep stale local main cle
   await runGit(root, ["commit", "-m", "feature only"], { env: identity });
   const featureCommit = (await runGit(root, ["rev-parse", "HEAD"])).stdout.trim();
   await runGit(root, ["push", "-u", "origin", "feature/branch-switch"]);
+
+  state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "main");
+  assert.deepEqual(state.commits.map((commit) => commit.hash), [featureCommit]);
+  assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
+
   await runGit(root, ["config", "--local", "branch.feature/branch-switch.gitrail-base", "origin/main"]);
 
   state = await repositoryState(t, root);
