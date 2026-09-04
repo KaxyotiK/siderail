@@ -85,8 +85,8 @@ for (const width of [25, 36, 52, 100]) {
     assert.match(plain, /Unstaged/);
     if (width === 25) {
       assert.match(plain, /Untracked/);
-      assert.match(plain, /› src 1/);
-      assert.match(plain, /› assets 1/);
+      assert.match(plain, /› src\//);
+      assert.match(plain, /› assets\//);
       assert.doesNotMatch(plain, /status\.mjs|binary\.dat/);
     }
     assert.doesNotMatch(plain, /Read-only demo preview|const panel = "files"/);
@@ -250,13 +250,24 @@ test("loaded commit search rows replace preview glyphs with real status and stat
   });
 });
 
+test("Changes and Files default to Tree at narrow and wide widths", async (t) => {
+  for (const width of [25, 100]) {
+    for (const tabArgs of [[], ["--files"]]) {
+      const { stdout } = await execHermetic(t, process.execPath, [
+        "scripts/git-rail.mjs", "--demo", "--snapshot", ...tabArgs, "--width", String(width), "--height", "28",
+      ]);
+      assert.match(plainTerminal(stdout), /≡ Tree/);
+    }
+  }
+});
+
 test("Tree and Folders layouts render identical file status and stats", async (t) => {
-  const narrow = await execHermetic(t, process.execPath, [
+  const tree = await execHermetic(t, process.execPath, [
     "scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "status.mjs", "--width", "52", "--height", "28",
   ]);
-  const narrowPlain = plainTerminal(narrow.stdout);
-  assert.match(narrowPlain, /≣ Folders/);
-  assert.equal((narrowPlain.match(/⊡ status\.mjs\s+\+2 −1/g) || []).length, 2);
+  const treePlain = plainTerminal(tree.stdout);
+  assert.match(treePlain, /≡ Tree/);
+  assert.equal((treePlain.match(/⊡ status\.mjs\s+\+2 −1/g) || []).length, 2);
 
   const child = spawnHermetic(t, process.execPath, [
     "scripts/git-rail.mjs", "--demo", "--search", "status.mjs", "--width", "100", "--height", "28",
@@ -428,7 +439,7 @@ test("non-repository Files stays browsable with one neutral file icon", async (t
   const script = path.resolve("scripts/git-rail.mjs");
   const files = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root }, { HERDR_BIN_PATH: path.join(root, "missing-herdr") });
   const filesPlain = files.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-  assert.match(filesPlain, /› src 1/);
+  assert.match(filesPlain, /› src\//);
   assert.doesNotMatch(filesPlain, /⊠ index\.mjs/);
   assert.match(filesPlain, /⊠ README\.md/);
   assert.match(filesPlain, /⊠ settings\.toml/);

@@ -197,7 +197,7 @@ if (viewportFixtureCount) {
   state.workspaceDescriptor = { kind: "workspace", baseRef: state.baseLabel || "HEAD" };
 }
 let mainTab = cliArgs.has("--files") ? "files" : "changes";
-let viewModePreference = "auto";
+let viewModePreference = "tree";
 let selectedSection = 0;
 let scrollOffset = 0;
 let selectedIdentity = "";
