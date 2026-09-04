@@ -190,6 +190,33 @@ point. Configuration version 1 is validated; malformed JSON and invalid values
 are shown in the rail instead of being ignored. Repository contents are never
 read as configuration and cannot choose editor or viewer executables.
 
+Comparison bases resolve in this order: explicit `GIT_RAIL_BASE`, user
+`baseRef`, `branch.<checked-out-branch>.gitrail-base` from local or worktree Git
+config, an automatically detected local default branch, and finally its remote
+fallback. Every explicitly or branch-configured ref must resolve to a commit;
+an invalid value is reported without silently trying the next source.
+
+Set and remove a branch-specific base in repository-local Git metadata (replace
+the example branch and base names with your own):
+
+```bash
+git config --local 'branch.feature/my-work.gitrail-base' release/1.x
+git config --local --unset-all 'branch.feature/my-work.gitrail-base'
+```
+
+For a setting isolated to one linked worktree, enable Git's worktree config and
+use the worktree scope:
+
+```bash
+git config --local extensions.worktreeConfig true
+git config --worktree 'branch.feature/my-work.gitrail-base' release/1.x
+git config --worktree --unset-all 'branch.feature/my-work.gitrail-base'
+```
+
+Both scopes live under `.git`, are never committed, and can only choose the
+comparison commit; they cannot select an executable. Detached HEAD ignores
+branch keys. An unborn repository has no comparison until it has a commit.
+
 `version` identifies the configuration format, not the GitRail release. It lets
 GitRail reject a future incompatible format instead of interpreting changed
 fields as commands. Backward-compatible additions remain on version 1. Viewer

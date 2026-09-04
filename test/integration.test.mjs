@@ -92,7 +92,86 @@ test("fixture state is derived by the production provider", async (t) => {
   assert.ok(files.every((file) => file.descriptor.commitHash === state.commits[0].hash));
 });
 
-test("branch changes never report commits already reachable from main", async (t) => {
+test("linked worktrees report the common repository name separately from the branch", async (t) => {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-linked-worktree-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const repository = path.join(container, "skillshare");
+  const linkedWorktree = path.join(container, "worktrees", "plan-template-autonomy");
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await fs.mkdir(repository);
+  await runGit(repository, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(repository, "README.md"), "base\n");
+  await runGit(repository, ["add", "README.md"]);
+  await runGit(repository, ["commit", "-m", "base"], { env: identity });
+  await fs.mkdir(path.dirname(linkedWorktree), { recursive: true });
+  await runGit(repository, ["worktree", "add", "-b", "plan-template-autonomy", linkedWorktree]);
+
+  const state = await repositoryState(t, linkedWorktree);
+  assert.equal(state.repository, "skillshare");
+  assert.equal(state.branch, "plan-template-autonomy");
+});
+
+test("provider resolves branch Git config after explicit bases and validates it as a commit", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-branch-base-provider-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  await runGit(root, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(root, "README.md"), "base\n");
+  await runGit(root, ["add", "README.md"]);
+  await runGit(root, ["commit", "-m", "base"], { env: identity });
+  await runGit(root, ["branch", "release-base"]);
+  await fs.writeFile(path.join(root, "main.txt"), "main\n");
+  await runGit(root, ["add", "main.txt"]);
+  await runGit(root, ["commit", "-m", "main"], { env: identity });
+  await runGit(root, ["switch", "-c", "feature/configured"]);
+  await fs.writeFile(path.join(root, "feature.txt"), "feature\n");
+  await runGit(root, ["add", "feature.txt"]);
+  await runGit(root, ["commit", "-m", "feature"], { env: identity });
+  await runGit(root, ["config", "--local", "branch.feature/configured.gitrail-base", "release-base"]);
+
+  let state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "release-base");
+  assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt", "main.txt"]);
+
+  const { environment, config } = hermeticEnvironment(t);
+  await fs.mkdir(path.join(config, "git-rail"));
+  await fs.writeFile(path.join(config, "git-rail", "config.json"), JSON.stringify({
+    version: 1,
+    baseRef: "main",
+  }));
+  state = await getRepositoryState(root, { env: environment });
+  assert.equal(state.baseRef, "main");
+  assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
+
+  state = await getRepositoryState(root, {
+    env: { ...environment, GIT_RAIL_BASE: "release-base" },
+  });
+  assert.equal(state.baseRef, "release-base");
+
+  await runGit(root, ["config", "--local", "extensions.worktreeConfig", "true"]);
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", "main"]);
+  state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "main");
+
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", "HEAD:README.md"]);
+  state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "");
+  assert.deepEqual(state.againstBase, []);
+  assert.match(state.error, /branch\.feature\/configured\.gitrail-base does not resolve to a commit: HEAD:README\.md/i);
+
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", ""]);
+  state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "");
+  assert.match(state.error, /branch\.feature\/configured\.gitrail-base does not resolve to a commit: \(empty\)/i);
+
+  await runGit(root, ["switch", "--detach"]);
+  state = await repositoryState(t, root);
+  assert.match(state.branch, /^detached [0-9a-f]+$/);
+  assert.equal(state.baseRef, "main");
+  assert.equal(state.error, "");
+});
+
+test("live branch switches reload configured bases and keep stale local main clean", async (t) => {
   const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-branch-switch-"));
   t.after(() => fs.rm(container, { recursive: true, force: true }));
   const root = path.join(container, "worktree");
@@ -103,12 +182,10 @@ test("branch changes never report commits already reachable from main", async (t
   await runGit(root, ["init", "--initial-branch=main"]);
   await runGit(root, ["remote", "add", "origin", remote]);
 
-  const mainCommits = [];
   for (const [name, content] of [["one.txt", "one\n"], ["two.txt", "two\n"], ["three.txt", "three\n"]]) {
     await fs.writeFile(path.join(root, name), content);
     await runGit(root, ["add", name]);
     await runGit(root, ["commit", "-m", `main ${name}`], { env: identity });
-    mainCommits.push((await runGit(root, ["rev-parse", "HEAD"])).stdout.trim());
   }
   await runGit(root, ["push", "-u", "origin", "main"]);
   await runGit(root, ["remote", "set-head", "origin", "main"]);
@@ -116,7 +193,7 @@ test("branch changes never report commits already reachable from main", async (t
   await fs.writeFile(path.join(root, "local-main.txt"), "local main\n");
   await runGit(root, ["add", "local-main.txt"]);
   await runGit(root, ["commit", "-m", "local main ahead of origin"], { env: identity });
-  mainCommits.push((await runGit(root, ["rev-parse", "HEAD"])).stdout.trim());
+  const localMainCommit = (await runGit(root, ["rev-parse", "HEAD"])).stdout.trim();
 
   let state = await repositoryState(t, root);
   assert.equal(state.branch, "main");
@@ -131,23 +208,27 @@ test("branch changes never report commits already reachable from main", async (t
   await runGit(root, ["commit", "-m", "feature only"], { env: identity });
   const featureCommit = (await runGit(root, ["rev-parse", "HEAD"])).stdout.trim();
   await runGit(root, ["push", "-u", "origin", "feature/branch-switch"]);
+  await runGit(root, ["config", "--local", "branch.feature/branch-switch.gitrail-base", "origin/main"]);
 
   state = await repositoryState(t, root);
   assert.equal(state.branch, "feature/branch-switch");
-  assert.equal(state.totalCommits, 1);
-  assert.deepEqual(state.commits.map((commit) => commit.hash), [featureCommit]);
-  assert.ok(state.commits.every((commit) => !mainCommits.includes(commit.hash)));
-  assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
+  assert.equal(state.baseRef, "origin/main");
+  assert.equal(state.totalCommits, 2);
+  assert.deepEqual(state.commits.map((commit) => commit.hash), [featureCommit, localMainCommit]);
+  assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt", "local-main.txt"]);
 
   await runGit(root, ["switch", "main"]);
   state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "main");
   assert.equal(state.totalCommits, 0);
+  assert.deepEqual(state.commits, []);
   assert.deepEqual(state.againstBase, []);
 
   await runGit(root, ["merge", "--ff-only", "feature/branch-switch"]);
   await runGit(root, ["push", "origin", "main"]);
   await runGit(root, ["switch", "feature/branch-switch"]);
   state = await repositoryState(t, root);
+  assert.equal(state.baseRef, "origin/main");
   assert.equal(state.totalCommits, 0);
   assert.deepEqual(state.commits, []);
   assert.deepEqual(state.againstBase, []);

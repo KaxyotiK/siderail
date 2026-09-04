@@ -14,9 +14,11 @@ and response policy must be published before GitRail is distributed externally.
 ## Trust boundary
 
 Repository contents never control GitRail configuration or select an executable.
-Configuration comes only from built-in defaults, the user's
+Configuration comes from built-in defaults, the user's
 `~/.config/git-rail/config.json`, and explicit process environment overrides.
-GitRail is read-only with respect to Git, passes executable arguments without a
-shell, resolves selected paths through `realpath`, bounds file and Git output,
-sanitizes terminal text, and does not log source, diffs, secrets, or command
-arguments by default.
+The comparison base alone may also come from an uncommitted local or worktree
+Git-config key named `branch.<checked-out-branch>.gitrail-base`; other Git-config
+scopes are ignored. GitRail is otherwise read-only with respect to Git, passes
+executable arguments without a shell, resolves selected paths through `realpath`,
+bounds file and Git output, sanitizes terminal text, and does not log source,
+diffs, secrets, or command arguments by default.
