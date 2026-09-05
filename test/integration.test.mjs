@@ -136,6 +136,47 @@ test("worktrees backed by a bare repository report the repository, not the branc
   assert.equal(state.branch, "sidebar-diagnosis");
 });
 
+test("a separate Git directory names the repository from the checkout, not the storage", async (t) => {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-separate-git-dir-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const checkout = path.join(container, "myproject");
+  const storage = path.join(container, "elsewhere-gitdir");
+  await fs.mkdir(checkout);
+  await runGit(container, ["init", "--initial-branch=main", `--separate-git-dir=${storage}`, checkout]);
+  await fs.writeFile(path.join(checkout, "README.md"), "base\n");
+  await runGit(checkout, ["add", "README.md"]);
+  await runGit(checkout, ["commit", "-m", "base"], { env: identity });
+
+  // The common dir is not bare and is not a .git level, so its name describes
+  // Git storage rather than the project.
+  const state = await repositoryState(t, checkout);
+  assert.equal(state.repository, "myproject");
+});
+
+test("a submodule names the repository from its own checkout, not the superproject module directory", async (t) => {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-submodule-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const upstream = path.join(container, "upstream");
+  await fs.mkdir(upstream);
+  await runGit(upstream, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(upstream, "README.md"), "base\n");
+  await runGit(upstream, ["add", "README.md"]);
+  await runGit(upstream, ["commit", "-m", "base"], { env: identity });
+  const superproject = path.join(container, "superproject");
+  await runGit(container, ["clone", upstream, superproject]);
+  // The module name is deliberately not the checkout directory name, so a
+  // repository named from <superproject>/.git/modules/<name> would be visible.
+  await runGit(superproject, [
+    "-c", "protocol.file.allow=always",
+    "submodule", "add", "--name", "vendored-module", upstream, "vendor/library",
+  ], { env: identity });
+
+  const state = await repositoryState(t, path.join(superproject, "vendor", "library"));
+  assert.equal(state.repository, "library");
+});
+
 test("provider resolves branch Git config after explicit bases and validates it as a commit", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-branch-base-provider-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

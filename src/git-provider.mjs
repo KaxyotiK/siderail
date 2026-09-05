@@ -55,12 +55,17 @@ async function resolveRepository(cwd) {
 }
 
 /**
- * A non-bare checkout keeps its common dir at `<repository>/.git`, so the
- * repository is that directory's parent. A bare repository has no `.git` level:
- * the common dir is the repository, and its own name is the one to show.
- * Worktree managers that back linked worktrees with a bare repository name each
- * worktree directory after its branch, so falling through to the worktree
- * basename made the header repeat the branch line underneath it.
+ * A checkout keeps its common dir at `<repository>/.git`, so the repository is
+ * that directory's parent. A bare repository has no `.git` level: the common
+ * dir is the repository itself, and its own name is the one to show. Worktree
+ * managers that back linked worktrees with a bare repository name each worktree
+ * directory after its branch, so falling through to the worktree basename made
+ * the header print the branch as the repository too.
+ *
+ * Only a bare common dir may name the repository. A submodule's common dir is
+ * `<superproject>/.git/modules/<submodule name>` and a `--separate-git-dir`
+ * checkout points anywhere at all; in both the directory name describes the Git
+ * storage rather than the project, and the worktree basename is the better one.
  */
 async function resolveRepositoryName(repoRoot) {
   try {
@@ -68,7 +73,8 @@ async function resolveRepositoryName(repoRoot) {
     const resolved = await fs.realpath(path.resolve(repoRoot, commonDirectory));
     const name = path.basename(resolved);
     if (name === ".git") return path.basename(path.dirname(resolved));
-    return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
+    const bare = (await gitText(repoRoot, ["config", "--default", "false", "--get", "core.bare"])).trim();
+    if (bare === "true") return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
   } catch {}
   return path.basename(repoRoot);
 }
