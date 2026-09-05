@@ -111,6 +111,31 @@ test("linked worktrees report the common repository name separately from the bra
   assert.equal(state.branch, "plan-template-autonomy");
 });
 
+test("worktrees backed by a bare repository report the repository, not the branch-named directory", async (t) => {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-bare-worktree-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const seed = path.join(container, "seed");
+  await fs.mkdir(seed);
+  await runGit(seed, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(seed, "README.md"), "base\n");
+  await runGit(seed, ["add", "README.md"]);
+  await runGit(seed, ["commit", "-m", "base"], { env: identity });
+
+  // The layout worktree managers produce: a bare repository named after the
+  // project, with each worktree directory named "<branch>@<repository>".
+  const bare = path.join(container, "repos", "herdr-gitrail");
+  await fs.mkdir(path.dirname(bare), { recursive: true });
+  await runGit(container, ["clone", "--bare", seed, bare]);
+  const linkedWorktree = path.join(container, "trees", "sidebar-diagnosis@herdr-gitrail");
+  await fs.mkdir(path.dirname(linkedWorktree), { recursive: true });
+  await runGit(bare, ["worktree", "add", "-b", "sidebar-diagnosis", linkedWorktree]);
+
+  const state = await repositoryState(t, linkedWorktree);
+  assert.equal(state.repository, "herdr-gitrail");
+  assert.equal(state.branch, "sidebar-diagnosis");
+});
+
 test("provider resolves branch Git config after explicit bases and validates it as a commit", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-branch-base-provider-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

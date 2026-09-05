@@ -54,11 +54,21 @@ async function resolveRepository(cwd) {
   }
 }
 
+/**
+ * A non-bare checkout keeps its common dir at `<repository>/.git`, so the
+ * repository is that directory's parent. A bare repository has no `.git` level:
+ * the common dir is the repository, and its own name is the one to show.
+ * Worktree managers that back linked worktrees with a bare repository name each
+ * worktree directory after its branch, so falling through to the worktree
+ * basename made the header repeat the branch line underneath it.
+ */
 async function resolveRepositoryName(repoRoot) {
   try {
     const commonDirectory = (await gitText(repoRoot, ["rev-parse", "--git-common-dir"])).trim();
     const resolved = await fs.realpath(path.resolve(repoRoot, commonDirectory));
-    if (path.basename(resolved) === ".git") return path.basename(path.dirname(resolved));
+    const name = path.basename(resolved);
+    if (name === ".git") return path.basename(path.dirname(resolved));
+    return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
   } catch {}
   return path.basename(repoRoot);
 }
