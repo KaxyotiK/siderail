@@ -3,7 +3,35 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runCommand } from "../src/process.mjs";
+import { runCommand, runGit } from "../src/process.mjs";
+
+test("Git status never refreshes the index even when caller options enable optional locks", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-no-locks-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const options = { env: { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, GIT_OPTIONAL_LOCKS: "1" } };
+  await runGit(root, ["init"], options);
+  const tracked = path.join(root, "tracked.txt");
+  await fs.writeFile(tracked, "unchanged content\n");
+  await runGit(root, ["add", "tracked.txt"], options);
+  // Make cached file metadata stale without changing the contents. Ordinary
+  // status rewrites the index to cache this new timestamp.
+  const oldTime = new Date("2001-01-01T00:00:00Z");
+  await fs.utimes(tracked, oldTime, oldTime);
+  const index = path.join(root, ".git", "index");
+  const before = await fs.readFile(index);
+  const beforeStat = await fs.stat(index);
+  const status = await runGit(root, ["status", "--porcelain=v2"], options);
+  assert.match(status.stdout, /tracked\.txt/);
+  assert.deepEqual(await fs.readFile(index), before);
+  assert.equal((await fs.stat(index)).ino, beforeStat.ino);
+  await assert.rejects(fs.access(`${index}.lock`), { code: "ENOENT" });
+
+  // Reads must also work while another Git operation owns the index lock.
+  await fs.writeFile(`${index}.lock`, "another operation\n");
+  assert.equal((await runGit(root, ["status", "--porcelain=v2"], options)).stdout, status.stdout);
+  assert.equal(await fs.readFile(`${index}.lock`, "utf8"), "another operation\n");
+  assert.deepEqual(await fs.readFile(index), before);
+});
 
 test("process stdout remains text by default and can preserve exact bytes", async () => {
   const text = await runCommand(process.execPath, ["-e", "process.stdout.write('hello')"]);

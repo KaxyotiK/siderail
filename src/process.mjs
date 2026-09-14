@@ -160,6 +160,8 @@ export function runGit(cwd, args, options = {}) {
   return runCommand("git", args, {
     cwd,
     ...options,
-    env: { GIT_OPTIONAL_LOCKS: "0", ...(options.env || {}) },
+    // Background reads must never refresh the index, even if a caller passes
+    // an environment that enables Git's optional locks.
+    env: { ...(options.env || {}), GIT_OPTIONAL_LOCKS: "0" },
   });
 }
