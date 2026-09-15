@@ -36,20 +36,26 @@ application, bypassing the generic Diff/Raw preview entirely.
 
 ## Install and launch
 
+GitRail is currently an unreleased development checkout. No tagged release is
+available yet; see [production readiness](PRODUCTION-READINESS.md) for the
+current release status.
+
+Clone the repository and install its development dependencies:
+
 ```bash
+git clone https://github.com/KaxyotiK/git-railgun.git
+cd git-railgun
 npm ci --ignore-scripts
 npm run check
-herdr plugin link .
-herdr plugin action invoke local.git-rail.open-git-rail
 ```
 
-For the cmux Dock, this checkout includes `.cmux/dock.json`. After running the
-same install and check commands above, review the Dock control and accept
-cmux's project trust prompt. A direct, fail-closed development launch is
-also available from a cmux terminal in the intended project:
+### Herdr
+
+Link the checkout and open the sidebar:
 
 ```bash
-npm run cmux:launch
+herdr plugin link .
+herdr plugin action invoke local.git-rail.open-git-rail
 ```
 
 GitRail also declares `local.git-rail.toggle-git-rail`, which opens or closes
@@ -78,10 +84,25 @@ owner-only. Copies handed to detached external viewers remain available for 15
 minutes and are then removed automatically; all other copies are removed when
 the preview exits normally or receives a handled signal.
 
-Live Herdr captures of that demo are available at
+Rendered screenshots of that demo are available at
 [36 columns](docs/screenshots/gitrail-36.png),
 [52 columns](docs/screenshots/gitrail-52.png), and
-[100 columns](docs/screenshots/gitrail-100.png).
+[100 columns](docs/screenshots/gitrail-100.png). They render deterministic
+terminal output using a reference dark palette; see
+[screenshot generation](docs/screenshots/README.md).
+
+### cmux Dock
+
+This checkout includes `.cmux/dock.json`. After running the install and check
+commands above, review the Dock control and accept cmux's project trust prompt.
+A direct development launch is also available from a cmux terminal in this
+checkout:
+
+```bash
+npm run cmux:launch
+```
+
+See the [cmux guide](docs/CMUX.md) to use GitRail with another project.
 
 ## Interaction
 
@@ -103,8 +124,8 @@ Live Herdr captures of that demo are available at
 - Escape clears the current selection; press Escape again to close GitRail.
   `q` closes GitRail immediately.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
-- Folder expanders are currently mouse controls; commit expansion and file
-  opening remain fully keyboard-accessible.
+- Folder expansion, commit expansion, and file opening are available through
+  both the keyboard and mouse.
 
 Against-base and Commits begin collapsed; Staged, Unstaged, and Untracked begin
 expanded. Untracked is a separate section immediately after Unstaged and uses

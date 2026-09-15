@@ -1,5 +1,9 @@
 # Installation and upgrades
 
+GitRail is currently an unreleased development checkout. No tagged release is
+available yet. The instructions below install the current `main` branch; see
+[production readiness](../PRODUCTION-READINESS.md) for the release status.
+
 ## Install from a checkout
 
 ```bash
@@ -42,7 +46,8 @@ or terminal viewer.
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the
 checkout, run `npm ci --ignore-scripts` and `npm run check`, relink with
 `herdr plugin link .`, and reopen it.
-Use a tagged release in production rather than an arbitrary moving branch.
+Until the first tagged release is available, upgrades follow the development
+branch and may include changes that have not completed release validation.
 
 ## Install in the cmux right sidebar Dock
 

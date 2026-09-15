@@ -9,7 +9,8 @@ function response(value) {
 test("uninstall closes only live pane instances owned by this checkout before unlinking", async () => {
   const pluginRoot = "/plugin";
   const panes = [
-    { pane_id: "rail", terminal_id: "term-rail", workspace_id: "w1", label: "HERDER GITRAIL" },
+    { pane_id: "rail", terminal_id: "term-rail", workspace_id: "w1", label: "HERDR GITRAIL" },
+    { pane_id: "older-rail", terminal_id: "term-older-rail", workspace_id: "w1", label: "HERDER GITRAIL" },
     { pane_id: "preview", terminal_id: "term-preview", workspace_id: "w1", label: "GitRail Preview" },
     { pane_id: "shell", terminal_id: "term-shell", workspace_id: "w1", label: "shell" },
   ];
@@ -28,16 +29,17 @@ test("uninstall closes only live pane instances owned by this checkout before un
     return response({ type: "ok" });
   };
   const result = await uninstallGitRail({ environment: { HERDR_BIN_PATH: "herdr-test" }, run, pluginRoot });
-  assert.deepEqual(result.closedPaneIds, ["rail", "preview"]);
+  assert.deepEqual(result.closedPaneIds, ["rail", "older-rail", "preview"]);
   assert.deepEqual(calls.filter((args) => args[0] === "plugin" && args[1] === "pane"), [
     ["plugin", "pane", "close", "rail"],
+    ["plugin", "pane", "close", "older-rail"],
     ["plugin", "pane", "close", "preview"],
   ]);
   assert.deepEqual(calls.at(-1), ["plugin", "unlink", "local.git-rail"]);
 });
 
 test("uninstall fails closed on a reused or spoofed GitRail pane", async () => {
-  const pane = { pane_id: "reused", terminal_id: "term-original", workspace_id: "w1", label: "HERDER GITRAIL" };
+  const pane = { pane_id: "reused", terminal_id: "term-original", workspace_id: "w1", label: "HERDR GITRAIL" };
   const calls = [];
   await assert.rejects(uninstallGitRail({
     environment: { HERDR_BIN_PATH: "herdr-test" },

@@ -44,7 +44,7 @@ command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-mockup"]
 
 [[panes]]
 id = "git-tui"
-title = "HERDER GITRAIL"
+title = "HERDR GITRAIL"
 description = "Read-only Files and Git inspection for the focused directory"
 placement = "overlay"
 command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/git-rail.mjs"]

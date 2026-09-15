@@ -14,7 +14,7 @@ async function writeUserConfig(environment, value) {
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
-  assert.match(manifest, /title = "HERDER GITRAIL"/);
+  assert.match(manifest, /title = "HERDR GITRAIL"/);
 });
 
 test("Herdr opens GitRail for restored and newly created tabs", async () => {

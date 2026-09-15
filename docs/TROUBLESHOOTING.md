@@ -84,8 +84,10 @@ blob/tree object expressions are reported instead of silently falling back.
 
 ## Configuration error
 
-GitRail displays the file and validation error. Validate JSON syntax, require
-`version: 1`, and use `auto`, `terminal`, or `external` for launch modes.
+GitRail displays the file and validation error. Validate JSON syntax and require
+`version: 1`. Editor launch modes are `auto`, `terminal`, and `external`.
+Viewer launch modes also include `embedded`, which displays the viewer's output
+inside GitRail.
 
 ## Editor or viewer does not open
 

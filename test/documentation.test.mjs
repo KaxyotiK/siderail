@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import test from "node:test";
 
-test("security policy has no fictional contact or response-time promise", async () => {
+test("security policy directs reports to the repository's private reporting channel", async () => {
   const policy = await fs.readFile("SECURITY.md", "utf8");
-  assert.doesNotMatch(policy, /security@|within \d+ (?:hours|days)|acknowledge within|private advisory/i);
-  assert.match(policy, /does not currently advertise a security\s+reporting channel/);
+  const packageJson = JSON.parse(await fs.readFile("package.json", "utf8"));
+  const repositoryUrl = packageJson.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
+  assert.ok(policy.includes(`](${repositoryUrl}/security/advisories/new)`));
+  assert.doesNotMatch(policy, /security@|within \d+ (?:hours|days)|acknowledge within/i);
+  assert.doesNotMatch(policy, /private pre-release repository|does not currently advertise a security/i);
   assert.match(policy, /Repository contents never control GitRail configuration/);
 });
 

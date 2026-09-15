@@ -1,7 +1,8 @@
-# Contributing to Herdr GitRail
+# Contributing to GitRail
 
-Use Node.js 22 or newer and Herdr 0.8.0 or newer. Create a focused branch, keep
-the first release read-only, and run:
+Use Node.js 22 or newer. For host integration, use Herdr 0.8.x or a supported
+cmux build as described in the [cmux guide](docs/CMUX.md). Create a focused
+branch, keep the first release read-only, and run:
 
 ```bash
 npm run check
@@ -15,5 +16,5 @@ based on human-oriented Git output, shell command construction, silent result
 caps, or fabricated demo content.
 
 Commit messages should describe the user-visible outcome. Pull requests should
-include the relevant correctness case, test evidence, and a Herdr screenshot or
-recording for interaction changes.
+include the relevant correctness case, test evidence, and a screenshot or
+recording from the affected host for interaction changes.

@@ -67,7 +67,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
         tab_id: args.includes("--target-pane") ? paneTabs.get(targetPaneId) : "w1:t8",
         pane_id: openedPaneId,
         terminal_id: `term-${openedPaneId}`,
-        label: args.includes("git-mockup") ? "GitRail Demo" : "HERDER GITRAIL",
+        label: args.includes("git-mockup") ? "GitRail Demo" : "HERDR GITRAIL",
       };
       paneTabs.set(openedPaneId, openedPane.tab_id);
       await afterMutation?.(args);
@@ -148,7 +148,7 @@ test("an orphaned reclaimer cannot permanently wedge a pane lock", async (t) => 
   await assert.rejects(fs.stat(lockPath), { code: "ENOENT" });
 });
 
-test("existing current rails are adopted, deduplicated, and never reopened from themselves", async (t) => {
+test("current and older-spelling rails are adopted, deduplicated, and never reopened from themselves", async (t) => {
   const root = await temporaryRoot(t, "gitrail-adopt-");
   const env = environment(root, { HERDR_PANE_ID: "w1:p3", GIT_RAIL_WORKSPACE_CWD: "/repo" });
   await ensurePaneStateDirectory(env);
@@ -157,7 +157,7 @@ test("existing current rails are adopted, deduplicated, and never reopened from 
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDER GITRAIL" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p4", cwd: "/repo", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p4", cwd: "/repo", label: "HERDR GITRAIL" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p5", cwd: "/repo", label: "Grove Git Rail" },
   ];
   const mocked = mockRun({ panes, layout: {

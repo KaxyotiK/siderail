@@ -36,6 +36,7 @@ test("startup reconciliation chooses one non-GitRail pane per tab", () => {
   ] } };
   const panes = { result: { panes: [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repos/one-a" },
+    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p6", cwd: "/rail-checkout", focused: true, label: "HERDR GITRAIL" },
     { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p1", cwd: "/repos/one", focused: true },
     { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p3", label: "HERDER GITRAIL" },
     { workspace_id: "w1", tab_id: "w1:t3", pane_id: "w1:p4", cwd: "/repos/preview", label: "GitRail Preview" },
@@ -44,7 +45,7 @@ test("startup reconciliation chooses one non-GitRail pane per tab", () => {
   ] } };
   assert.deepEqual(collectTabTargets(workspaces, tabs, panes), [
     { workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p2", cwd: "/repos/one-a", currentRailPaneIds: [], legacyRailPaneIds: [] },
-    { workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p1", cwd: "/repos/one", currentRailPaneIds: ["w1:p3"], legacyRailPaneIds: [] },
+    { workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p1", cwd: "/repos/one", currentRailPaneIds: ["w1:p6", "w1:p3"], legacyRailPaneIds: [] },
     { workspaceId: "w2", tabId: "w2:t1", paneId: "w2:p1", cwd: "/wrong", currentRailPaneIds: [], legacyRailPaneIds: [] },
   ]);
 });

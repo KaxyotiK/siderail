@@ -3,6 +3,7 @@ function parseJson(value) {
 }
 
 const GITRAIL_LABELS = new Set([
+  "HERDR GITRAIL",
   "HERDER GITRAIL",
   "Grove Git Rail",
   "GitRail Demo",

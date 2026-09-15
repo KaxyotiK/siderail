@@ -12,7 +12,7 @@ import { assertSupportedNode } from "../src/node-version.mjs";
 assertSupportedNode();
 
 const pluginId = "local.git-rail";
-const railLabel = "HERDER GITRAIL";
+const railLabel = "HERDR GITRAIL";
 const previewLabel = "GitRail Preview";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-live-herdr-"));

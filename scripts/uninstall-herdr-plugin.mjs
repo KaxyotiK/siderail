@@ -9,6 +9,7 @@ import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 assertSupportedNode();
 
 const OWNED_LABELS = new Map([
+  ["HERDR GITRAIL", { script: "scripts/git-rail.mjs", demo: false }],
   ["HERDER GITRAIL", { script: "scripts/git-rail.mjs", demo: false }],
   ["Grove Git Rail", { script: "scripts/git-rail.mjs", demo: false }],
   ["GitRail Demo", { script: "scripts/git-rail.mjs", demo: true }],

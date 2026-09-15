@@ -2,14 +2,20 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest tagged release of Herdr GitRail.
+GitRail is currently unreleased, with no tagged releases. Security fixes target
+the `main` development branch. After the first release, security fixes will
+target the latest tagged release.
 
 ## Reporting a vulnerability
 
-This private pre-release repository does not currently advertise a security
-reporting channel or response-time commitment. Do not put exploit details,
-repository contents, or secrets in a public issue. A private reporting channel
-and response policy must be published before GitRail is distributed externally.
+Report suspected vulnerabilities through
+[GitHub's private vulnerability reporting](https://github.com/KaxyotiK/git-railgun/security/advisories/new).
+Include the affected commit or version, reproduction steps, and the expected
+impact. Keep exploit details and secrets out of public issues.
+
+Reports are reviewed on a best-effort basis, with no guaranteed response or fix
+timeline. Use the private report for follow-up discussion and to coordinate
+disclosure.
 
 ## Trust boundary
 

@@ -11,7 +11,7 @@ import { runCommand } from "../src/process.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 
-const RAIL_LABEL = "HERDER GITRAIL";
+const RAIL_LABELS = new Set(["HERDR GITRAIL", "HERDER GITRAIL"]);
 assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
 const DEMO_LABEL = "GitRail Demo";
@@ -47,7 +47,7 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
     // turn one GitRail-owned pane into another auto-open cycle.
     if (tabPanes.some((pane) => pane.label === PREVIEW_LABEL || pane.label === DEMO_LABEL)) return [];
     const usablePanes = tabPanes.filter((pane) => (
-      pane.label !== RAIL_LABEL && pane.label !== LEGACY_RAIL_LABEL && pane.label !== DEMO_LABEL
+      !RAIL_LABELS.has(pane.label) && pane.label !== LEGACY_RAIL_LABEL && pane.label !== DEMO_LABEL
     ));
     const targetPane = usablePanes.find((pane) => pane.pane_id === only.paneId)
       || usablePanes.find((pane) => pane.focused)
@@ -61,7 +61,7 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
       tabId: tab.tab_id,
       paneId: targetPane.pane_id,
       cwd,
-      currentRailPaneIds: tabPanes.filter((pane) => pane.label === RAIL_LABEL).map((pane) => pane.pane_id),
+      currentRailPaneIds: tabPanes.filter((pane) => RAIL_LABELS.has(pane.label)).map((pane) => pane.pane_id),
       legacyRailPaneIds: tabPanes.filter((pane) => pane.label === LEGACY_RAIL_LABEL).map((pane) => pane.pane_id),
     }];
   });

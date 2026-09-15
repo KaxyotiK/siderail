@@ -17,7 +17,7 @@ import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resizeConfiguredSidebar } from "./resize-herdr-sidebar.mjs";
 
-const RAIL_LABEL = "HERDER GITRAIL";
+const RAIL_LABEL = "HERDR GITRAIL";
 assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
 const DEMO_LABEL = "GitRail Demo";
@@ -25,7 +25,8 @@ const PREVIEW_LABEL = "GitRail Preview";
 const PLUGIN_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const ENTRYPOINT_IDENTITIES = Object.freeze({
-  "git-tui": { current: [RAIL_LABEL], legacy: [LEGACY_RAIL_LABEL] },
+  // Linked-checkout upgrades can leave panes with the older title running.
+  "git-tui": { current: [RAIL_LABEL, "HERDER GITRAIL"], legacy: [LEGACY_RAIL_LABEL] },
   "git-mockup": { current: [DEMO_LABEL], legacy: [] },
 });
 
@@ -62,7 +63,7 @@ function hasLabel(pane, labels) {
 
 function sourcePane(tabPanes, requestedPaneId, layout, ownedPaneIds = new Set(), entrypoint = "git-tui") {
   const otherEntrypointLabels = entrypoint === "git-mockup"
-    ? new Set([RAIL_LABEL, LEGACY_RAIL_LABEL])
+    ? new Set([...ENTRYPOINT_IDENTITIES["git-tui"].current, LEGACY_RAIL_LABEL])
     : new Set([DEMO_LABEL]);
   const usable = tabPanes.filter((pane) => (
     pane.label !== PREVIEW_LABEL

@@ -7,6 +7,7 @@ test("content selection follows each tab's focused pane and ignores GitRail pane
     { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/repo/one" },
     { pane_id: "w1:p2", tab_id: "w1:t1", foreground_cwd: "/repo/two" },
     { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER GITRAIL" },
+    { pane_id: "w1:p4", tab_id: "w1:t1", label: "HERDR GITRAIL" },
   ];
   assert.equal(selectTabContentPane(panes, { focused_pane_id: "w1:p2" }, {
     railPaneId: "w1:p3",
@@ -16,6 +17,11 @@ test("content selection follows each tab's focused pane and ignores GitRail pane
     railPaneId: "w1:p3",
     sourcePaneId: "w1:p1",
   }).pane_id, "w1:p1");
+  for (const paneId of ["w1:p3", "w1:p4"]) {
+    assert.equal(selectTabContentPane(panes, { focused_pane_id: paneId }, {
+      sourcePaneId: paneId,
+    }).pane_id, "w1:p1");
+  }
 });
 
 test("live cwd resolution is scoped to the rail's own tab", async () => {

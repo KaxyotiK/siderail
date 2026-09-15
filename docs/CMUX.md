@@ -81,6 +81,65 @@ shell open. The binding is scoped to the exact Dock surface and window, uses the
 absolute launcher from the installed checkout, and remains subject to cmux's
 signed resume-command approval policy.
 
+## Following a project
+
+GitRail follows the selected main workspace in the same cmux window as its
+Dock. Select the workspace containing the project you want to inspect. The
+sidebar updates when the selection changes; press `r` for an immediate refresh.
+
+## Native previews and close behavior
+
+Enter or a single file click opens the selection with `cmux open` as a native file tab
+beside the main-area source surface, never as another split or Dock control.
+GitRail supplies a bounded, read-only materialization of the exact selected
+revision for changed, clean, and filesystem rows. Preserving the original
+basename and extension lets cmux choose its Markdown, image, PDF, media, or
+general file viewer.
+
+The materialization directory and native tab title identify both the selected
+scope and displayed bytes—for example, `Staged · Index · read-only` or
+`Commit abc12345 · Revision def67890 before deletion · read-only`—so the
+viewer never presents a historical/index copy as the live worktree file.
+The copy remains owner-readable and non-writable; cmux may still display its
+standard viewer controls, but the repository file is never handed to that tab.
+
+GitRail still owns Git interpretation: staged content comes from the index,
+Against uses the resolved merge base, commit diffs use the first parent, and
+deleted, renamed, copied, symlink, submodule, and binary states retain the same
+semantics as Herdr. The cmux host changes presentation only; Herdr continues to
+use GitRail's terminal preview TUI and configured viewer/editor actions.
+
+Every selection opens a new native cmux tab. Opening file B never closes or
+reuses the tab previously opened for file A; both remain available until the
+user closes them with cmux's normal tab controls.
+
+Pressing `q` in the GitRail Dock control exits the TUI. cmux then follows its
+normal Dock terminal contract and drops into the control's login shell, which
+keeps the section available for inspection or rerunning. A later
+`npm run cmux:launch` recognizes that the recorded process has exited and
+relaunches GitRail in the same verified Dock terminal rather than mistaking the
+shell for an active instance or creating another control. Close the Dock tab
+with cmux when the surface itself should be removed.
+
+GitRail opens a cmux native preview on the first file click. A second click in
+the terminal double-click interval selects the same row without opening a
+duplicate preview. Enter remains the fully deterministic keyboard open action.
+
+## Remove or upgrade
+
+Remove the `git-rail` control from the applicable `dock.json`, validate the
+JSON, and reload the Dock config. That affects only the Dock control; it does
+not unlink or alter the Herdr plugin. To upgrade, update this checkout, run
+`npm ci --ignore-scripts` and `npm run check`, then reload or relaunch the Dock
+control.
+
+## Maintainer details
+
+The following sections describe host integration, cache ownership, and release
+verification. Everyday launch, preview, and upgrade instructions are above.
+
+### Control discovery
+
 Current cmux discovery does not expose a configured control id on every Dock
 surface. A running GitRail control therefore records its process-backed active
 instance and stable control/surface identity in the owner-only GitRail cache
@@ -89,7 +148,7 @@ record against live Dock discovery across main-workspace changes. It briefly
 waits for a configured control that is still starting; unrelated configured
 controls neither match nor block a GitRail launch.
 
-## Dock control ownership records
+### Dock control ownership records
 
 Ownership is the pair of Dock surface and control id. The workspace a Dock
 follows is recorded as observation only and is never used to identify a control,
@@ -133,7 +192,7 @@ but any termination GitRail did not request is reported, logged, and falls back
 to the bounded refresh poll, so losing selection-following degrades visibly in
 the debug log instead of silently.
 
-## Dock ownership
+### Dock ownership
 
 A GitRail Dock control is owned by the cmux **window** that contains its Dock
 surface. That window, not whichever window happens to be focused, scopes every
@@ -160,7 +219,7 @@ A directory that exists is not necessarily checked out — a global Dock control
 that is inside a repository, so the Dock does not settle on a valid but
 unversioned folder and report changes as unavailable.
 
-## Host isolation
+### Host isolation
 
 GitRail runs under exactly one host per process, chosen by `GIT_RAIL_HOST`. The
 Herdr identity variables and `HERDR_PLUGIN_CONTEXT_JSON` are read only under the
@@ -169,7 +228,7 @@ started from a Herdr-managed shell inherits `HERDR_*` variables describing an
 unrelated pane; reading them would seed a cmux Dock ownership record with a
 Herdr workspace id, so they are ignored rather than merged.
 
-## Cwd and identity rules
+### Cwd and identity rules
 
 cmux injects `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`,
 `CMUX_DOCK_CONTROL_ID`, and `CMUX_DOCK_CONTROL_TITLE` into a configured Dock
@@ -192,36 +251,12 @@ Every cmux mutation is explicitly scoped to the resolved main workspace or to
 the returned surface id. GitRail never relies on whichever other cmux window
 or workspace happens to be visually focused later.
 
-## Native previews and close behavior
-
-Enter or a single file click opens the selection with `cmux open` as a native file tab
-beside the main-area source surface, never as another split or Dock control.
-GitRail supplies a bounded, read-only materialization of the exact selected
-revision for changed, clean, and filesystem rows. Preserving the original
-basename and extension lets cmux choose its Markdown, image, PDF, media, or
-general file viewer.
-
-The materialization directory and native tab title identify both the selected
-scope and displayed bytes—for example, `Staged · Index · read-only` or
-`Commit abc12345 · Revision def67890 before deletion · read-only`—so the
-viewer never presents a historical/index copy as the live worktree file.
-The copy remains owner-readable and non-writable; cmux may still display its
-standard viewer controls, but the repository file is never handed to that tab.
-
-GitRail still owns Git interpretation: staged content comes from the index,
-Against uses the resolved merge base, commit diffs use the first parent, and
-deleted, renamed, copied, symlink, submodule, and binary states retain the same
-semantics as Herdr. The cmux host changes presentation only; Herdr continues to
-use GitRail's terminal preview TUI and configured viewer/editor actions.
+### Preview lifecycle
 
 Preview commands explicitly target the resolved main workspace and, when
 available, its main-area source surface. The Dock's ambient
 `CMUX_SURFACE_ID` is cleared from the child command environment so it cannot be
 mistaken for a split or tab target.
-
-Every selection opens a new native cmux tab. Opening file B never closes or
-reuses the tab previously opened for file A; both remain available until the
-user closes them with cmux's normal tab controls.
 
 GitRail records every open preview under the main workspace and stable GitRail
 Dock control identity so each read-only materialization remains available for
@@ -232,25 +267,7 @@ preview open, including after the Dock terminal restarts. The first open after
 upgrading also migrates surface-keyed and replacement-era ownership records
 into this additive registry without closing their tabs.
 
-Pressing `q` in the GitRail Dock control exits the TUI. cmux then follows its
-normal Dock terminal contract and drops into the control's login shell, which
-keeps the section available for inspection or rerunning. A later
-`npm run cmux:launch` recognizes that the recorded process has exited and
-relaunches GitRail in the same verified Dock terminal rather than mistaking the
-shell for an active instance or creating another control. Close the Dock tab
-with cmux when the surface itself should be removed.
-
-GitRail opens a cmux native preview on the first file click. A second click in
-the terminal double-click interval selects the same row without opening a
-duplicate preview. Enter remains the fully deterministic keyboard open action.
-
-## Remove or upgrade
-
-Remove the `git-rail` control from the applicable `dock.json`, validate the
-JSON, and reload the Dock config. That affects only the Dock control; it does
-not unlink or alter the Herdr plugin. To upgrade, update this checkout, run
-`npm ci --ignore-scripts` and `npm run check`, then reload or relaunch the Dock
-control.
+### Live verification
 
 The automated suite uses fake cmux command execution. A final release should
 also be exercised in a live cmux build: trust/reload the project config, change
