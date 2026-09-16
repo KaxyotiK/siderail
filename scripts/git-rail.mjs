@@ -7,16 +7,16 @@ import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } fr
 import { startCmuxContextWatcher } from "../src/cmux-context-watch.mjs";
 import { resolveHostIdentity } from "../src/host-identity.mjs";
 import { openCmuxPreview } from "../src/cmux-preview-lifecycle.mjs";
-import { resolveDirectMarkdownOpen } from "../src/config.mjs";
+import { loadConfig, resolveDirectMarkdownOpen } from "../src/config.mjs";
 import { openExternalFile } from "../src/direct-file-open.mjs";
 import { createFixtureRepository } from "../src/fixture.mjs";
 import { getCommitFiles, getRepositoryState } from "../src/git-provider.mjs";
-import {
-  closeWatcherOnError,
-  resolveGitWatchRoots,
-  shouldInstallRecoveryPoll,
-  shouldInstallWatchers,
-} from "../src/git-watch.mjs";
+import { createRepositoryWatcher } from "../src/git-invalidation.mjs";
+import { createRepositoryEngine } from "../src/repository-engine.mjs";
+import { createRepositoryClient, openEngineSubscription } from "../src/repository-client.mjs";
+import { createRailStateClient } from "../src/rail-state-client.mjs";
+import { createHerdrContextSource } from "../src/herdr-context-watch.mjs";
+import { classifySharedRuntimeFallback, createSharedRailRuntime, resolveRailStateMode } from "../src/shared-rail-runtime.mjs";
 import {
   FilesViewModelCache,
   filesContentSignature,
@@ -37,14 +37,12 @@ import {
   compactTerminalPath,
   commitExpansionState,
   activatePointerTarget,
-  createCoalescedScheduler,
   createLatestSerialQueue,
   createPointerClickTracker,
   createTerminalInputDecoder,
   fitAnsiTerminalColumns,
   filePointerActions,
   filesViewNotices,
-  jitteredPollInterval,
   interruptPointerClickSequence,
   padAnsiTerminalColumns,
   previewTabName,
@@ -56,10 +54,9 @@ import {
   sliceAnsiTerminalColumns,
   terminalColumns,
   truncateTerminalColumns,
-  validPollInterval,
   startupFailureState,
 } from "../src/terminal-ui.mjs";
-import { compactAge } from "../src/tui-format.mjs";
+import { commitAge } from "../src/tui-format.mjs";
 import { resolvePalette } from "../src/theme.mjs";
 
 const ESC = "\u001b[";
@@ -180,11 +177,93 @@ async function liveProviderCwd() {
 // Registered before discovery so a launcher waiting on the handshake finds this
 // control quickly. The workspace is observational only; ownership is the surface.
 await registerCmuxOwner(HOST === "cmux" ? process.env.CMUX_WORKSPACE_ID : "");
-currentProviderCwd = fixtureRoot || await liveProviderCwd();
-if (HOST === "cmux" && fixtureRoot) currentProviderCwd = await liveProviderCwd();
 let state;
-try { state = await getRepositoryState(currentProviderCwd); }
-catch (error) { state = startupFailureState(currentProviderCwd, error); }
+let uiReady = false;
+let railController;
+let hostContextSource;
+let hostSubscription;
+let hostContext;
+let contextTimer;
+let contextRefresh;
+let sharedRuntime;
+let initialRuntimeStatus = "";
+const socketContext = !demoMode && !snapshotMode && HOST === "herdr" && process.env.HERDR_PANE_ID && process.env.HERDR_SOCKET_PATH;
+if (socketContext) {
+  if (resolveRailStateMode(process.env) === "shared") {
+    const showFallback = ({ reason, error }) => {
+      initialRuntimeStatus = `Using local Git state: ${safe(reason)} · ${safe(error?.message)}`;
+      debugLog("shared-state-fallback", { reason, error: safe(error?.message) });
+      if (uiReady) { statusMessage = initialRuntimeStatus; draw(); }
+    };
+    try {
+      sharedRuntime = await createSharedRailRuntime({ environment: process.env, onStatus: showFallback });
+    } catch (error) {
+      const reason = classifySharedRuntimeFallback(error);
+      if (reason !== "identity-unsupported") throw error;
+      showFallback({ reason, error });
+    }
+  }
+  hostContextSource = sharedRuntime ? {
+    requestRefresh: (reason) => hostSubscription.refresh(reason),
+  } : createHerdrContextSource({
+    socketPath: process.env.HERDR_SOCKET_PATH,
+    onStatus: ({ status, error }) => {
+      if (uiReady && status === "degraded") {
+        statusMessage = `Context unavailable: ${safe(error?.message)} · showing previous state`; draw();
+      }
+    },
+  });
+  const subscribeHost = sharedRuntime
+    ? sharedRuntime.subscribeHost
+    : hostContextSource.subscribe;
+  hostSubscription = subscribeHost({
+    railPaneId: process.env.HERDR_PANE_ID, sourcePaneId, fallbackCwd: currentProviderCwd,
+  }, (context) => {
+    hostContext = context;
+    if (uiReady) { contextRefresh = applyHostContext(context); reportAsync(contextRefresh); }
+  });
+  try { await hostSubscription.ready; }
+  catch (error) {
+    initialRuntimeStatus = `Context unavailable: ${safe(error.message)} · reconnecting`;
+    debugLog("context", { outcome: "initial-failed", error: safe(error.message) });
+  }
+  if (hostContext) currentProviderCwd = hostContext.cwd;
+} else {
+  currentProviderCwd = fixtureRoot || await liveProviderCwd();
+  if (HOST === "cmux" && fixtureRoot) currentProviderCwd = await liveProviderCwd();
+}
+if (snapshotMode || demoMode) {
+  try { state = await getRepositoryState(currentProviderCwd); }
+  catch (error) { state = startupFailureState(currentProviderCwd, error); }
+} else {
+  const client = createRepositoryClient({ openSubscription: sharedRuntime?.openRepositorySubscription || (({ context, onDelivery }) => {
+    const config = loadConfig(context.environment).config;
+    const engine = createRepositoryEngine({ context, watchFactory: createRepositoryWatcher,
+      schedulerOptions: { fallbackIntervalMs: config.refresh.pollIntervalMs, reconcileIntervalMs: config.refresh.reconcileIntervalMs },
+    });
+    return openEngineSubscription({ engine, onDelivery, closeEngine: true });
+  }) });
+  railController = createRailStateClient({ client,
+    onSnapshot: (next, delivery) => {
+      debugLog("rail-snapshot", { stateGeneration: delivery.stateGeneration });
+      if (uiReady) applyRepositoryState(next); else state = next;
+    },
+    onRender: () => { if (uiReady) draw(); },
+    onContext: updateContextIdentity,
+    onStatus: (delivery) => {
+      if (!uiReady) return;
+      if (delivery.status === "suspended") {
+        state = startupFailureState(currentProviderCwd, new Error("No content pane in this tab"));
+        statusMessage = "Waiting for a content pane";
+      } else if (delivery.status === "error") statusMessage = `Refresh failed: ${safe(delivery.error?.message)} · showing previous state`;
+      else if (delivery.status === "degraded") statusMessage = "Watcher unavailable · recovery polling active";
+      else if (delivery.status === "stale") statusMessage = "Reconnecting Git state · showing previous snapshot";
+      else if (delivery.status === "healthy" && /^(?:Watcher unavailable|Reconnecting Git state|Context unavailable)/.test(statusMessage)) statusMessage = "Git state current";
+    },
+  });
+  await applyHostContext(hostContext || { cwd: currentProviderCwd, hasContent: !socketContext, visible: true });
+  state ||= startupFailureState(currentProviderCwd, new Error(socketContext ? "Waiting for a content pane or host connection" : "Initial Git state unavailable"));
+}
 if (demoMode) state.repository = "gitrail-fixture";
 if (viewportFixtureCount) {
   state.files = Array.from({ length: viewportFixtureCount }, (_value, index) => ({
@@ -206,7 +285,7 @@ let selectedStatusMessage = "";
 let revealSelected = false;
 let keyboardItems = [];
 let keyboardIndexByIdentity = new Map();
-let statusMessage = state.configErrors?.[0] || "Click a section or file";
+let statusMessage = state.configErrors?.[0] || initialRuntimeStatus || "Click a section or file";
 let fileSearchQuery = "";
 let diffSearchQuery = initialSearch;
 let activeSearch = "";
@@ -214,23 +293,12 @@ let helpVisible = false;
 let helpScrollOffset = 0;
 let hitTargets = [];
 const isDoubleClick = createPointerClickTracker();
-let refreshGeneration = 0;
-let refreshRunning = false;
 let refreshVisible = false;
-let refreshQueued = false;
-let refreshQueuedAnnounce = false;
-let refreshTimer;
-let watchRecoveryPoll = false;
 let cmuxContextWatcher;
-let invalidationScheduler;
 let renderTimer;
 let statusTimer;
 let transientRestoreStatus = "";
 let transientStatusMessage = "";
-let watchers = [];
-let invalidationRepoRoot = "";
-let invalidationSignature = "";
-let invalidationGeneration = 0;
 const expanded = { against: false, commits: false, staged: true, unstaged: true, untracked: true };
 const sectionIds = ["against", "commits", "staged", "unstaged", "untracked"];
 const collapsedGroups = new Set();
@@ -449,7 +517,7 @@ function searchCommits(commits, rawQuery) {
   const query = rawQuery.trim().toLocaleLowerCase();
   if (!query) return commits.map((commit) => ({ ...commit, summaryMatch: false, matchingPaths: [] }));
   return commits.flatMap((commit) => {
-    const summary = [commit.hash, commit.shortHash, commit.message, commit.author, commit.age, compactAge(commit.age)]
+    const summary = [commit.hash, commit.shortHash, commit.message, commit.author, commit.age, commitAge(commit)]
       .filter(Boolean)
       .join("\n")
       .toLocaleLowerCase();
@@ -516,7 +584,7 @@ function renderChanges(width) {
       const manuallyOpen = expandedCommits.has(commit.hash);
       const expansion = commitExpansionState(query, commit.matchingPaths, manuallyOpen, commitFiles.has(commit.hash));
       const open = expansion.open;
-      const age = safe(compactAge(commit.age));
+      const age = safe(commitAge(commit));
       const prefix = ` ${C.faint}${open ? "⌄" : "›"}${C.reset} ${C.gold}${safe(commit.shortHash)}${C.reset} `;
       const identity = `commit:${commit.hash}`;
       const line = `${prefix}${truncate(safe(commit.message), Math.max(3, width - visibleLength(prefix) - age.length - 1))} ${C.dim}${age}${C.reset}`;
@@ -795,6 +863,8 @@ function renderFrame() {
   return frame.join("\n");
 }
 function draw() {
+  if (!snapshotMode && railController && !railController.visible) return;
+  debugLog("rail-render");
   const frame = renderFrame();
   if (snapshotMode) { process.stdout.write(`${frame}\n`); return; }
   const painted = frame.split("\n").map((line) => `${ESC}2K${line}`).join("\r\n");
@@ -806,6 +876,7 @@ function scheduleDraw() {
 }
 
 async function openPreview(file) {
+  const contextGeneration = railController?.contextGeneration;
   let statusBeforeOpen = statusMessage;
   let openingStatus = "";
   if (HOST === "cmux") {
@@ -823,6 +894,7 @@ async function openPreview(file) {
       let details = commitFiles.get(file.descriptor.commitHash);
       if (!details) {
         details = await getCommitFiles(state.repoRoot, file.descriptor.commitHash, state.config.limits.maxDiffBytes);
+        if (contextGeneration !== railController?.contextGeneration) return;
         commitFiles.set(file.descriptor.commitHash, details);
       }
       file = details.find((candidate) => candidate.path === file.path)
@@ -933,142 +1005,90 @@ async function openPreview(file) {
   } catch (error) { statusMessage = `Preview failed: ${error.message}`; }
   draw();
 }
-const requestPreview = createLatestSerialQueue(openPreview);
+const previewQueue = createLatestSerialQueue(({ file, generation }) => {
+  if (generation !== railController?.contextGeneration) return;
+  return openPreview(file);
+});
+const requestPreview = (file) => previewQueue({ file, generation: railController?.contextGeneration });
 async function toggleCommit(commit) {
+  const contextGeneration = railController?.contextGeneration;
   if (expandedCommits.has(commit.hash)) { expandedCommits.delete(commit.hash); draw(); return; }
   expandedCommits.add(commit.hash);
   draw();
   if (!commitFiles.has(commit.hash)) {
-    try { commitFiles.set(commit.hash, await getCommitFiles(state.repoRoot, commit.hash, state.config.limits.maxDiffBytes)); }
-    catch (error) { commitFiles.set(commit.hash, []); statusMessage = `Commit files failed: ${error.message}`; }
+    try {
+      const files = await getCommitFiles(state.repoRoot, commit.hash, state.config.limits.maxDiffBytes);
+      if (contextGeneration !== railController?.contextGeneration) return;
+      commitFiles.set(commit.hash, files);
+    }
+    catch (error) {
+      if (contextGeneration !== railController?.contextGeneration) return;
+      commitFiles.set(commit.hash, []); statusMessage = `Commit files failed: ${error.message}`;
+    }
     filesViewModels.invalidate();
   }
   draw();
 }
-async function refreshState(announce = false) {
-  if (refreshRunning) {
-    refreshQueued = true;
-    refreshQueuedAnnounce ||= announce;
-    if (announce && !refreshVisible) { refreshVisible = true; draw(); }
-    return false;
-  }
-  refreshRunning = true;
-  let succeeded = false;
-  const generation = ++refreshGeneration;
-  if (announce) { refreshVisible = true; draw(); }
-  try {
-    const providerCwd = fixtureRoot || await liveProviderCwd();
-    const previousRepoRoot = state.repoRoot;
-    const previousCwd = state.cwd;
-    const next = await getRepositoryState(providerCwd);
-    if (generation === refreshGeneration) {
-      if (demoMode) next.repository = "gitrail-fixture";
-      const previousInterval = state.config?.refresh?.pollIntervalMs;
-      state = next;
-      filesViewGeneration += 1;
-      filesViewModels.invalidate();
-      if (previousRepoRoot !== next.repoRoot || previousCwd !== next.cwd) {
-        selectedIdentity = "";
-        selectedPathIdentity = "";
-        selectedStatusMessage = "";
-        scrollOffset = 0;
-        commitFiles.clear();
-        expandedCommits.clear();
-        collapsedGroups.clear();
-        collapsedFolders.clear();
-        knownFolders.clear();
-      }
-      if ((state.repoRoot || state.cwd) !== invalidationRepoRoot) reportAsync(startInvalidation());
-      else if (refreshTimer && previousInterval !== next.config?.refresh?.pollIntervalMs) resetRefreshTimer();
-      if (announce) showTransientStatus("Git state refreshed");
-      else statusMessage = refreshStatusAfterSuccess(statusMessage, next.configErrors);
-      succeeded = true;
-    }
-  } catch (error) { statusMessage = `Refresh failed: ${error.message} · showing previous state`; }
-  finally {
-    refreshRunning = false;
-    refreshVisible = false;
-    draw();
-    if (refreshQueued) {
-      const queuedAnnounce = refreshQueuedAnnounce;
-      refreshQueued = false;
-      refreshQueuedAnnounce = false;
-      reportAsync(refreshState(queuedAnnounce));
-    }
-  }
-  return succeeded;
+function updateContextIdentity(context) {
+  if (!context) return;
+  currentProviderCwd = context.cwd || currentProviderCwd;
+  if (context.workspaceId !== undefined) currentWorkspaceId = context.workspaceId;
+  if (context.tabId !== undefined) currentSourceTabId = context.tabId;
+  if (context.sourcePaneId !== undefined) sourcePaneId = context.sourcePaneId;
 }
-async function startInvalidation() {
-  if (demoMode) return;
-  const generation = ++invalidationGeneration;
-  const watchRoot = state.repoRoot || state.cwd;
-  let gitRoots = [];
-  let watchFailed = false;
-  if (state.repoRoot) {
-    try { gitRoots = await resolveGitWatchRoots(state.repoRoot); }
-    catch (error) { watchFailed = true; debugLog("watch", { outcome: "poll-fallback", error: safe(error.message) }); }
-  }
-  const signature = JSON.stringify([watchRoot, ...gitRoots]);
-  if (generation !== invalidationGeneration) return;
-  if (invalidationSignature === signature && refreshTimer) return;
-  stopInvalidation(false);
-  watchRecoveryPoll = false;
-  if (cleanupComplete) return;
-  invalidationGeneration = generation;
-  invalidationRepoRoot = watchRoot || "";
-  invalidationSignature = signature;
-  invalidationScheduler = createCoalescedScheduler(() => {
-    debugLog("refresh-trigger", { source: "filesystem" });
-    reportAsync(refreshState(false));
-  });
-  const debounce = () => invalidationScheduler.schedule();
-  const addWatcher = (watcher, target) => {
-    watchers.push(watcher);
-    closeWatcherOnError(watcher, (error) => {
-      watchers = watchers.filter((candidate) => candidate !== watcher);
-      debugLog("watch", { target, outcome: "poll-fallback", error: safe(error.message) });
-      resetRefreshTimer(true);
-    });
-  };
-  if (watchRoot && shouldInstallWatchers()) {
-    try {
-      addWatcher(fs.watch(watchRoot, { recursive: true }, (_event, filename) => {
-        if (filename && String(filename).startsWith(`.git${path.sep}`)) return;
-        debounce();
-      }), watchRoot);
-    } catch (error) { watchFailed = true; debugLog("watch", { target: watchRoot, outcome: "poll-fallback", error: safe(error.message) }); }
-    for (const root of gitRoots) {
-      try { addWatcher(fs.watch(root, { recursive: true }, debounce), root); }
-      catch (error) { watchFailed = true; debugLog("watch", { target: root, outcome: "poll-fallback", error: safe(error.message) }); }
-    }
-  } else if (watchRoot) debugLog("watch", { target: watchRoot, outcome: "poll-only" });
-  resetRefreshTimer(watchFailed);
+function applyHostContext(context) {
+  updateContextIdentity(context);
+  return railController?.updateContext({ ...context, environment: process.env });
 }
-function resetRefreshTimer(watchFailed = false) {
-  clearTimeout(refreshTimer);
-  refreshTimer = undefined;
-  watchRecoveryPoll ||= watchFailed;
-  if (!shouldInstallRecoveryPoll(process.env, { watchFailed: watchRecoveryPoll })) {
-    debugLog("watch", { outcome: "watch-only" });
+function applyRepositoryState(next) {
+  const previousRepoRoot = state.repoRoot;
+  const previousCwd = state.cwd;
+  if (demoMode) next.repository = "gitrail-fixture";
+  state = next;
+  filesViewGeneration += 1;
+  filesViewModels.invalidate();
+  if (previousRepoRoot !== next.repoRoot || previousCwd !== next.cwd) {
+    selectedIdentity = ""; selectedPathIdentity = ""; selectedStatusMessage = ""; scrollOffset = 0;
+    commitFiles.clear(); expandedCommits.clear(); collapsedGroups.clear(); collapsedFolders.clear(); knownFolders.clear();
+  }
+  statusMessage = refreshStatusAfterSuccess(statusMessage, next.configErrors);
+}
+async function refreshContext() {
+  if (hostContextSource) {
+    await hostContextSource.requestRefresh("manual");
+    await contextRefresh;
     return;
   }
-  const interval = validPollInterval(state.config?.refresh?.pollIntervalMs);
-  const poll = () => {
-    refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
-    refreshTimer.unref();
-    debugLog("refresh-trigger", { source: "poll" });
-    reportAsync(refreshState(false));
-  };
-  refreshTimer = setTimeout(poll, jitteredPollInterval(interval));
-  refreshTimer.unref();
+  if (HOST === "cmux" || process.env.HERDR_PANE_ID) await liveProviderCwd();
+  await applyHostContext({ cwd: currentProviderCwd, hasContent: true, visible: true });
 }
-function stopInvalidation(invalidatePending = true) {
-  if (invalidatePending) invalidationGeneration += 1;
-  clearTimeout(refreshTimer); refreshTimer = undefined;
-  invalidationScheduler?.cancel(); invalidationScheduler = undefined;
-  watchers.forEach((watcher) => watcher.close()); watchers = [];
-  invalidationRepoRoot = "";
-  invalidationSignature = "";
+async function refreshState(announce = false) {
+  if (announce) { refreshVisible = true; draw(); }
+  try {
+    if (demoMode) {
+      applyRepositoryState(await getRepositoryState(currentProviderCwd));
+    } else {
+      const generation = railController.contextGeneration;
+      await refreshContext();
+      // A context switch has already built its initial snapshot through the
+      // seam; the same manual request must not immediately build it again.
+      if (generation === railController.contextGeneration) await railController.refresh("manual");
+    }
+    if (announce) showTransientStatus("Git state refreshed");
+    return true;
+  } catch (error) {
+    statusMessage = `Refresh failed: ${safe(error.message)} · showing previous state`;
+    return false;
+  } finally { refreshVisible = false; draw(); }
+}
+function startContextFallback() {
+  if (demoMode || hostContextSource || HOST !== "cmux" && !process.env.HERDR_PANE_ID) return;
+  const poll = async () => {
+    try { await refreshContext(); }
+    catch (error) { debugLog("context", { outcome: "failed", error: safe(error.message) }); }
+    if (!cleanupComplete) { contextTimer = setTimeout(poll, 10_000); contextTimer.unref(); }
+  };
+  contextTimer = setTimeout(poll, 10_000); contextTimer.unref();
 }
 function startCmuxInvalidation() {
   if (HOST !== "cmux" || cmuxContextWatcher) return;
@@ -1078,27 +1098,30 @@ function startCmuxInvalidation() {
     windowId: cmuxOwnerWindowId,
     onChange: (event) => {
       debugLog("refresh-trigger", { source: "cmux-event", event: event.name });
-      reportAsync(refreshState(false));
+      reportAsync(refreshContext());
     },
     onError: (error) => debugLog("cmux-context-watch", { outcome: "failed", error: safe(error.message) }),
     onClose: ({ exitCode, signal }) => {
       debugLog("cmux-context-watch", { outcome: "closed", exitCode, signal });
-      resetRefreshTimer(true);
     },
   });
 }
 let cleanupComplete = false;
-function cleanup() {
+async function cleanup() {
   if (cleanupComplete) return;
   cleanupComplete = true;
-  stopInvalidation(); cmuxContextWatcher?.close(); cmuxContextWatcher = undefined; clearTimeout(renderTimer); clearTimeout(statusTimer);
+  clearTimeout(contextTimer); hostSubscription?.unsubscribe?.(); hostContextSource?.close?.();
+  cmuxContextWatcher?.close(); cmuxContextWatcher = undefined; clearTimeout(renderTimer); clearTimeout(statusTimer);
+  await railController?.close();
+  await hostSubscription?.close?.();
+  await sharedRuntime?.close();
   if (fixtureRoot) { const root = fixtureRoot; fixtureRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
   if (snapshotEnvironmentRoot) { const root = snapshotEnvironmentRoot; snapshotEnvironmentRoot = ""; fs.rmSync(root, { recursive: true, force: true }); }
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
-function quit() { cleanup(); process.exit(0); }
-function fatal(error) {
-  cleanup();
+async function quit() { await cleanup(); process.exit(0); }
+async function fatal(error) {
+  await cleanup();
   process.stderr.write(`GitRail fatal error: ${safe(error?.stack || error?.message || error)}\n`);
   process.exit(1);
 }
@@ -1108,7 +1131,7 @@ if (snapshotMode) {
   if (cliArgs.has("--viewport-metrics")) {
     process.stderr.write(`${JSON.stringify(filesViewModels.instrumentation)}\n`);
   }
-  cleanup();
+  await cleanup();
   process.exit(0);
 }
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
@@ -1199,13 +1222,16 @@ const inputDecoder = createTerminalInputDecoder(handleInput);
 process.stdin.on("data", (key) => inputDecoder.push(key));
 process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
-process.on("exit", cleanup);
+process.on("exit", () => {
+  if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
+});
 process.on("uncaughtException", fatal);
 process.on("unhandledRejection", fatal);
 process.stdout.on("resize", scheduleDraw);
+uiReady = true;
 draw();
 startCmuxInvalidation();
-reportAsync(startInvalidation());
+startContextFallback();
 if (process.env.NODE_ENV === "test" && process.env.GIT_RAIL_TEST_FATAL === "1") {
   queueMicrotask(() => { throw new Error("injected fatal error"); });
 }

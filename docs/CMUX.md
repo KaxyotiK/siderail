@@ -5,6 +5,13 @@ left/custom-sidebar interpreter, ExtensionKit, or a fork of cmux. The host is a
 thin integration around the same read-only Git provider, models, terminal UI,
 and exact-revision preview provider used by the Herdr product.
 
+Each cmux Dock uses an in-process repository engine. Relevant native filesystem
+notifications drive refreshes, with a five-minute healthy reconciliation and
+ten-second degraded recovery by default. The existing cmux event adapter still
+resolves Dock context; cmux does not connect to Herdr's shared coordinator.
+Manual refresh remains available, and commit-age updates render locally without
+running Git. See [refresh recovery settings](TROUBLESHOOTING.md#state-appears-stale).
+
 ## Requirements
 
 - Node.js 22 or newer

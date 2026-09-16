@@ -3,7 +3,7 @@
 ## No Git repository
 
 Change a content pane in that Herdr tab into the intended worktree. GitRail
-follows the tab's focused content pane on refresh and on its recovery poll;
+follows the tab's focused content pane through its independent context source;
 press `r` to request an immediate refresh. Tabs are resolved independently.
 
 For cmux, GitRail resolves the selected main workspace's `current_directory`;
@@ -122,10 +122,51 @@ Use a configured external Open/viewer action for those files.
 
 ## State appears stale
 
-Press `r`. GitRail watches the worktree and `.git` directory with debounce,
-tracks directory changes in the rail's own Herdr tab, and also uses the
-configured recovery poll. Refresh keeps the previous usable state when an
-operation fails.
+Press `r`. Relevant native filesystem events normally update the rail after a
+125 ms burst delay, with at least two seconds between sustained automatic
+refresh starts. A missed event is recovered by the healthy safety reconciliation
+(default five minutes ±10%). Watcher failures use the separate degraded interval
+(default ten seconds ±10%) and retry watcher installation.
+
+`refresh.reconcileIntervalMs` / `GIT_RAIL_RECONCILE_INTERVAL_MS` controls the
+healthy safety scan (30,000–3,600,000 ms). `refresh.pollIntervalMs` /
+`GIT_RAIL_POLL_INTERVAL_MS` controls degraded or poll-only recovery
+(1,000–300,000 ms). Both bounds apply before jitter. Old poll settings remain
+valid but no longer force frequent full reads with healthy watchers.
+
+A failed refresh retains the last usable snapshot. Hidden tabs retain updates
+without painting; showing the tab renders the latest snapshot. A tab with no
+content pane releases its repository work and resumes when content returns.
+Commit-age labels update locally, without Git queries.
+
+Herdr tabs for the same worktree and compatible Git context share one provider
+and watcher set. Sibling worktrees retain separate index state. On Herdr 0.8.2,
+cwd changes are not reliably announced by host events, so one shared socket
+snapshot request per second reconciles all subscribed tabs. This does not run
+Git or launch a Herdr CLI process. A changed selected cwd switches subscriptions;
+an unchanged snapshot does not refresh the repository.
+
+If the coordinator disconnects, the rail keeps its last snapshot and reports
+that it is reconnecting. Reconnection reacquires the current state. Native
+watchers remain the normal source of file changes on macOS and Linux; the
+five-minute scan protects against silently lost notifications. Repeated writes
+to known ignored files and another worktree's index do not rebuild this
+worktree's state. Unknown paths are classified conservatively.
+
+For a diagnostic launch, `GIT_RAIL_STATE_MODE=in-process` explicitly uses a
+separate engine in that rail. Healthy Git reconciliation and watcher filtering
+still apply; work is no longer shared between tabs, and the transitional Herdr
+context snapshot interval is ten seconds. The normal value is `shared`.
+This override affects only the process launched with it and does not rewrite
+configuration. Restore normal sharing by omitting it on the next launch.
+
+An identity that cannot be reproduced safely, or a snapshot exceeding the
+64 MiB IPC bound, uses an explicitly reported in-process subscription. A
+coordinator connection failure instead reconnects while retaining the last
+snapshot. Relative entries in `PATH` or cwd-dependent Git configuration paths
+are examples of environments kept local; use absolute paths to enable sharing.
+A relative `GIT_INDEX_FILE` is supported and resolved against the worktree root.
+This distinguishes compatibility isolation from a transport outage.
 
 ## Files are all shown as changed
 

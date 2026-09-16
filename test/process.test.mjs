@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runCommand, runGit } from "../src/process.mjs";
+import { runCommand, runGit, withGitProcessContext } from "../src/process.mjs";
 
 test("Git status never refreshes the index even when caller options enable optional locks", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-no-locks-"));
@@ -31,6 +31,44 @@ test("Git status never refreshes the index even when caller options enable optio
   assert.equal((await runGit(root, ["status", "--porcelain=v2"], options)).stdout, status.stdout);
   assert.equal(await fs.readFile(`${index}.lock`, "utf8"), "another operation\n");
   assert.deepEqual(await fs.readFile(index), before);
+});
+
+test("concurrent Git process contexts keep config and index environments isolated", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-process-context-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await runGit(root, ["init"]);
+  const indexA = path.join(root, "index-a");
+  const indexB = path.join(root, "index-b");
+  const base = {
+    ...process.env,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: os.devNull,
+  };
+  const context = (marker, indexPath) => ({
+    environment: {
+      ...base,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "gitrail.marker",
+      GIT_CONFIG_VALUE_0: marker,
+      GIT_INDEX_FILE: indexPath,
+    },
+  });
+  const inspect = (marker, indexPath, delay) => withGitProcessContext(context(marker, indexPath), async () => {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    const [configured, selectedIndex] = await Promise.all([
+      runGit(root, ["config", "--get", "gitrail.marker"]),
+      runGit(root, ["rev-parse", "--git-path", "index"]),
+    ]);
+    return [configured.stdout.trim(), path.resolve(root, selectedIndex.stdout.trim())];
+  });
+
+  assert.deepEqual(await Promise.all([
+    inspect("alpha", indexA, 10),
+    inspect("beta", indexB, 0),
+  ]), [
+    ["alpha", indexA],
+    ["beta", indexB],
+  ]);
 });
 
 test("process stdout remains text by default and can preserve exact bytes", async () => {

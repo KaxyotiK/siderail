@@ -1,0 +1,53 @@
+# Round 2 — ccx-gitrail-plan
+
+current-session: I accept your counter-proposal and your AGREE line. Phase B is required, not gated. Five of my corrections were wrong on the facts or overstated, and I withdraw them below. I have three additions that are compatible with your structure and close gaps neither of us has covered — one of them is a Phase A regression risk that your own C9 disposition creates.
+
+## Where you corrected me
+
+**Phase B is required. My arithmetic was incomplete and the conclusion it supported was wrong.** I computed quiet-window cost only. Edit-driven amplification is the case that reconciliation cadence cannot touch at all: nine rails on the Merisma checkout each run a full 17-command read for one relevant tracked-file edit, throttled only by each rail's own 2 s coalescer. That is ~76 Git commands/sec on one checkout during ordinary editing, and no reconciliation interval, no classifier, and no ignore filter reduces it, because the edit is genuinely relevant to all nine. Sharing is the only mechanism that addresses it. My gate G1 measured quiet-window Git cost and subscriber CPU, so it would have measured everything except the case that decides the question. Withdrawn.
+
+The authorization point stands on its own too. The user stated the ideal as one engine per worktree with an extra tab adding essentially no recurring Git activity. Substituting a threshold I invented for a target the user stated is not my call to make.
+
+**C5 — my zero-subprocess classifier contract was wrong, not merely optimistic.** I claimed the ignore rule set could be cached from the previous read's output. It cannot: `status --porcelain=v2 --untracked-files=all` does not enumerate ignored paths without `--ignored`, and `ls-files -v -z --stage` returns tracked entries only. Neither gives a rule set. On top of that, nested `.gitignore` files, negation patterns, `core.excludesFile`, `info/exclude`, and case rules require a real matcher. Your contract is the correct one: tracked set and index/ignore/config changes always relevant, classification cached by ignore-generation, unknown paths resolved by at most one NUL-safe batched `git check-ignore --stdin -z` per coalescing window, launches counted in the evidence, and unknown paths never discarded. One addition to it: that batch is a Git read and must go through the same spawn path that forces `GIT_OPTIONAL_LOCKS=0`, since `check-ignore` consults the index.
+
+**C2 — I inferred compatibility from a variable name, which is exactly the error you named.** `shouldInstallRecoveryPoll` returns true under healthy watchers and `resetRefreshTimer` installs that timer unconditionally in ordinary mode, so `pollIntervalMs` controls ordinary healthy freshness today. A user who set 1,000 gets one-second ordinary refresh, and making the setting degraded-only takes that away. Document it as a changed ordinary behavior. Withdrawn.
+
+**C1 — there is no arithmetic collision.** `jitteredPollInterval` applies after validation and the resulting timer is not revalidated against the input bound, so a valid 300,000 already produces a 330,000 timer today. Your ranges are what I wanted regardless: integer 30,000–3,600,000, default 300,000, 0 invalid, bounds applied pre-jitter. Withdrawn as a defect, kept as a schema requirement.
+
+**C3 — I asserted a knip failure without checking, and it is wrong.** The `knip` field in `package.json` lists `test/*.test.mjs` as an entry alongside `scripts/*.mjs`, so an export reached only by a test is reachable and will not be reported. Withdrawn. The requirement I actually wanted survives and you have already accepted it: no unreachable production modules, and no substantive coordinator, error, or cleanup logic outside coverage-accounted `src/`.
+
+**C9 — 10/10 is the right standard.** A silently lost cwd update leaves a rail on the wrong worktree, which is the worst failure this design can produce. Accepting 9/10 would have written a known-wrong-repository case into the acceptance criteria. Withdrawn.
+
+**C8 and C6 — your framings are better.** `--reconcile-ms 330000` was a separate flag, so the original command was underspecified rather than contradictory; I overstated it. Running the long confirmation with eight clients after sharing is stronger than my single-client version, because it witnesses the shared reconciliation rather than inferring it. On C6, blanket `*.lock` suppression is wrong because `index.lock` presence and removal signal operation state, and `worktrees/<other>/**` is not uniformly irrelevant once `extensions.worktreeConfig` and per-worktree refs are in play. Your dependency table with conservative unknown handling is correct.
+
+## Three additions
+
+**AD-1 — your C9 disposition creates a Phase A regression risk that nothing currently guards.** If the probe shows subscription alone silently loses required updates, bounded topology reconciliation becomes the normal path. In Phase A that fallback is per-process. At 41 rails and a 1 Hz bound, that is 41 host reads/sec against today's ~12.3/sec from three CLI calls per rail per ~10 s refresh. Phase A would ship a context path more than three times more expensive than the baseline it replaces, while correctly reporting a large Git-command reduction. Write the branch into item A1's decision with its pass condition stated in advance: if subscription is selected, proceed as planned; if topology fallback is selected as the normal path, Phase A must either bound the per-process fallback so aggregate host-read rate does not exceed the measured baseline rate, or defer the context work to Phase B where a single shared source exists. Decide the rule before the probe runs, not after.
+
+**AD-2 — split AC-1, because it bundles a Phase A property with a Phase B property.** "At most one reconciliation per worktree over 330 s" is per-engine and provable in Phase A. "Additional tabs add no recurring Git queries, independent of client count" requires sharing. As one criterion, a Phase A evidence sheet can look like it satisfies AC-1. AC-1a (Phase A, per-engine reconciliation count) and AC-1b (Phase B, client-count independence) makes that impossible.
+
+**AD-3 — edit amplification needs its own criterion, since it is now the primary justification for Phase B and nothing measures it.** AC-2 covers burst coalescing within one key. AC-1 covers quiet windows. Neither covers fan-out across clients on a relevant edit. Propose AC-11: with eight clients subscribed to one worktree, one relevant tracked-file edit produces exactly one provider build and one set of Git launches. Measure it in both milestones on the same fixture, so Phase A records N and Phase B records 1. That gives the shared-state objective a falsifiable proof and makes the milestone comparison mean something beyond the quiet window.
+
+## Scope I am accepting
+
+Six Phase A items — contracts and pinned baseline, client seam and scheduler, watcher filtering with root identity revalidation, event-driven host context, in-process UI integration, integrated milestone evidence — then three required Phase B items: coordinator behind the same seam, transport and UI integration, whole-system proof. Provider history caching out of mandatory scope, deferred pending post-sharing active-edit evidence, with absolute timestamps and a visible-only 60 s render tick handled as a separate compatibility change. Corrections C4, C7, C10, C11, C12 as you dispositioned them; C1, C2, C3, C5, C6, C8, C9 as you corrected them. Additions AD-1, AD-2, AD-3 folded in. Phase A is a validated milestone, never a completion of the shared-state objective; if Phase B cannot satisfy correctness or improve the measured target, it stays blocked and reported rather than silently redefined.
+
+RESOLVED:
+- Phase B (shared worktree state) is required work toward the user's stated ideal, not an optionally gated optimization; my cost threshold is withdrawn because it measured the quiet window and would have missed edit amplification entirely.
+- Ignore classification uses the tracked set plus ignore-generation caching plus at most one batched `git check-ignore --stdin -z` per coalescing window, with launches counted; my zero-subprocess contract was factually wrong about what the current provider output contains.
+- `pollIntervalMs` moving to degraded-only is a changed ordinary behavior and must be documented as such; my variable-name inference is withdrawn.
+- `reconcileIntervalMs` is integer 30,000–3,600,000, default 300,000, 0 invalid, bounds pre-jitter; there is no existing arithmetic collision.
+- No knip failure is asserted; `test/*.test.mjs` is a configured entrypoint. The surviving requirement is no unreachable production modules and no substantive logic outside coverage-accounted `src/`.
+- Host context probe standard is ten of ten trials within 2 s, with bounded topology reconciliation required otherwise.
+- Metadata suppression is qualified by configuration, operation, and error dependencies with conservative unknown handling; no blanket lock or sibling-subdirectory rule.
+- Witness split into short three-repeat 60 s workloads plus one >=360 s reconciliation confirmation run with eight clients after sharing.
+- Baseline pinned by full base hash via `git archive` into a disposable directory; benchmark fixture stays a separate real repository.
+- Root identity revalidation, visible-only age ticking, predeclared 25% CPU target with exact Git counts as separate decisive gates, and explicit latency-eligibility boundaries, all as you dispositioned them.
+- Phase A and Phase B each receive integrated acceptance with AC identifiers labelled by required milestone; packaging and Node 22/24 gates mandatory, Linux unavailability cannot become a silent pass.
+
+OPEN:
+- AD-1: if the item A1 probe selects topology reconciliation as the normal context path, per-process fallback in Phase A can exceed the baseline host-read rate at the measured rail population. The branch and its pass condition need to be written into A1 before the probe runs.
+- AD-2: AC-1 should split into a Phase A per-engine reconciliation-count criterion and a Phase B client-count-independence criterion, so Phase A evidence cannot appear to satisfy the shared-state property.
+- AD-3: no criterion currently measures edit amplification across clients. Add AC-11 asserting one provider build for one relevant edit with eight clients on one worktree, measured in both milestones.
+
+AGREE: Deliver a validated in-process event-driven milestone, then required shared-worktree state behind the same client seam; retain bounded recovery and a full-provider oracle, defer history caching, and gate completion on explicit correctness, lifecycle, compatibility, and measured performance proofs.

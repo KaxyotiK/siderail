@@ -365,17 +365,6 @@ test("sidebar snapshots cannot emit OSC52 from repository and filename data", as
   assert.match(stdout, /�\.txt/);
 });
 
-test("recovery polling follows repository transitions in either direction", async () => {
-  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
-  assert.match(rail, /resolveGitWatchRoots\(state\.repoRoot\)/);
-  assert.match(rail, /if \(invalidationSignature === signature && refreshTimer\) return;/);
-  assert.match(rail, /currentProviderCwd = fixtureRoot \|\| await liveProviderCwd\(\)/);
-  assert.match(rail, /validPollInterval\(state\.config\?\.refresh\?\.pollIntervalMs\)/);
-  assert.match(rail, /createCoalescedScheduler/);
-  assert.match(rail, /jitteredPollInterval/);
-  assert.match(rail, /refreshStatusAfterSuccess\(statusMessage, next\.configErrors\)/);
-});
-
 test("preview requests serialize and skip superseded queued selections", async () => {
   let releaseFirst;
   const barrier = new Promise((resolve) => { releaseFirst = resolve; });

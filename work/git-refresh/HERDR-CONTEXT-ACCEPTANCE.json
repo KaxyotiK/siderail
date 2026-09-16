@@ -1,0 +1,321 @@
+{
+  "description": "Recorded automatic context transitions from an owned isolated Herdr session; no manual refresh requests in timed Phase B trials.",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.19.0",
+    "herdr": {
+      "version": "0.8.2",
+      "protocol": 20
+    },
+    "nodeAvailability": {
+      "22": {
+        "executable": "/opt/homebrew/opt/node@22/bin/node",
+        "available": true,
+        "version": "v22.23.2"
+      },
+      "24": {
+        "executable": "/opt/homebrew/opt/node@24/bin/node",
+        "available": true,
+        "version": "v24.19.0"
+      }
+    },
+    "linuxRuntimeAvailable": false
+  },
+  "command": [
+    "/opt/homebrew/Cellar/node@24/24.19.0/bin/node",
+    "/Users/user/Projects/grove/worktrees/herdr-gitrail/git-polling-cpu/scripts/probe-herdr-refresh-contract.mjs",
+    "--isolated",
+    "--verify-adapter",
+    "--candidate-stage",
+    "B",
+    "--trials",
+    "10",
+    "--deadline-ms",
+    "2000",
+    "--measure-subscribers",
+    "1,8",
+    "--out",
+    "test-results/git-refresh/context-b-accepted"
+  ],
+  "adapterVerification": {
+    "mode": "phase-b-shared-ipc",
+    "intervalMs": 1000,
+    "trials": [
+      {
+        "number": 1,
+        "name": "initial selected content",
+        "passed": true,
+        "expected": {
+          "workspaceId": "w3",
+          "tabId": "w3:t1",
+          "sourcePaneId": "w3:p1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-0",
+          "hasContent": true,
+          "visible": true
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-0",
+          "sourcePaneId": "w3:p1",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 108.235,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 2,
+        "name": "foreground cwd reconciliation",
+        "passed": true,
+        "expected": {
+          "sourcePaneId": "w3:p1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "hasContent": true,
+          "visible": true
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "sourcePaneId": "w3:p1",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 919.686,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 3,
+        "name": "new focused content pane",
+        "passed": true,
+        "expected": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "hasContent": true,
+          "visible": true,
+          "sourcePaneId": "w3:p3"
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "sourcePaneId": "w3:p3",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 1019.694,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 4,
+        "name": "selected pane focus",
+        "passed": true,
+        "expected": {
+          "sourcePaneId": "w3:p1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "hasContent": true,
+          "visible": true
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "sourcePaneId": "w3:p1",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 1072.97,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 5,
+        "name": "hidden tab context",
+        "passed": true,
+        "expected": {
+          "sourcePaneId": "w3:p1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "hasContent": true,
+          "visible": false
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "sourcePaneId": "w3:p1",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": false
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 1021.304,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 6,
+        "name": "visible tab context",
+        "passed": true,
+        "expected": {
+          "sourcePaneId": "w3:p1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "hasContent": true,
+          "visible": true
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "sourcePaneId": "w3:p1",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 872.41,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 7,
+        "name": "content pane moved away",
+        "passed": true,
+        "expected": {
+          "sourcePaneId": "w3:p3",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "hasContent": true,
+          "visible": true
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "sourcePaneId": "w3:p3",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 1131.118,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 8,
+        "name": "content pane moved back",
+        "passed": true,
+        "expected": {
+          "sourcePaneId": "w3:p1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "hasContent": true,
+          "visible": true
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "sourcePaneId": "w3:p1",
+          "tabId": "w3:t1",
+          "workspaceId": "w3",
+          "railPaneId": "w3:p2",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 1029.354,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 9,
+        "name": "rail move reaches no-content state",
+        "passed": true,
+        "expected": {
+          "hasContent": false,
+          "visible": true,
+          "workspaceId": "w4",
+          "tabId": "w4:t1",
+          "railPaneId": "w4:p1"
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "sourcePaneId": "",
+          "tabId": "w4:t1",
+          "workspaceId": "w4",
+          "railPaneId": "w4:p1",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": false,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 969.45,
+        "observation": "automatic-shared-source"
+      },
+      {
+        "number": 10,
+        "name": "content resumes beside moved rail",
+        "passed": true,
+        "expected": {
+          "workspaceId": "w4",
+          "tabId": "w4:t1",
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-3",
+          "hasContent": true,
+          "visible": true,
+          "sourcePaneId": "w4:p2"
+        },
+        "context": {
+          "cwd": "/private/tmp/grhc.pMEWAW/cwd-3",
+          "sourcePaneId": "w4:p2",
+          "tabId": "w4:t1",
+          "workspaceId": "w4",
+          "railPaneId": "w4:p1",
+          "railTerminalId": "term_65b9984681bce6",
+          "hasContent": true,
+          "visible": true
+        },
+        "snapshotRequests": 1,
+        "latencyMs": 1119.619,
+        "observation": "automatic-shared-source"
+      }
+    ],
+    "allTrialsPassed": true,
+    "unchangedSuppressed": true,
+    "reconnectEqual": true,
+    "reconnectContext": {
+      "cwd": "/private/tmp/grhc.pMEWAW/cwd-3",
+      "sourcePaneId": "w4:p2",
+      "tabId": "w4:t1",
+      "workspaceId": "w4",
+      "railPaneId": "w4:p1",
+      "railTerminalId": "term_65b9984681bce6",
+      "hasContent": true,
+      "visible": true
+    },
+    "publications": 10,
+    "candidateStage": "B",
+    "hostRateDecision": "one shared session.snapshot source per coordinator at a nominal one-second interval, independent of client count"
+  },
+  "sharedVerification": {
+    "transport": "length-prefixed Git state coordinator IPC",
+    "intervalMs": 1000,
+    "oneSourcePerMeasurement": true,
+    "clientCountIndependent": true,
+    "nominalOneHertz": true
+  },
+  "teardown": {
+    "sessionStop": true,
+    "serverExitCode": 0,
+    "socketRemoved": true,
+    "temporaryRootRemoved": true
+  }
+}

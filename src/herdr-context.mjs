@@ -22,6 +22,62 @@ export function selectTabContentPane(panes, layout, {
     || null;
 }
 
+export function selectHerdrSnapshotContext(snapshot, {
+  railPaneId = "",
+  railTerminalId = "",
+  sourcePaneId = "",
+  fallbackCwd = "",
+} = {}) {
+  const panes = Array.isArray(snapshot?.panes) ? snapshot.panes : [];
+  const rail = panes.find((pane) => pane.pane_id === railPaneId)
+    || (railTerminalId ? panes.find((pane) => pane.terminal_id === railTerminalId) : null);
+  if (!rail?.tab_id) {
+    return {
+      cwd: fallbackCwd,
+      sourcePaneId: "",
+      tabId: "",
+      workspaceId: "",
+      railPaneId,
+      railTerminalId,
+      hasContent: false,
+      visible: false,
+    };
+  }
+
+  const layouts = Array.isArray(snapshot?.layouts) ? snapshot.layouts : [];
+  const layout = layouts.find((candidate) => candidate.tab_id === rail.tab_id);
+  const tabPanes = panes.filter((pane) => pane.tab_id === rail.tab_id);
+  const source = selectTabContentPane(tabPanes, layout, {
+    railPaneId: rail.pane_id,
+    sourcePaneId,
+  });
+  const active = snapshot.focused_workspace_id === rail.workspace_id
+    && snapshot.focused_tab_id === rail.tab_id;
+  const visible = active && (!layout?.zoomed || layout.focused_pane_id === rail.pane_id);
+  return {
+    cwd: source?.foreground_cwd || source?.cwd || fallbackCwd,
+    sourcePaneId: source?.pane_id || "",
+    tabId: rail.tab_id,
+    workspaceId: rail.workspace_id || "",
+    railPaneId: rail.pane_id,
+    railTerminalId: rail.terminal_id || railTerminalId,
+    hasContent: Boolean(source),
+    visible,
+  };
+}
+
+export function sameHerdrSnapshotContext(left, right) {
+  if (!left || !right) return false;
+  return left.cwd === right.cwd
+    && left.sourcePaneId === right.sourcePaneId
+    && left.tabId === right.tabId
+    && left.workspaceId === right.workspaceId
+    && left.railPaneId === right.railPaneId
+    && left.railTerminalId === right.railTerminalId
+    && left.hasContent === right.hasContent
+    && left.visible === right.visible;
+}
+
 export async function resolveHerdrTabCwd({
   run,
   herdr = "herdr",

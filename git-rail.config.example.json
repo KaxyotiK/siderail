@@ -42,7 +42,8 @@
     ]
   },
   "refresh": {
-    "pollIntervalMs": 10000
+    "pollIntervalMs": 10000,
+    "reconcileIntervalMs": 300000
   },
   "limits": {
     "maxFileBytes": 4194304,
