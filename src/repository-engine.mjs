@@ -51,6 +51,7 @@ export function createRepositoryEngine({
   let latestDelivery;
   let stateGeneration = 0;
   let preReadCoverage = false;
+  let observedDirtyPromise;
   let lastError = null;
   let readySettled = false;
   let resolveReady;
@@ -105,8 +106,14 @@ export function createRepositoryEngine({
     debugLog("refresh-trigger", { source: "watch", engineId, reason, covered: preReadCoverage });
     // Reconciliation runs before the provider, so invalidations it discovers
     // are covered by the read that is about to start.
-    if (preReadCoverage) return;
-    scheduler.request({ kind: "dirty", reason }).catch(() => {});
+    if (closed || preReadCoverage) return;
+    const promise = scheduler.request({ kind: "dirty", reason });
+    // Coalesced requests share a promise. Attaching once per batch also bounds
+    // pending rejection reactions during a large filesystem-event burst.
+    if (promise !== observedDirtyPromise) {
+      observedDirtyPromise = promise;
+      promise.catch(() => {});
+    }
   };
 
   const ensureWatcher = async (nextSnapshot) => {
@@ -263,6 +270,7 @@ export function createRepositoryEngine({
       rejectReady(new Error("Repository engine closed before its initial snapshot"));
     }
     await scheduler.close();
+    observedDirtyPromise = undefined;
     await watcherStarting;
     debugLog("repository-watcher", {
       phase: "finish",

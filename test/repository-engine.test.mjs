@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createRepositoryEngine } from "../src/repository-engine.mjs";
+import { createRefreshScheduler } from "../src/refresh-scheduler.mjs";
 import { runGit } from "../src/process.mjs";
 
 async function flush() {
@@ -329,4 +330,72 @@ test("real provider engines keep simultaneous alternate-index environments isola
   assert.deepEqual(alphaState.staged.map(({ path: filePath }) => filePath), ["alpha.txt"]);
   assert.deepEqual(betaState.staged.map(({ path: filePath }) => filePath), ["beta.txt"]);
   await Promise.all([alpha.close(), beta.close()]);
+});
+
+test("watcher bursts attach one rejection handler per dirty batch, including an active-read follow-up", async () => {
+  let invalidate;
+  let scheduler;
+  let now = 0;
+  let reads = 0;
+  let handlers = 0;
+  const gates = [];
+  const timers = new Map();
+  const seen = new Set();
+  const engine = createRepositoryEngine({
+    context: { cwd: "/fixture" },
+    now: () => now,
+    readState: () => {
+      reads += 1;
+      if (reads === 1) return { value: "initial" };
+      const gate = deferred(); gates.push(gate); return gate.promise;
+    },
+    watchFactory: async ({ onInvalidation }) => { invalidate = onInvalidation; return { close() {} }; },
+    schedulerOptions: {
+      minimumIntervalMs: 0,
+      setTimer(callback, delay) { const handle = { unref() {} }; timers.set(handle, { callback, at: now + delay }); return handle; },
+      clearTimer(handle) { timers.delete(handle); },
+    },
+    schedulerFactory(options) {
+      scheduler = createRefreshScheduler(options);
+      return {
+        ...scheduler,
+        get status() { return scheduler.status; },
+        request(input) {
+          const promise = scheduler.request(input);
+          if (input.kind === "dirty" && !seen.has(promise)) {
+            seen.add(promise);
+            const originalCatch = promise.catch.bind(promise);
+            promise.catch = (handler) => { handlers += 1; return originalCatch(handler); };
+          }
+          return promise;
+        },
+      };
+    },
+  });
+  const nextTimer = async () => {
+    const [handle, timer] = [...timers].sort((a, b) => a[1].at - b[1].at)[0];
+    timers.delete(handle); now = timer.at; timer.callback(); await flush();
+  };
+  await engine.ready;
+  await flush();
+  for (let index = 0; index < 200_000; index += 1) invalidate({ reason: "tracked-worktree" });
+  assert.equal(handlers, 1);
+  assert.equal(scheduler.status.pending, 1);
+  await nextTimer();
+  assert.equal(reads, 2);
+  for (let index = 0; index < 200_000; index += 1) invalidate({ reason: "tracked-worktree" });
+  assert.equal(handlers, 2);
+  assert.equal(scheduler.status.pending, 1);
+  gates[0].resolve({ value: "first" });
+  await flush();
+  await nextTimer();
+  assert.equal(reads, 3);
+  gates[1].reject(new Error("follow-up failed"));
+  await flush();
+  assert.equal(engine.latest().snapshot.value, "first");
+  assert.equal(engine.latest().status, "error");
+  await engine.close();
+  invalidate({ reason: "late-event" });
+  assert.equal(handlers, 2);
+  assert.equal(timers.size, 0);
 });

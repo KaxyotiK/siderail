@@ -24,7 +24,7 @@
   },
   "command": [
     "/opt/homebrew/Cellar/node@24/24.19.0/bin/node",
-    "/Users/user/Projects/grove/worktrees/herdr-gitrail/git-polling-cpu/scripts/probe-herdr-refresh-contract.mjs",
+    "<CHECKOUT>/scripts/probe-herdr-refresh-contract.mjs",
     "--isolated",
     "--verify-adapter",
     "--candidate-stage",
@@ -36,7 +36,7 @@
     "--measure-subscribers",
     "1,8",
     "--out",
-    "test-results/git-refresh/context-b-accepted"
+    "test-results/git-refresh/review-host-context"
   ],
   "adapterVerification": {
     "mode": "phase-b-shared-ipc",
@@ -50,22 +50,22 @@
           "workspaceId": "w3",
           "tabId": "w3:t1",
           "sourcePaneId": "w3:p1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-0",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-0",
           "hasContent": true,
           "visible": true
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-0",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-0",
           "sourcePaneId": "w3:p1",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 108.235,
+        "latencyMs": 104.062,
         "observation": "automatic-shared-source"
       },
       {
@@ -74,22 +74,22 @@
         "passed": true,
         "expected": {
           "sourcePaneId": "w3:p1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "hasContent": true,
           "visible": true
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "sourcePaneId": "w3:p1",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 919.686,
+        "latencyMs": 915.879,
         "observation": "automatic-shared-source"
       },
       {
@@ -97,23 +97,23 @@
         "name": "new focused content pane",
         "passed": true,
         "expected": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-2",
           "hasContent": true,
           "visible": true,
           "sourcePaneId": "w3:p3"
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-2",
           "sourcePaneId": "w3:p3",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 1019.694,
+        "latencyMs": 915.604,
         "observation": "automatic-shared-source"
       },
       {
@@ -122,22 +122,22 @@
         "passed": true,
         "expected": {
           "sourcePaneId": "w3:p1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "hasContent": true,
           "visible": true
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "sourcePaneId": "w3:p1",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 1072.97,
+        "latencyMs": 1057.844,
         "observation": "automatic-shared-source"
       },
       {
@@ -146,22 +146,22 @@
         "passed": true,
         "expected": {
           "sourcePaneId": "w3:p1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "hasContent": true,
           "visible": false
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "sourcePaneId": "w3:p1",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": false
         },
         "snapshotRequests": 1,
-        "latencyMs": 1021.304,
+        "latencyMs": 1070.947,
         "observation": "automatic-shared-source"
       },
       {
@@ -170,22 +170,22 @@
         "passed": true,
         "expected": {
           "sourcePaneId": "w3:p1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "hasContent": true,
           "visible": true
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "sourcePaneId": "w3:p1",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 872.41,
+        "latencyMs": 1020.299,
         "observation": "automatic-shared-source"
       },
       {
@@ -194,22 +194,22 @@
         "passed": true,
         "expected": {
           "sourcePaneId": "w3:p3",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-2",
           "hasContent": true,
           "visible": true
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-2",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-2",
           "sourcePaneId": "w3:p3",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 1131.118,
+        "latencyMs": 972.299,
         "observation": "automatic-shared-source"
       },
       {
@@ -218,22 +218,22 @@
         "passed": true,
         "expected": {
           "sourcePaneId": "w3:p1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "hasContent": true,
           "visible": true
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "sourcePaneId": "w3:p1",
           "tabId": "w3:t1",
           "workspaceId": "w3",
           "railPaneId": "w3:p2",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 1029.354,
+        "latencyMs": 1019.856,
         "observation": "automatic-shared-source"
       },
       {
@@ -248,17 +248,17 @@
           "railPaneId": "w4:p1"
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-1",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-1",
           "sourcePaneId": "",
           "tabId": "w4:t1",
           "workspaceId": "w4",
           "railPaneId": "w4:p1",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": false,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 969.45,
+        "latencyMs": 971.772,
         "observation": "automatic-shared-source"
       },
       {
@@ -268,23 +268,23 @@
         "expected": {
           "workspaceId": "w4",
           "tabId": "w4:t1",
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-3",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-3",
           "hasContent": true,
           "visible": true,
           "sourcePaneId": "w4:p2"
         },
         "context": {
-          "cwd": "/private/tmp/grhc.pMEWAW/cwd-3",
+          "cwd": "/private/tmp/grhc.AVlqZq/cwd-3",
           "sourcePaneId": "w4:p2",
           "tabId": "w4:t1",
           "workspaceId": "w4",
           "railPaneId": "w4:p1",
-          "railTerminalId": "term_65b9984681bce6",
+          "railTerminalId": "term_65b9fc56c47af6",
           "hasContent": true,
           "visible": true
         },
         "snapshotRequests": 1,
-        "latencyMs": 1119.619,
+        "latencyMs": 1020.918,
         "observation": "automatic-shared-source"
       }
     ],
@@ -292,12 +292,12 @@
     "unchangedSuppressed": true,
     "reconnectEqual": true,
     "reconnectContext": {
-      "cwd": "/private/tmp/grhc.pMEWAW/cwd-3",
+      "cwd": "/private/tmp/grhc.AVlqZq/cwd-3",
       "sourcePaneId": "w4:p2",
       "tabId": "w4:t1",
       "workspaceId": "w4",
       "railPaneId": "w4:p1",
-      "railTerminalId": "term_65b9984681bce6",
+      "railTerminalId": "term_65b9fc56c47af6",
       "hasContent": true,
       "visible": true
     },
@@ -317,5 +317,6 @@
     "serverExitCode": 0,
     "socketRemoved": true,
     "temporaryRootRemoved": true
-  }
+  },
+  "publicationNote": "Path-normalized public copy: <CHECKOUT> and <HOME> replace personal paths. Timing, outcomes and identifiers are unchanged; the unmodified recording is retained locally. This copy is not claimed byte-identical to the raw recording."
 }

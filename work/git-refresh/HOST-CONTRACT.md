@@ -296,7 +296,7 @@ suppression/reconnect checks, and owned teardown succeeds. It does not turn a
 6/10 event result into a false event-source pass.
 
 
-## Final automatic Phase B acceptance
+## Original automatic Phase B acceptance
 
 The final proof is `test-results/git-refresh/context-b-accepted/report.json`
 (Node 24.19.0, Herdr 0.8.2 protocol 20). Earlier adapter trials forced refreshes,
@@ -324,3 +324,26 @@ all pass. Reproduce with the Phase B command above, changing the output director
 to a new empty path (the accepted run used `context-b-accepted`). Linux is
 independently validated by the full runtime command in [EVIDENCE.md](EVIDENCE.md);
 the host probe's own `linuxRuntimeAvailable` field is not that runtime check.
+
+
+## PR-review candidate automatic acceptance
+
+The fresh probe uses `test-results/git-refresh/review-host-context/report.json`
+and the unchanged Phase B command with that new output directory. The public
+path-normalized recording is [HERDR-CONTEXT-ACCEPTANCE.json](HERDR-CONTEXT-ACCEPTANCE.json);
+the raw recording remains local. All ten automatic trials, unchanged-context
+suppression, reconnect equality, one/eight-client source sharing and owned
+teardown pass against the reviewed runtime.
+
+| Trial | Automatic observation (ms) |
+| --- | ---: |
+| initial selected content | 104.062 |
+| foreground cwd reconciliation | 915.879 |
+| new focused content pane | 915.604 |
+| selected pane focus | 1057.844 |
+| hidden tab context | 1070.947 |
+| visible tab context | 1020.299 |
+| content pane moved away | 972.299 |
+| content pane moved back | 1019.856 |
+| rail move reaches no-content state | 971.772 |
+| content resumes beside moved rail | 1020.918 |

@@ -38,11 +38,20 @@ function parentPaths(paths) {
   return parents;
 }
 
+// Keep the default above the performance witness's distinct ignored-path
+// working set (currently directory + file), preserving its two classifier
+// launches. Tiny limits are injected only by classifier unit tests, not witnesses.
+const DEFAULT_IGNORE_CACHE_LIMIT = 4_096;
+
 /** One exact, NUL-safe ignore query per burst; no per-event Git subprocess. */
 export function createGitInvalidationClassifier({
   repoRoot, gitDir = "", commonGitDir = gitDir, snapshot, run = runGit,
   onInvalidation, onConfigChange = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, delayMs = 125,
+  ignoreCacheLimit = DEFAULT_IGNORE_CACHE_LIMIT,
 }) {
+  if (!Number.isInteger(ignoreCacheLimit) || ignoreCacheLimit < 1) {
+    throw new TypeError("ignoreCacheLimit must be a positive integer");
+  }
   let tracked = trackedPaths(snapshot);
   let trackedParents = parentPaths(tracked);
   let healthy = !snapshot?.error;
@@ -52,7 +61,15 @@ export function createGitInvalidationClassifier({
   let running = false;
   const pending = new Set();
   const ignored = new Map();
-  const metrics = { events: 0, classifierLaunches: 0, ignoredEvents: 0, invalidations: 0 };
+  const metrics = {
+    events: 0, classifierLaunches: 0, ignoredEvents: 0, invalidations: 0,
+    get ignoreCacheEntries() { return ignored.size; },
+  };
+  function rememberIgnored(entry, value) {
+    ignored.delete(entry);
+    ignored.set(entry, value);
+    if (ignored.size > ignoreCacheLimit) ignored.delete(ignored.keys().next().value);
+  }
   function invalidate(reason) {
     if (closed) return;
     metrics.invalidations += 1;
@@ -80,7 +97,7 @@ export function createGitInvalidationClassifier({
       const matches = new Set(result.stdout.split("\0").filter(Boolean));
       let relevant = false;
       for (const entry of paths) {
-        ignored.set(entry, matches.has(entry));
+        rememberIgnored(entry, matches.has(entry));
         if (matches.has(entry)) metrics.ignoredEvents += 1;
         else relevant = true;
       }
@@ -117,7 +134,9 @@ export function createGitInvalidationClassifier({
     }
     if (!healthy || !gitDir) { invalidate("uncertain-worktree"); return; }
     if (ignored.has(entry)) {
-      if (ignored.get(entry)) metrics.ignoredEvents += 1;
+      const value = ignored.get(entry);
+      rememberIgnored(entry, value);
+      if (value) metrics.ignoredEvents += 1;
       else invalidate("worktree");
       return;
     }

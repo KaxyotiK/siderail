@@ -11,6 +11,11 @@ user-authorized implementation and isolated before/after evidence are recorded i
 [validation evidence](../work/git-refresh/EVIDENCE.md), and
 [performance results](../work/git-refresh/PERFORMANCE.md).
 
+Public-copy note: personal paths use `<CHECKOUT>`, `<CANONICAL_CHECKOUT>` and
+`<HOME>` placeholders. Substitute local paths when reproducing commands. Numerical
+measurements and original measured hashes are unchanged; the unmodified report
+is retained locally. This public copy is not byte-identical to that raw report.
+
 ## Finding
 
 The process count is principally the intended **one persistent rail per tab**, not a growing collection of duplicate helpers. Each helper independently rebuilds the entire repository model on its roughly ten-second recovery timer, even with healthy filesystem watchers and while its tab is inactive. A normal refresh launches **17 Git processes**, plus three Herdr CLI processes for content-pane discovery. Forty-one helpers therefore predict approximately **69.7 Git launches/second from polling alone** when every helper takes that normal path. This is a code-based estimate, not a measured complete launch rate.
@@ -87,7 +92,7 @@ Two live rails, `w3P:p2W` and `w3P:p2Y`, had no content pane left in their tabs.
 
 For the other 39 rails, applying the current content-pane selection rules to the snapshot produced **19 distinct cwd targets**: 20 extra copies beyond one per target. These are exact cwd matches, not an assumption that every linked worktree has the same index. All identified targets were internal paths; no SD-backed repository was accessed. The selection is a snapshot reconstruction, not inspection of each Node process's private `currentProviderCwd` variable. The process cwd shown by Herdr is usually the plugin checkout and must not be confused with the repository passed to Git.
 
-The following map joins process ancestry, tab identity, selected content cwd, helper CPU delta from the slow interval, and Git observations from the fast interval. Different intervals must not be combined as an exact per-refresh cost. Paths are relative to `/Users/user/`; `Projects` retains the spelling reported by Herdr.
+The following map joins process ancestry, tab identity, selected content cwd, helper CPU delta from the slow interval, and Git observations from the fast interval. Different intervals must not be combined as an exact per-refresh cost. Paths are relative to `<HOME>/`; `Projects` retains the spelling reported by Herdr.
 
 | PID | Rail pane / tab | Selected content cwd | Helper CPU-s (~60 s) | Git PIDs (10 s) |
 | ---: | --- | --- | ---: | ---: |

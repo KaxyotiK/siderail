@@ -53,6 +53,9 @@ export function createRefreshScheduler({
   let activeRequests = [];
   let runningPromise;
   const pending = [];
+  let pendingDirty;
+  let firstRequestedAt = Number.POSITIVE_INFINITY;
+  let pendingUrgent = false;
 
   const timer = (callback, delay) => {
     const handle = setTimer(callback, Math.max(0, delay));
@@ -125,6 +128,10 @@ export function createRefreshScheduler({
     clear(startTimer);
     startTimer = undefined;
     const captured = pending.splice(0);
+    // A captured dirty batch can no longer cover newly arriving input.
+    pendingDirty = undefined;
+    firstRequestedAt = Number.POSITIVE_INFINITY;
+    pendingUrgent = false;
     const capturedInputGeneration = inputGeneration;
     const startedAt = now();
     const reasons = [...new Set(captured.map(({ kind, reason }) => reason || kind))];
@@ -171,9 +178,7 @@ export function createRefreshScheduler({
     clear(startTimer);
     startTimer = undefined;
     if (closed || running || !pending.length) return;
-    const urgent = pending.some(({ kind }) => kind !== "dirty");
-    const firstRequestedAt = Math.min(...pending.map(({ requestedAt }) => requestedAt));
-    const deadline = urgent
+    const deadline = pendingUrgent
       ? now()
       : Math.max(firstRequestedAt + burstDelayMs, lastStartedAt + minimumIntervalMs);
     if (deadline <= now()) startRun();
@@ -191,6 +196,9 @@ export function createRefreshScheduler({
         }
         inputGeneration = Math.max(inputGeneration, dirtyGeneration);
       } else inputGeneration += 1;
+      // Keep the first reason and deadline. Later events need neither another
+      // deferred nor timer/status work; the run captures the latest generation.
+      if (pendingDirty) return pendingDirty.promise;
     }
     let resolve;
     let reject;
@@ -198,7 +206,7 @@ export function createRefreshScheduler({
       resolve = onResolve;
       reject = onReject;
     });
-    pending.push({
+    const item = {
       sequence: ++requestSequence,
       kind,
       reason,
@@ -207,7 +215,12 @@ export function createRefreshScheduler({
       resolve,
       reject,
       settled: false,
-    });
+      promise,
+    };
+    pending.push(item);
+    firstRequestedAt = Math.min(firstRequestedAt, item.requestedAt);
+    if (kind === "dirty") pendingDirty = item;
+    else pendingUrgent = true;
     schedulePending();
     return promise;
   }
@@ -261,6 +274,9 @@ export function createRefreshScheduler({
     startTimer = undefined;
     const error = new RefreshSchedulerClosedError();
     for (const item of pending.splice(0)) settle(item, "reject", error);
+    pendingDirty = undefined;
+    firstRequestedAt = Number.POSITIVE_INFINITY;
+    pendingUrgent = false;
     for (const item of activeRequests) settle(item, "reject", error);
     activeController?.abort(error);
     const active = runningPromise;

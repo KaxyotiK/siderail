@@ -5,7 +5,7 @@
 **Last updated:** 2026-09-16
 **Starting revision:** `6603d33c61b6646b4a54806b028961c8fd1379e2`, branch `git-polling-cpu`
 **Evidence:** [CPU investigation](../../docs/CPU-POLLING-INVESTIGATION.md)
-**Review:** [convergence transcript](CONVERGENCE.md), [incorporated review decisions](REVIEW-RESOLUTION.md)
+**Review:** [design decision summary](CONVERGENCE.md), [incorporated review decisions](REVIEW-RESOLUTION.md)
 **Template:** adapted from `~/.config/skillshare/templates/IMPLEMENTATION_PLAN_TEMPLATE.md`
 
 Implementation was authorized by the user on 2026-09-16: “implment the plan using sol sub agents”. The calling agent coordinates bounded Sol assignments and owns integration and acceptance. Independent modules may be constructed concurrently against resolved interfaces, but dependent integration, item signoff, and phase activation remain gated by the listed proofs. This is not an unattended-agent run. Item checkboxes remain evidence-gated; implementation does not authorize live rollout, commits, or publication.
@@ -267,3 +267,14 @@ use fresh suffixed directories to preserve intermediate evidence.
 - [x] No blocking assumption, failed item, unresolved dependency, or undocumented contract change remains.
 - [x] Operating/configuration/rollback documentation and owned-resource cleanup are verified.
 - [x] No live installation change, commit/push/publication, or CI workflow was performed without separate authorization.
+
+
+## Completed PR-review follow-up
+
+The bounded dirty-batch and ignore-cache fixes, AD-1/AD-2 regressions, and amended
+publication cleanup are complete. Fresh Node 22/24 macOS and Node 24 Linux checks,
+isolated host/runtime probes, and the unchanged 32-run performance verifier pass.
+See [review evidence](EVIDENCE.md#pr-review-follow-up--accepted) and
+[accepted measurements](PERFORMANCE.md#accepted-pr-review-rerun--2026-09-16).
+The observed warm-up boundary defect was corrected in the witness and the entire
+candidate set rerun against the same archived baseline; no gate was relaxed.

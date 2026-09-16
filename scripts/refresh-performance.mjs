@@ -322,7 +322,7 @@ async function filesSignature(files) {
   return values.join("|");
 }
 
-async function waitForQuiescence(files, { timeoutMs, settleMs, minimumGitStarts = 0 } = {}) {
+async function waitForQuiescence(files, { timeoutMs, settleMs, minimumGitStarts = 0, ready = () => true } = {}) {
   const deadline = Date.now() + timeoutMs;
   let signature = await filesSignature(files);
   let stableSince = Date.now();
@@ -335,6 +335,9 @@ async function waitForQuiescence(files, { timeoutMs, settleMs, minimumGitStarts 
     }
     const gitStarts = files.filter((file) => file.endsWith(".trace.jsonl"))
       .reduce((total, file) => total + traceStarts(file).length, 0);
+    // A slow provider can pause between Git commands longer than settleMs.
+    // Silence alone must not classify unfinished startup as measured workload.
+    if (!ready()) { stableSince = Date.now(); continue; }
     if (gitStarts >= minimumGitStarts && Date.now() - stableSince >= settleMs) return;
   }
   fail(`process group did not become quiescent within ${timeoutMs} ms`);
@@ -730,10 +733,19 @@ async function measureRun({ source, sampler, tempRoot, output, clients: clientCo
       }));
     }
     const activityFiles = [...new Set(rails.flatMap((client) => [client.trace, client.herdr]))];
+    const providersFinished = () => {
+      const debug = parseJsonLines(rails[0].debug);
+      const providers = debug.filter((entry) => entry.operation === "repository-provider");
+      return providers.filter((entry) => entry.phase === "start").length
+        === providers.filter((entry) => entry.phase === "finish").length;
+    };
     await waitForRailQuiescence(activityFiles, rails, {
       timeoutMs: options.startupTimeoutMs,
       settleMs: options.settleMs,
       minimumGitStarts: clientCount,
+      ready: () => !socketHost || providersFinished()
+        && new Set(parseJsonLines(rails[0].debug).filter((entry) => entry.operation === "rail-snapshot")
+          .map((entry) => entry.pid)).size === clientCount,
     });
     const startupEndedAt = new Date().toISOString();
     const startupSamples = await Promise.all(rails.map((client) => sampleResources(client.child.pid, sampler)));
@@ -771,6 +783,7 @@ async function measureRun({ source, sampler, tempRoot, output, clients: clientCo
       timeoutMs: options.startupTimeoutMs,
       settleMs: Math.min(options.settleMs, 750),
       minimumGitStarts: clientCount,
+      ready: providersFinished,
     });
     const measurementEndedAt = new Date().toISOString();
     const wallSeconds = Number(process.hrtime.bigint() - wallStarted) / 1_000_000_000;

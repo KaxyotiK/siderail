@@ -1,93 +1,93 @@
 {
   "passed": true,
   "cpuRatios": {
-    "1": 0.035395957379457624,
-    "8": 0.006587177349556771
+    "1": 0.03563389370173083,
+    "8": 0.004357720209525178
   },
   "edits": [
     {
       "runId": "edit-burst-c1-r1",
       "window": "singleEdit",
-      "latencyMs": 138,
-      "deliveredMs": 270,
-      "providerMs": 131
+      "latencyMs": 139,
+      "deliveredMs": 337,
+      "providerMs": 197
     },
     {
       "runId": "edit-burst-c1-r1",
       "window": "burst",
-      "latencyMs": 239,
-      "deliveredMs": 348,
-      "providerMs": 108
+      "latencyMs": 237,
+      "deliveredMs": 616,
+      "providerMs": 378
     },
     {
       "runId": "edit-burst-c1-r2",
       "window": "singleEdit",
+      "latencyMs": 141,
+      "deliveredMs": 541,
+      "providerMs": 398
+    },
+    {
+      "runId": "edit-burst-c1-r2",
+      "window": "burst",
+      "latencyMs": 240,
+      "deliveredMs": 442,
+      "providerMs": 201
+    },
+    {
+      "runId": "edit-burst-c1-r3",
+      "window": "singleEdit",
       "latencyMs": 138,
-      "deliveredMs": 262,
+      "deliveredMs": 321,
+      "providerMs": 182
+    },
+    {
+      "runId": "edit-burst-c1-r3",
+      "window": "burst",
+      "latencyMs": 241,
+      "deliveredMs": 642,
+      "providerMs": 400
+    },
+    {
+      "runId": "edit-burst-c8-r1",
+      "window": "singleEdit",
+      "latencyMs": 137,
+      "deliveredMs": 373,
+      "providerMs": 234
+    },
+    {
+      "runId": "edit-burst-c8-r1",
+      "window": "burst",
+      "latencyMs": 267,
+      "deliveredMs": 394,
       "providerMs": 124
     },
     {
-      "runId": "edit-burst-c1-r2",
-      "window": "burst",
-      "latencyMs": 238,
-      "deliveredMs": 351,
-      "providerMs": 112
-    },
-    {
-      "runId": "edit-burst-c1-r3",
+      "runId": "edit-burst-c8-r2",
       "window": "singleEdit",
-      "latencyMs": 138,
-      "deliveredMs": 300,
-      "providerMs": 161
-    },
-    {
-      "runId": "edit-burst-c1-r3",
-      "window": "burst",
-      "latencyMs": 240,
-      "deliveredMs": 371,
-      "providerMs": 130
-    },
-    {
-      "runId": "edit-burst-c8-r1",
-      "window": "singleEdit",
-      "latencyMs": 140,
+      "latencyMs": 141,
       "deliveredMs": 275,
-      "providerMs": 133
-    },
-    {
-      "runId": "edit-burst-c8-r1",
-      "window": "burst",
-      "latencyMs": 242,
-      "deliveredMs": 366,
-      "providerMs": 122
+      "providerMs": 131
     },
     {
       "runId": "edit-burst-c8-r2",
+      "window": "burst",
+      "latencyMs": 243,
+      "deliveredMs": 368,
+      "providerMs": 123
+    },
+    {
+      "runId": "edit-burst-c8-r3",
       "window": "singleEdit",
       "latencyMs": 138,
-      "deliveredMs": 268,
-      "providerMs": 128
-    },
-    {
-      "runId": "edit-burst-c8-r2",
-      "window": "burst",
-      "latencyMs": 240,
-      "deliveredMs": 362,
-      "providerMs": 120
-    },
-    {
-      "runId": "edit-burst-c8-r3",
-      "window": "singleEdit",
-      "latencyMs": 139,
-      "deliveredMs": 273,
-      "providerMs": 132
+      "deliveredMs": 275,
+      "providerMs": 135
     },
     {
       "runId": "edit-burst-c8-r3",
       "window": "burst",
       "latencyMs": 240,
-      "deliveredMs": 352,
-      "providerMs": 110
+      "deliveredMs": 357,
+      "providerMs": 115
     }
   ],
   "runsVerified": 32

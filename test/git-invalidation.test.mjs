@@ -130,3 +130,58 @@ test("close cancels pending work and drops in-flight classifier completions", as
   pending.classifier.close(); resolve({ stdout: "" }); await settle(); assert.equal(pending.events.length, 0);
   assert.equal(await watchedRootIdentity("/this-path-cannot-exist-git-refresh-fixture"), null);
 });
+
+test("bounded ignore LRU promotes true and false hits and conservatively reclassifies evicted paths", async () => {
+  const f = fixture({ ignoreCacheLimit: 2 });
+  f.classifier.event("/fixture", "ignored/hot");
+  f.classifier.event("/fixture", "cold-visible");
+  await f.flush();
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 2);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.events.length, 1);
+  f.classifier.event("/fixture", "ignored/hot"); // Promote true; evict false next.
+  f.classifier.event("/fixture", "ignored/new");
+  await f.flush();
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 2);
+  assert.equal(f.events.length, 1, "eviction alone must not invalidate");
+  f.classifier.event("/fixture", "ignored/hot");
+  assert.equal(f.calls.length, 2);
+  f.classifier.event("/fixture", "cold-visible");
+  await f.flush();
+  assert.equal(f.calls.length, 3, "evicted false entries are unknown, not silently ignored");
+  assert.equal(f.events.length, 2);
+  f.classifier.event("/fixture", "ignored/hot");
+  f.classifier.event("/fixture", "cold-visible"); // Promote false; evict true next.
+  assert.equal(f.events.length, 3);
+  f.classifier.event("/fixture", "ignored/newer");
+  await f.flush();
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 2);
+  f.classifier.event("/fixture", "cold-visible");
+  assert.equal(f.calls.length, 4, "promoted false cache entry remains cached");
+  f.classifier.event("/fixture", "ignored/hot");
+  f.classifier.event("/fixture", "ignored/another");
+  await f.flush();
+  assert.equal(f.calls.length, 5, "evicted paths still share one NUL-safe batch");
+  assert.equal(f.calls.at(-1).input.stdinInput, "ignored/hot\0ignored/another\0");
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 2);
+  f.classifier.clearIgnore();
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 0);
+  f.classifier.event("/fixture", "ignored/hot");
+  await f.flush();
+  assert.equal(f.calls.length, 6);
+  f.classifier.close();
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 0);
+});
+
+test("ignore cache rejects invalid capacities and bounds a batch larger than its capacity", async () => {
+  for (const ignoreCacheLimit of [0, -1, 1.5, NaN, Infinity]) {
+    assert.throws(() => fixture({ ignoreCacheLimit }), /positive integer/);
+  }
+  const f = fixture({ ignoreCacheLimit: 3 });
+  for (let index = 0; index < 50; index += 1) f.classifier.event("/fixture", `ignored/${index}`);
+  await f.flush();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.events.length, 0);
+  assert.equal(f.classifier.metrics.ignoreCacheEntries, 3);
+  f.classifier.close();
+});

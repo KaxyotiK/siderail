@@ -1,17 +1,17 @@
 # Plan review resolution
 
 **Date:** 2026-09-16
-**Result:** `herdr-converge` reached `converged` in two rounds with `ccx --model opus --effort high` (`ccx-gitrail-plan`) and the originating Codex session.
+**Result:** The original design review reached consensus in two rounds.
 **Plan:** [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
-**Full exchange:** [CONVERGENCE.md](CONVERGENCE.md)
+**Decision summary:** [CONVERGENCE.md](CONVERGENCE.md)
 
-The final plan incorporates the agreed structure and the peer's three final compatible additions. The wrapper's transcript is preserved verbatim, including earlier proposals and factual claims later withdrawn; it is not the implementation specification. The plan governs implementation.
+This historical planning record preserves the agreed structure and three additional conditions. Raw exchanges are retained locally; the public decision summary is linked above. The implementation plan and subsequent evidence govern the delivered candidate.
 
 ## Agreed scope
 
 > Deliver a validated in-process event-driven milestone, then required shared-worktree state behind the same client seam; retain bounded recovery and a full-provider oracle, defer history caching, and gate completion on explicit correctness, lifecycle, compatibility, and measured performance proofs.
 
-Phase A has six items, Phase B three. Phase A proves the cadence/filter/context/UI work independently. Phase B is required to eliminate same-worktree edit amplification and complete the shared-state target. Neither milestone authorizes a rollout. All implementation checkboxes remain unchecked.
+Phase A has six items, Phase B three. Phase A proves the cadence/filter/context/UI work independently. Phase B is required to eliminate same-worktree edit amplification and complete the shared-state target. Neither milestone authorizes a rollout. At planning completion, implementation had not yet started; later completion evidence is recorded in EVIDENCE.md.
 
 ## Disposition of review findings
 
@@ -37,10 +37,24 @@ Phase A has six items, Phase B three. Phase A proves the cadence/filter/context/
 
 The peer's final reply retained AD-1–AD-3 under `OPEN` as edits still to incorporate while accepting the common AGREE line. All three edits are incorporated above and in the plan; they are not outstanding scope disagreements. Runtime/protocol uncertainties remain explicit A1 implementation gates, not silently resolved by review.
 
-## Review surfaces and authorization
+## Review authorization
 
-The peer was launched in right split `wBA:p3` beside the originating `wBA:p1`. No new tab was created. The peer surface and convergence state remain available for inspection. Discussion-only mode was used; during the exchange each participant changed only its assigned reply file. The originating session revised the plan after terminal convergence. No source implementation, live rail/configuration change, commit, push, or publication occurred as part of planning/review.
+The original design review was discussion-only. The plan was revised after
+consensus; implementation and PR publication were separately authorized later.
+Raw prompts, exchange text and launch bookkeeping remain locally archived and
+are excluded from the current public tree.
 
 ## Planning validation
 
 Validated five expected outcomes, twelve acceptance criteria (AC-1a/1b and AC-2–11), and nine ordered implementation items. Every item names acceptance coverage, dependencies, affected files, changes, and proof commands/procedures. Criteria all appear in the final evidence map. Local document links, dependency ordering, whitespace, and `git diff --check` passed. These checks validate the plan artifact; they do not claim the future implementation tests or performance targets have passed.
+
+
+## PR review follow-up
+
+A later code review accepted bounded scheduler batches, a 4,096-entry ignore LRU,
+and forward publication cleanup; see [CONVERGENCE.md](CONVERGENCE.md).
+Its **AD-1** (default cache capacity preserves the witness working set) and
+**AD-2** (newer captured input plus follow-up promise settlement) are distinct
+from the earlier planning additions numbered above. Both are implemented and
+covered by focused regression tests; fresh candidate evidence is recorded in
+[EVIDENCE.md](EVIDENCE.md). No coverage or measurement gate is relaxed.

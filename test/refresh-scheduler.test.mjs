@@ -224,3 +224,86 @@ test("provider failure retains bounded retry and close aborts owned work", async
   await assert.rejects(active, RefreshSchedulerClosedError);
   await assert.rejects(closing.request({ kind: "manual" }), RefreshSchedulerClosedError);
 });
+
+test("a 200,000-event dirty burst retains one deferred, deadline, timer and status update", async () => {
+  const clock = fakeClock();
+  let timerCalls = 0;
+  let statusCalls = 0;
+  const reads = [];
+  const scheduler = schedulerWithClock(clock, async (request) => { reads.push(request); return "current"; }, {
+    setTimer(callback, delay) { timerCalls += 1; return clock.setTimer(callback, delay); },
+    onStatus() { statusCalls += 1; },
+  });
+  const first = scheduler.request({ kind: "dirty", reason: "first" });
+  for (let index = 1; index < 200_000; index += 1) {
+    assert.equal(scheduler.request({ kind: "dirty", reason: `later-${index}` }), first);
+  }
+  assert.equal(scheduler.status.pending, 1);
+  assert.equal(scheduler.status.inputGeneration, 200_000);
+  assert.equal(timerCalls, 1);
+  assert.equal(statusCalls, 1);
+  await clock.tick(124);
+  assert.equal(reads.length, 0);
+  await clock.tick(1);
+  assert.equal(await first, "current");
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0].inputGeneration, 200_000);
+  assert.deepEqual(reads[0].reasons, ["first"]);
+  await scheduler.close();
+});
+
+test("a large mid-read burst captures a newer generation and settles against the follow-up, never the active dirty read", async () => {
+  const clock = fakeClock();
+  const reads = [];
+  const scheduler = schedulerWithClock(clock, (request) => {
+    const gate = deferred();
+    reads.push({ request, gate });
+    return gate.promise;
+  });
+  const active = scheduler.request({ kind: "dirty", reason: "first-read" });
+  await clock.tick(125);
+  assert.equal(reads.length, 1);
+  const activeGeneration = reads[0].request.inputGeneration;
+  const midRead = scheduler.request({ kind: "dirty", reason: "mid-read" });
+  assert.notEqual(midRead, active);
+  for (let index = 1; index < 200_000; index += 1) {
+    assert.equal(scheduler.request({ kind: "dirty", reason: "more-mid-read" }), midRead);
+  }
+  assert.equal(scheduler.status.pending, 1);
+  let midReadResult;
+  midRead.then((value) => { midReadResult = value; });
+  assert.equal(reads[0].request.inputGeneration, activeGeneration);
+  reads[0].gate.resolve("earlier-result");
+  await clock.flush();
+  assert.equal(await active, "earlier-result");
+  assert.equal(midReadResult, undefined, "an earlier read cannot satisfy mid-read input");
+  await clock.tick(1_999);
+  assert.equal(reads.length, 1);
+  await clock.tick(1);
+  assert.equal(reads.length, 2);
+  assert.ok(reads[1].request.inputGeneration > activeGeneration);
+  assert.equal(reads[1].request.inputGeneration, activeGeneration + 200_000);
+  reads[1].gate.resolve("follow-up-result");
+  await clock.flush();
+  assert.equal(await midRead, "follow-up-result");
+  assert.equal(midReadResult, "follow-up-result");
+  assert.equal(scheduler.status.pending, 0);
+  await scheduler.close();
+});
+
+test("coalesced dirty callers share rejection on provider failure and pending close", async () => {
+  const clock = fakeClock();
+  const scheduler = schedulerWithClock(clock, async () => { throw new Error("read failed"); });
+  const first = scheduler.request({ kind: "dirty" });
+  assert.equal(scheduler.request({ kind: "dirty" }), first);
+  const rejected = assert.rejects(first, /read failed/);
+  await clock.tick(125);
+  await rejected;
+  const pending = scheduler.request({ kind: "dirty" });
+  assert.notEqual(pending, first);
+  assert.equal(scheduler.request({ kind: "dirty" }), pending);
+  const cancelled = assert.rejects(pending, RefreshSchedulerClosedError);
+  await scheduler.close();
+  await cancelled;
+  assert.equal(scheduler.status.pending, 0);
+});

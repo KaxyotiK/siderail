@@ -1,6 +1,6 @@
 # Refresh performance witness
 
-This note records the isolated baseline and staged measurements for the refresh redesign. The machine-readable evidence is under `test-results/git-refresh/baseline/` (ignored by Git because it contains raw run output). The checked-in witness is `scripts/refresh-performance.mjs`.
+This note records the isolated baseline and staged measurements for the refresh redesign. Original acceptance sections describe the initial PR runtime; the final section records the fresh PR-review candidate. Historical numerical results are retained unchanged. The machine-readable evidence is under `test-results/git-refresh/baseline/` (ignored by Git because it contains raw run output). The checked-in witness is `scripts/refresh-performance.mjs`.
 
 ## Instrumentation contract
 
@@ -118,9 +118,9 @@ The baseline alone is not evidence that a candidate is faster. Candidate compari
 The isolated host intentionally returns a stable cwd. It measures the baseline's repeated context subprocess cost, but it does not measure Herdr server CPU, event delivery, focus/move correctness, or reconnect behavior; the separate A1 Herdr contract witness owns those proofs. The quiet run also does not substitute for edit, ignored-noise, sibling-index, recovery, or long reconciliation evidence.
 
 
-## Final Phase B quiet and reconciliation measurements
+## Original Phase B quiet and reconciliation measurements
 
-All final candidate measurements use snapshot SHA-256
+The original accepted candidate measurements use snapshot SHA-256
 `b9cb5f1c1ef860504daff1bbe3a6d6f9b335c648d8c5c905eee5fdce6e795893`
 and witness SHA-256
 `9e85d957b23588ff6b6f6aab60e4c7e38ba602681d54374b00e4b72265a59b54`.
@@ -133,7 +133,7 @@ socket-host fixture. One coordinator and the owned host fixture are both sampled
 and counted once, including exited child CPU. `hostAccounting` distinguishes
 socket requests from subprocesses; the legacy raw field `herdrLaunches` holds
 host request counts in Phase B and must not be described as process creation.
-All final Phase B runs use Node 26.7.0 / Apple Git 2.50.1 / macOS 25.6.0 on the
+Those original Phase B runs used Node 26.7.0 / Apple Git 2.50.1 / macOS 25.6.0 on the
 same M3 Max as the archived baseline. Functional compatibility is independently
 proven on Node 22/24 and Linux. Other isolated acceptance checks ran concurrently
 with some intervals; only owned application process CPU is included, and the
@@ -172,7 +172,7 @@ single coordinator and its namespace artifacts within 1.029 s; fixture and
 source roots were removed. Raw evidence: `reconciliation-final/`.
 
 
-## Final active-workload and packaging acceptance
+## Original active-workload and packaging acceptance
 
 All three repetitions at each client count passed the following production
 runtime checks. The table reports medians; process/build counts were identical
@@ -255,3 +255,132 @@ snapshots. They remain available as development evidence but are not the final
 candidate's acceptance measurements. Raw final artifacts live under ignored
 `test-results/git-refresh/`; the tables, commands, source identity and verifier
 output above are the durable repository record.
+
+
+## First PR-review run (not accepted): warm-up boundary failure
+
+These initial review measurements use the same archived baseline and original
+witness. The full run is **not accepted**: an ignored-workload window began
+before the initial provider completed. Its raw evidence is retained, and the
+stricter complete rerun is recorded below. The acceptance verifier is unchanged. The default ignore-cache limit is 4,096; the
+witness never injects the small limits used in classifier unit tests. The
+runtime now coalesces large dirty bursts into one pending batch separate from
+any captured read and attaches one watcher rejection handler per batch.
+
+Compare and reconciliation source snapshot SHA-256:
+`2bab0021527de0cf1c4a63902690d4aaf190e0c4d0d317bb9f8dcda0d0fd1b6a`.
+Final public-package source snapshot SHA-256:
+`1c26b75eea8e93ba598560f4308e50410b1ccda043d037eae07b3edda0407b26`.
+The whole-tree difference is publication-document cleanup; all 44 production
+runtime file hashes are identical. Witness SHA-256 remains
+`9e85d957b23588ff6b6f6aab60e4c7e38ba602681d54374b00e4b72265a59b54`.
+No recorded hashes or acceptance thresholds were manually substituted.
+
+| Clients | Run | Window (s) | Git processes | Host socket requests | Total application CPU (s) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 60.613 | 0 | 60 | 0.064018 |
+| 1 | 2 | 60.812 | 0 | 61 | 0.065195 |
+| 1 | 3 | 60.814 | 0 | 61 | 0.076300 |
+| 8 | 1 | 61.113 | 0 | 61 | 0.077008 |
+| 8 | 2 | 61.141 | 0 | 61 | 0.065100 |
+| 8 | 3 | 61.221 | 0 | 61 | 0.070293 |
+
+The CPU accounting includes rails, coordinator, owned host fixture and waited
+children, as in the original comparison. These remain isolated fixture results,
+not a live Herdr CPU measurement or an additional improvement claim relative
+to the original candidate; ordinary sample variation is expected.
+
+The fresh eight-client reconciliation window lasts **360.713 seconds** and
+performs exactly **one provider build / 20 Git commands**, publishes to all eight
+rails, and makes 360 host socket requests with zero host subprocesses. Total
+application CPU is 0.697290 s. Its owned coordinator and namespace clean up in
+1.031 s. The exact healthy maximum is still covered by injected-clock tests.
+
+
+## Accepted PR-review rerun — 2026-09-16
+
+The unchanged verifier passes **32/32 runs** against the same archived baseline
+`6603d33c61b6646b4a54806b028961c8fd1379e2`. All three fresh witnesses use the
+stricter startup/end boundaries described in [EVIDENCE.md](EVIDENCE.md).
+Platform and CPU accounting match the archived baseline: macOS 25.6 on M3 Max
+(16 CPUs), Node 26.7.0, Apple Git 2.50.1, application self plus waited-child CPU.
+
+| Clients | Run | Window (s) | Git processes | Host socket requests | Total application CPU (s) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 61.040 | 0 | 61 | 0.070070 |
+| 1 | 2 | 61.215 | 0 | 61 | 0.074129 |
+| 1 | 3 | 60.816 | 0 | 61 | 0.059416 |
+| 8 | 1 | 61.222 | 0 | 61 | 0.074022 |
+| 8 | 2 | 60.911 | 0 | 61 | 0.066921 |
+| 8 | 3 | 61.127 | 0 | 61 | 0.068924 |
+
+At 1 client(s), median CPU is **0.070070 s** (range 0.059416–0.074129) versus baseline **1.966387 s**: **3.563%** of baseline, below the unchanged 25% gate.
+
+At 8 client(s), median CPU is **0.068924 s** (range 0.066921–0.074022) versus baseline **15.816556 s**: **0.436%** of baseline, below the unchanged 25% gate.
+
+These isolated fixture results establish the candidate's comparison with the
+archived polling implementation. They do not establish sustained live Herdr CPU
+or an additional CPU reduction over the original shared-state candidate. All
+quiet windows have zero provider builds, Git launches and state publications;
+one deliberate visibility redraw occurs. Host socket sampling remains shared
+at approximately 1 Hz, with zero Herdr CLI subprocesses.
+
+Each row below represents all six repetitions (three each at one/eight clients).
+Counts exclude startup and are exact Trace2/provider records.
+
+| Workload | Provider builds | Git launches | State publications (1 / 8 clients) |
+| --- | ---: | ---: | ---: |
+| Single edit plus burst | 2 | 34 | 2 / 16 |
+| Ignored output | 0 | 2 classifier commands | 0 / 0 |
+| Sibling index | 0 | 0 | 0 / 0 |
+| Poll-only recovery | 1 | 17 | 1 / 8 |
+
+AD-1's default 4,096-entry cache preserves exactly two classifier launches in
+every ignored workload. Single-edit refresh starts take 137–141 ms; eligible
+single-edit deliveries take 275–541 ms, below the existing 2,000 ms gate.
+Burst starts take 237–267 ms and deliveries 357–642 ms. All original
+verifier checks pass; no timing gate was changed.
+
+The eight-client reconciliation window lasts **360.633 s**, with one provider
+build, 20 Git launches, eight publications, 359 host socket requests and
+**0.886216 s** application CPU. Owned coordinator cleanup takes 1.120 s. The
+30-run matrix cleans up coordinators in 1.010–1.075 s with no namespace residue.
+
+The packaged witness verifies five manifest files and 47 runtime dependencies,
+initializes one provider, and launches zero Git commands in its quiet window.
+Its coordinator cleans up in 1.073 s. The archive contains no raw convergence
+transcripts or personal home paths in docs/work. Package SHA-256:
+`b416294acfe48eb00aa0c947b49da53214f1f0984b9c5177d2edbe57b33a8f0a`.
+
+All three source snapshots have SHA-256
+`3504a697611c82f899cc8d7d9b107e90e3b6ac5754c7698c41c3ed9909ae0334`.
+Witness SHA-256:
+`51b745c324a6c283aa43c1ea40477dae0001d7bdc24b728e404a56aa1c38e611`.
+
+All 44 runtime file hashes match the delivered worktree and are checked by the
+verifier. These source snapshots precede the final evidence-text updates; the
+recorded snapshot hashes are preserved exactly. Raw artifacts remain local in
+ignored `test-results/git-refresh/` and the generated verifier output is
+[PERFORMANCE-ACCEPTANCE.json](PERFORMANCE-ACCEPTANCE.json).
+
+```sh
+node scripts/refresh-performance.mjs --mode compare --candidate-stage B \
+  --baseline test-results/git-refresh/baseline --clients 1,8 --quiet-ms 60000 \
+  --workloads quiet,edit-burst,ignored,sibling-index,recovery --repeats 3 \
+  --out test-results/git-refresh/review-accepted
+node scripts/refresh-performance.mjs --mode candidate --candidate-stage B \
+  --clients 8 --quiet-ms 360000 --workloads reconciliation --repeats 1 \
+  --out test-results/git-refresh/review-reconciliation-accepted
+node scripts/refresh-performance.mjs --mode packaged-smoke --candidate-stage B \
+  --clients 1 --quiet-ms 2000 --repeats 1 \
+  --out test-results/git-refresh/review-package-accepted
+node scripts/verify-refresh-performance.mjs \
+  test-results/git-refresh/baseline test-results/git-refresh/review-accepted \
+  test-results/git-refresh/review-reconciliation-accepted \
+  test-results/git-refresh/review-package-accepted
+```
+
+Use new empty output directories for another reproduction. The initial
+`review-candidate`, `review-reconciliation`, `review-packaged`, and
+`review-packaged-public` artifacts are intermediate evidence, superseded by
+this accepted set. The rejected warm-up sample remains documented above.

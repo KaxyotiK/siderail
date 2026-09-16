@@ -229,10 +229,10 @@ report's original references describe its explicitly pinned base commit.
 | Repository subscription seam; standalone/cmux engine fallback | `scripts/git-rail.mjs:239` |
 | Shared facade, delivery localization and explicit compatibility fallback | `src/shared-rail-runtime.mjs:277` |
 | Coordinator engine registry / shared host ownership | `src/git-state-coordinator.mjs:130` |
-| Single native watcher set / root identity recovery | `src/git-invalidation.mjs:158` |
-| Ignore caching and own/shared Git metadata classification | `src/git-invalidation.mjs:15`, `:42` |
-| Request coalescing, captured input, non-overlap and recovery timers | `src/refresh-scheduler.mjs:21`, `:123`, `:184` |
-| Full provider read, watcher updates, successful publication | `src/repository-engine.mjs:143` |
+| Single native watcher set / root identity recovery | `src/git-invalidation.mjs:177` |
+| Ignore caching and own/shared Git metadata classification | `src/git-invalidation.mjs:15`, `:47` |
+| Request coalescing, captured input, non-overlap and recovery timers | `src/refresh-scheduler.mjs:21`, `:126`, `:189` |
+| Full provider read, watcher updates, successful publication | `src/repository-engine.mjs:150` |
 | Host semantic snapshots, suppressed equivalent delivery | `src/herdr-context-watch.mjs:23` |
 | Owner election and reconnecting client | `src/git-state-client.mjs:85`, `:275` |
 | Namespace and canonical worktree/index identity | `src/git-state-identity.mjs:255`, `:422` |
@@ -313,3 +313,125 @@ PR preparation also compared demo snapshots at widths 36, 52 and 100 (height 46)
 against a disposable archive of the base commit under Node 24. All three were
 byte-identical. The fixture archive was removed; hashes are retained locally in
 `test-results/git-refresh/initial/pr-snapshots.json`.
+
+
+## PR review follow-up — accepted
+
+The converged review requires one pending dirty batch distinct from an active
+captured batch, bounded watcher rejection-handler bookkeeping, and a 4,096-entry
+ignore-classification LRU. AD-1 and AD-2 are accepted and covered by comments and
+tests: default capacity preserves the witness working set; a 200,000-event
+mid-read burst captures a strictly newer input generation and resolves against
+the follow-up result. No acceptance gate is changed.
+
+Raw orchestration files and the original aggregate transcript, diagnostic
+report, context recording and earlier verifier output are archived locally under
+ignored `test-results/git-refresh/private-review-input/`. The exact former
+`work/git-refresh/convergence-state/` path is ignored against accidental re-addition. The published decision summary
+replaces verbatim transcripts; public evidence paths are normalized and are not
+represented as byte-identical raw artifacts. Earlier commits remain unchanged.
+Historical performance results above describe the original runtime; fresh
+candidate measurements for the reviewed runtime are recorded below.
+
+
+### Review follow-up regression proofs
+
+| Proof | Result | Raw log under `test-results/git-refresh/initial/` |
+| --- | --- | --- |
+| Node 24 focused scheduler/engine/classifier tests | 30 passed, 0 failed; 542 ms | `review-focused.log` |
+| macOS Node 24 full check | 505 tests, 504 passed, 1 existing skip; 137.202 s; coverage 96.97% lines / 88.05% branches / 95.25% functions | `review-node24-check.log` |
+| macOS Node 22 full check | 505 tests, 504 passed, 1 existing skip; 133.197 s; coverage 96.95% / 87.94% / 95.25% | `review-node22-check.log` |
+| Linux Node 24 full check (ordinary `node` user) | 505 passed, 0 failed; 69.603 s; coverage 96.95% / 87.93% / 95.25% | `review-linux-check.log` |
+| Node 22/24 isolated Herdr watch-only and poll-only modes | both pass, including owned coordinator cleanup | `review-live-node22.log`, `review-live-node24.log` |
+| Artifact verification and standard demo snapshot | 5 manifest entries / 47 runtime dependencies; byte-identical baseline snapshot | `review-artifact.log`, `review-snapshot.txt` |
+| Automatic host-context probe | 10/10 within 2 seconds; 104.062–1070.947 ms including bootstrap; unchanged/reconnect/source-sharing/cleanup all pass | `review-host-context.log` |
+
+AD-1 is implemented beside `DEFAULT_IGNORE_CACHE_LIMIT = 4_096` in
+`src/git-invalidation.mjs`. The constructor's smaller capacity is injected only
+in `test/git-invalidation.test.mjs`, never in a production or witness launcher.
+The LRU tests cover cached true/false promotion, eviction, batched reclassification,
+capacity across a larger batch, dependency clearing and close.
+
+AD-2 is pinned by the named large-mid-read-burst test in
+`test/refresh-scheduler.test.mjs`: the active read's captured input stays unchanged;
+the follow-up captures exactly 200,000 newer invalidations, strictly greater
+than the active generation; and the mid-read request remains unresolved after
+the earlier read finishes, then resolves to the follow-up's result. The companion
+pre-read 200,000-event test asserts one deferred, timer and status notification.
+The watcher-path engine test independently checks one rejection handler per batch
+across 400,000 callbacks and verifies retained state after follow-up failure.
+
+Commands use the same forms as the original regression section. The fresh host
+probe adds `--out test-results/git-refresh/review-host-context`; its path-normalized
+public recording replaces `HERDR-CONTEXT-ACCEPTANCE.json`, with raw recording
+retained in that ignored output directory. The Linux source copy also excludes
+the local `work/git-refresh/convergence-state` directory.
+
+A publication audit found that the packaging witness copies ignored files from
+disk as well as tracked source. Raw transcripts were therefore moved into the
+excluded local `test-results/git-refresh/private-review-input/convergence-state/`
+archive, and the package witness was rerun into `review-packaged-public`.
+An explicit archive-content check passed: no raw convergence-state members and
+no personal home prefix in docs/work files. The first `review-packaged` run is
+retained as runtime-only intermediate evidence, not final publication evidence.
+The compare/long snapshots and final package have different whole-tree hashes
+because of this documentation-only cleanup; all 44 production runtime hashes are
+identical and remain checked against the delivered candidate by the verifier.
+
+
+### Rejected warm-up sample and stricter measurement boundary
+
+The first review compare is not accepted. In `review-candidate` run
+`ignored-c8-r2`, the old 600 ms file-log-silence check ended startup while the
+initial provider was still reading (startup: one provider start, zero finishes,
+zero client snapshots). Its 3,139 ms initial read completed inside the workload
+window, which then counted 18 Git launches. The classifier itself recorded two
+launches and zero invalidations, so this was startup leakage, not cache eviction.
+The unchanged acceptance verifier rejects the missing startup publications.
+Raw failed artifacts and `initial/review-rejected-verifier.log` are preserved.
+
+The witness now requires all Phase B clients to have their initial snapshot and
+all started providers to finish before the settle interval can complete. End
+boundaries also wait for provider completion. This strengthens measurement
+isolation without changing production code, expected counts, CPU accounting,
+verifier rules, baseline artifacts or threshold values. It addresses an observed
+invalid sample rather than discarding a slow measurement. The entire candidate
+matrix, long reconciliation and packaged witness are rerun into new empty
+`review-accepted`, `review-reconciliation-accepted` and
+`review-package-accepted` directories. The final measurement record below binds
+the unchanged production runtime to those new artifacts.
+
+
+The stricter startup boundary was also checked with an isolated disposable Git
+shim that sleeps 1.5 seconds before `git status`, then execs `/usr/bin/git` with
+the original arguments. The ordinary one-client Phase B witness (2 s quiet
+window) observed a 1,799 ms startup provider, one completed startup/publication,
+and zero quiet Git/provider/publication activity. Owned cleanup passed and the
+shim directory was removed. Raw proof: `review-slow-startup/` and
+`initial/review-slow-startup.log`. This is a boundary regression witness, not a
+CPU comparison; acceptance measurements run without the shim. `npm run lint`
+passes after the witness-only change (`initial/review-final-lint.log`). The
+already-passed runtime tests still match all three unchanged production fixes.
+
+
+### Accepted review evidence
+
+The unchanged `scripts/verify-refresh-performance.mjs` exited 0 with
+`passed: true` and `runsVerified: 32` for `review-accepted`,
+`review-reconciliation-accepted`, and `review-package-accepted`, compared with
+the original archived baseline. Its exact generated output replaces
+[PERFORMANCE-ACCEPTANCE.json](PERFORMANCE-ACCEPTANCE.json); no hashes or gates
+were edited. [PERFORMANCE.md](PERFORMANCE.md#accepted-pr-review-rerun--2026-09-16)
+records the samples, counts, fingerprints, cleanup and reproducible commands.
+All 44 runtime hashes match current source. Median quiet CPU is 3.563% / 0.436%
+of baseline at one/eight clients; every quiet window launches zero Git commands.
+All ignored windows retain exactly two classifier commands, satisfying AD-1.
+AD-2's generation and promise-settlement regression passes in all three full
+platform/runtime checks above. All three agreed findings and both addenda are
+resolved; no review item remains deferred.
+
+Publication cleanup is a forward change: engineering artifacts remain, raw
+orchestration files are preserved locally outside the published tree, and home
+paths are normalized. Earlier commits still retain their historical contents;
+this work does not rewrite history. Live user rails, focus, configuration and
+installation were unchanged.
