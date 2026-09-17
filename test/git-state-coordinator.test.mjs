@@ -324,6 +324,42 @@ test("a non-repository engine migrates to the Git identity when a late client jo
   await Promise.all([firstClient.close(), secondClient.close()]);
 });
 
+test("relocated Git metadata gets a distinct engine instead of relabeling an active context", async (t) => {
+  const { root, socketPath } = await fixture(t);
+  const repository = path.join(root, "repository");
+  await fs.mkdir(repository);
+  const environment = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull };
+  await runGit(repository, ["init", "--initial-branch=main"], { baseEnv: environment });
+  const contexts = [];
+  const coordinator = createGitStateCoordinator({
+    namespaceId: "git-directory-relocation",
+    environment,
+    engineFactory: ({ context }) => {
+      contexts.push(context);
+      return createRepositoryEngine({ context });
+    },
+  });
+  t.after(() => coordinator.close());
+  await coordinator.listen(socketPath);
+  const clients = Array.from({ length: 3 }, () => createGitStateClient({ namespaceId: "git-directory-relocation", socketPath }));
+  t.after(() => Promise.all(clients.map((client) => client.close())));
+  const open = (client) => client.openRepositorySubscription({ context: { cwd: repository }, onDelivery() {} });
+  const first = open(clients[0]);
+  const initial = await first.ready;
+  const relocated = path.join(root, "metadata");
+  await runGit(repository, ["init", "--separate-git-dir", relocated], { baseEnv: environment });
+  const second = open(clients[1]);
+  const next = await second.ready;
+  assert.equal(contexts.length, 2);
+  assert.notEqual(next.engineKey, initial.engineKey);
+  assert.equal(contexts[0].repositoryIdentity.gitDir, path.join(await fs.realpath(repository), ".git"));
+  assert.equal(contexts[1].repositoryIdentity.gitDir, await fs.realpath(relocated));
+  assert.equal((await first.refresh()).engineKey, initial.engineKey);
+  const third = open(clients[2]);
+  assert.equal((await third.ready).engineKey, next.engineKey);
+  assert.equal(contexts.length, 2, "later clients share the new identity's engine");
+});
+
 test("an unencodable snapshot is typed and remains non-shareable for that engine key", async (t) => {
   const { socketPath } = await fixture(t);
   let factories = 0;

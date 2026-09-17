@@ -435,3 +435,48 @@ orchestration files are preserved locally outside the published tree, and home
 paths are normalized. Earlier commits still retain their historical contents;
 this work does not rewrite history. Live user rails, focus, configuration and
 installation were unchanged.
+
+## Merge-readiness review corrections — 2026-09-16
+
+The final review found two contract gaps. A successful provider retry could
+return/publish the new snapshot with the previous scheduler failure status.
+Delivery status now uses the engine's current error. Reconciliation also now
+re-resolves Git metadata paths after a `.git` indirection changes, and the
+coordinator no longer relabels an existing Git engine across different metadata
+or index identities. Cross-kind filesystem/Git migration remains supported.
+
+The user authorized the relocation correction and revalidation before merge.
+The exact long-reconciliation count changes from 20 to **22 Git launches**:
+17 provider commands, three dependency queries, and two metadata-root queries.
+This accounts for the new required root discovery; no quiet, shared-edit,
+ignore-cache, CPU-ratio, latency, cleanup, or coverage threshold is relaxed.
+Poll-only recovery still uses 17 provider commands.
+
+The three strengthened regression checks fail against the original PR runtime
+and pass with the corrections. They cover returned/emitted recovery status,
+real `git init --separate-git-dir` relocation followed by index-only staging,
+and distinct coordinator contexts plus sharing for later clients. The second
+review round found no further divergence in the corrections; an independent
+run of all 27 engine/coordinator/invalidation integration tests passed.
+
+Fresh full validation on macOS Node 26.7.0 passes: **506 tests, 505 passed,
+one existing skip**, with coverage **96.96% lines / 87.94% branches /
+95.25% functions**. Node 24.19.0 isolated Herdr 0.8.2 watch-only/poll-only
+smoke passes, including owned coordinator cleanup. Artifact verification finds
+five manifest entries and 47 runtime dependencies. The final packaged witness
+passes its publication audit with no raw convergence-state members or personal
+home prefix in docs/work.
+
+An intermediate full run of the status-only correction hit the unchanged
+preview-search test's five-second rendering timeout. Its isolated recheck
+passed, and the subsequent full run of both corrections passed. No test or
+threshold was changed in response. Status-only measurements under
+`merge-review-*` are intermediate evidence, not the final runtime proof.
+
+Final verification passes **32 fresh runs** in `merge-final-accepted`,
+`merge-final-reconciliation`, and `merge-final-package`, against the original
+archived baseline. All 44 runtime hashes match the corrected source. The
+generated `PERFORMANCE-ACCEPTANCE.json` records quiet CPU medians at
+**3.403% / 0.440% of baseline** for one/eight rails. The long witness performs
+one reconciliation with exactly 22 Git launches. Full source paths and raw
+logs stay in ignored local evidence; public evidence uses relative paths.

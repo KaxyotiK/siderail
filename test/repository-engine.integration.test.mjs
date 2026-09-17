@@ -478,6 +478,22 @@ test("reconciliation repairs a silently lost event and a replaced real watch roo
   oracle = await getRepositoryState(fixture.primary, { env: fixture.environment });
   assert.deepEqual(comparable(engine.latest().snapshot), comparable(oracle));
   assert.ok(builds >= 4);
+
+  // Git can relocate metadata without changing the worktree path. Reconcile
+  // must resolve the new .git indirection, then observe index-only changes.
+  dropInvalidations = true;
+  const relocatedGitDir = path.join(fixture.root, "relocated-git");
+  await runGit(fixture.primary, ["init", "--separate-git-dir", relocatedGitDir], { baseEnv: fixture.environment });
+  await scheduler.request({ kind: "reconcile", reason: "git-directory-relocated" });
+  oracle = await getRepositoryState(fixture.primary, { env: fixture.environment });
+  assert.deepEqual(comparable(engine.latest().snapshot), comparable(oracle));
+  await delay(250);
+  dropInvalidations = false;
+  const generationBeforeStage = engine.latest().stateGeneration;
+  await runGit(fixture.primary, ["add", "replacement.txt"], { baseEnv: fixture.environment });
+  await eventually(() => engine.latest().stateGeneration > generationBeforeStage, "relocated metadata watcher missed an index-only edit");
+  oracle = await getRepositoryState(fixture.primary, { env: fixture.environment });
+  assert.deepEqual(comparable(engine.latest().snapshot), comparable(oracle));
 });
 
 test("an eligible native event meets the production 125 ms / 2 second latency contract", async (t) => {

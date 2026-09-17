@@ -384,3 +384,47 @@ Use new empty output directories for another reproduction. The initial
 `review-candidate`, `review-reconciliation`, `review-packaged`, and
 `review-packaged-public` artifacts are intermediate evidence, superseded by
 this accepted set. The rejected warm-up sample remains documented above.
+
+
+## Final merge-review runtime — 2026-09-16
+
+This section supersedes earlier runtime-current claims. Historical measurements
+above remain unchanged. Provider recovery status, metadata-root relocation, and
+coordinator identity separation were corrected after the prior accepted rerun.
+All 44 runtime hashes in the fresh artifacts match the final corrected source.
+The verifier passes **32 runs** against the same archived baseline.
+
+| Rails | Quiet CPU min (s) | Median (s) | Max (s) | Median vs baseline | Quiet Git launches |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.059999 | 0.066912 | 0.079010 | 3.403% | 0 |
+| 8 | 0.065179 | 0.069650 | 0.077132 | 0.440% | 0 |
+
+All six quiet samples launch zero Git processes. Every edit/burst case uses two
+provider builds and 34 Git launches, independent of one versus eight rails.
+Every ignored workload retains two classifier commands and zero provider builds;
+sibling-index workloads launch no Git commands. Poll-only recovery uses one
+17-command provider build. The six-minute eight-rail witness performs exactly
+one reconciliation and uses **22 Git launches**: 17 provider commands, three
+configuration/dependency queries, and two required metadata-root rediscovery
+queries. Its coordinator releases with no namespace residue.
+
+The reconciliation expectation changed explicitly from 20 to 22 to account for
+the correctness fix. CPU-ratio, quiet, edit-sharing, ignored-path, latency,
+cleanup, and coverage gates remain unchanged. Measurements still describe the
+isolated fixture, not sustained live Herdr CPU.
+
+The final packaged witness passes with archive SHA-256:
+`ba66922b8c6a41d3723411abb28f67a2580d3aad78ccc2414eca10245829320e`.
+Source snapshots precede final evidence-text updates; their recorded hashes
+remain unchanged, and the verifier compares the complete runtime inventory.
+
+Reproduction uses the same compare, six-minute reconciliation, and package
+commands above with new empty output directories. Final raw directories are
+`merge-final-accepted`, `merge-final-reconciliation`, and `merge-final-package`.
+
+```sh
+node scripts/verify-refresh-performance.mjs \
+  test-results/git-refresh/baseline test-results/git-refresh/merge-final-accepted \
+  test-results/git-refresh/merge-final-reconciliation \
+  test-results/git-refresh/merge-final-package
+```

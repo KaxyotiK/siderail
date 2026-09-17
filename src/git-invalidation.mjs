@@ -255,7 +255,9 @@ export async function createRepositoryWatcher({
       .filter((entry, index, entries) => entries.indexOf(entry) === index)
       .filter((entry, _index, entries) => !entries.some((other) => other !== entry && relativeInside(other, entry) !== null));
     const recursiveRoots = [...new Set([root, ...metadataRoots].filter(Boolean))];
-    for (const requested of new Set([root, gitDir, commonGitDir].filter(Boolean))) {
+    const requestedRoots = new Set([root, gitDir, commonGitDir].filter(Boolean));
+    for (const requested of rootIdentities.keys()) if (!requestedRoots.has(requested)) rootIdentities.delete(requested);
+    for (const requested of requestedRoots) {
       const identity = await watchedRootIdentity(requested);
       if (rootIdentities.has(requested) && JSON.stringify(rootIdentities.get(requested)) !== JSON.stringify(identity)) {
         metrics.identityChanges += 1; classifier.clearIgnore();
@@ -343,6 +345,13 @@ export async function createRepositoryWatcher({
     async reconcile(next) {
       snapshot = next || snapshot;
       classifier.clearIgnore(); configDirty = true;
+      if (shouldInstallWatchers(environment)) {
+        await installing;
+        const roots = snapshot.repoRoot ? await resolveGitWatchRoots(snapshot.repoRoot, { run }) : [];
+        root = snapshot.repoRoot || snapshot.cwd || context.cwd;
+        [gitDir = "", commonGitDir = gitDir] = roots;
+        classifier.setRoots({ repoRoot: root, gitDir, commonGitDir });
+      }
       await install();
     },
     async close() {

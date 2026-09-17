@@ -75,7 +75,9 @@ export function createRepositoryEngine({
   let scheduler;
   const deliveryStatus = () => {
     if (closed) return "closed";
-    if (scheduler?.status.providerFailed || lastError) return "error";
+    // The scheduler settles after run returns; its failure flag still describes
+    // the previous read while a recovered snapshot is being delivered.
+    if (lastError) return "error";
     if (!scheduler?.status.watchHealthy) return "degraded";
     return snapshot ? "healthy" : "starting";
   };

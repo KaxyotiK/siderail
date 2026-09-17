@@ -78,6 +78,8 @@ Context resolution is read-only and returns an immutable object. Paths are absol
 
 `engineKey` includes `kind`; canonical root; canonical gitdir/common-dir; selected index path; provider and scheduler config; Git executable identity; provider-environment digest; protocol/code version; and test-only provider options if such a context is deliberately shareable. It does **not** include current index inode because ordinary staging atomically replaces the index. Root/gitdir inode changes are liveness events on an existing key and require watcher reinstall plus a full read. A distinct selected index path (`GIT_INDEX_FILE`) is a distinct key.
 
+When a late subscriber resolves a different Git metadata/index identity at an existing worktree path, it receives a distinct engine with that identity and immutable context. Existing subscribers keep their original engine key and generation sequence until released; their watcher reconciliation still re-resolves current metadata roots. Scope-based migration is reserved for filesystem↔Git transitions.
+
 The executable is resolved using the client's effective `PATH`; identity includes canonical path and stat identity. IPC never accepts a command or executable path to run. The coordinator resolves its own executable and accepts sharing only when its identity equals the requested identity.
 
 ### Provider environment identity

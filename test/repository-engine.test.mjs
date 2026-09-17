@@ -119,6 +119,7 @@ test("watcher-reported degraded health is preserved and reconciliation checks ro
 
 test("refresh failure retains the last snapshot and later success clears the error", async () => {
   let attempt = 0;
+  const deliveries = [];
   const engine = createRepositoryEngine({
     context: { engineKey: "repo:failure", cwd: "/fixture" },
     readState: async () => {
@@ -131,13 +132,18 @@ test("refresh failure retains the last snapshot and later success clears the err
       return { close() {} };
     },
   });
+  engine.subscribe((delivery) => deliveries.push(delivery));
   await engine.ready;
   await assert.rejects(engine.refresh("failure"), /provider offline/);
   assert.deepEqual(engine.latest().snapshot, { attempt: 1 });
   assert.equal(engine.latest().status, "error");
   const recovered = await engine.refresh("retry");
   assert.deepEqual(recovered.snapshot, { attempt: 3 });
+  assert.equal(recovered.status, "healthy");
   await flush();
+  const recoveredDeliveries = deliveries.filter((delivery) => delivery.stateGeneration === recovered.stateGeneration);
+  assert.ok(recoveredDeliveries.length > 0);
+  assert.ok(recoveredDeliveries.every((delivery) => delivery.status === "healthy" && !delivery.error));
   assert.equal(engine.latest().status, "healthy");
   await engine.close();
 });

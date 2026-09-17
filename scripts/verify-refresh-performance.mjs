@@ -132,7 +132,7 @@ const long = result(reconciliationRoot, longGroup.runs[0].runId);
 const longLog = verifyRun(reconciliationRoot, long);
 assert.ok(long.measurement.wallSeconds >= 360);
 assert.equal(long.measurement.totals.providerBuilds, 1);
-assert.equal(long.measurement.totals.gitLaunches, 20); // 17 provider + 3 dependency probes.
+assert.equal(long.measurement.totals.gitLaunches, 22); // 17 provider + 3 dependency probes + 2 root-resolution probes.
 assert.equal(long.measurement.totals.snapshotPublishes, 8);
 const reconcileStart = longLog.filter((entry) => entry.operation === "repository-provider" && entry.phase === "start");
 assert.equal(reconcileStart.length, 1);

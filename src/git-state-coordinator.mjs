@@ -187,6 +187,9 @@ export function createGitStateCoordinator({
       const scope = identity.worktreeRoot || identity.canonicalCwd;
       entry = [...engines.values()].find((candidate) => (
         (candidate.identity.worktreeRoot || candidate.identity.canonicalCwd) === scope
+        // Only repository creation/removal migrates an existing scope. A new
+        // Git directory or index identity must get its own immutable context.
+        && candidate.identity.kind !== identity.kind
       ));
       if (entry) {
         engines.delete(entry.key);
