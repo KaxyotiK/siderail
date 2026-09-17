@@ -15,7 +15,7 @@ export const DEFAULT_CONFIG = deepFreeze({
     ".markdown": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: true },
     "*": { label: "Open", client: "system", args: [], mode: "external", key: "o", autoOpen: false },
   },
-  refresh: { pollIntervalMs: 10_000 },
+  refresh: { pollIntervalMs: 10_000, reconcileIntervalMs: 300_000 },
   limits: { maxFileBytes: 4 * 1024 * 1024, maxDiffBytes: 8 * 1024 * 1024 },
 });
 
@@ -123,10 +123,14 @@ export function validateConfig(config) {
   if (config.refresh !== undefined) {
     if (!isObject(config.refresh)) errors.push("refresh must be an object");
     else {
-      validateKeys(config.refresh, "refresh", new Set(["pollIntervalMs"]), errors);
+      validateKeys(config.refresh, "refresh", new Set(["pollIntervalMs", "reconcileIntervalMs"]), errors);
       const interval = config.refresh.pollIntervalMs;
       if (interval !== undefined && (!Number.isInteger(interval) || interval < 1_000 || interval > 300_000)) {
         errors.push("refresh.pollIntervalMs must be an integer from 1000 to 300000");
+      }
+      const reconcileInterval = config.refresh.reconcileIntervalMs;
+      if (reconcileInterval !== undefined && (!Number.isInteger(reconcileInterval) || reconcileInterval < 30_000 || reconcileInterval > 3_600_000)) {
+        errors.push("refresh.reconcileIntervalMs must be an integer from 30000 to 3600000");
       }
     }
   }
@@ -198,6 +202,12 @@ export function loadConfig(env = process.env) {
     const interval = /^\d+$/.test(text) ? Number(text) : NaN;
     if (Number.isSafeInteger(interval) && interval >= 1_000 && interval <= 300_000) config.refresh.pollIntervalMs = interval;
     else errors.push("GIT_RAIL_POLL_INTERVAL_MS: expected an integer from 1000 to 300000");
+  }
+  if (env.GIT_RAIL_RECONCILE_INTERVAL_MS !== undefined) {
+    const text = String(env.GIT_RAIL_RECONCILE_INTERVAL_MS).trim();
+    const interval = /^\d+$/.test(text) ? Number(text) : NaN;
+    if (Number.isSafeInteger(interval) && interval >= 30_000 && interval <= 3_600_000) config.refresh.reconcileIntervalMs = interval;
+    else errors.push("GIT_RAIL_RECONCILE_INTERVAL_MS: expected an integer from 30000 to 3600000");
   }
   errors.push(...validateConfig(config));
   return { config, errors: [...new Set(errors)] };

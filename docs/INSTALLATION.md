@@ -46,6 +46,18 @@ or terminal viewer.
 Herdr reads the linked checkout directly. To upgrade, close GitRail, update the
 checkout, run `npm ci --ignore-scripts` and `npm run check`, relink with
 `herdr plugin link .`, and reopen it.
+Herdr rails from a compatible checkout and host session share an on-demand
+Git-state coordinator. Each tab keeps its own UI; the coordinator owns the
+repository watchers, Git reads, and host-context reconciliation. No system
+service is installed. Standalone, demo/snapshot, and cmux launches use their
+own in-process state engine.
+
+Keep the complete `src/` directory and `scripts/git-state-coordinator.mjs` with
+the other launchers when copying or archiving a checkout. `npm run artifact:verify`
+checks the manifest entrypoints and their local runtime imports. Runtime
+namespaces include the canonical checkout, code contents, host socket, user,
+and effective Git context, so a candidate checkout does not reuse an installed
+checkout's coordinator.
 Until the first tagged release is available, upgrades follow the development
 branch and may include changes that have not completed release validation.
 
@@ -72,6 +84,20 @@ whose live process and terminal-instance identity prove that GitRail owns them,
 then unlinks `local.git-rail`. Restart Herdr and remove the checkout only after
 `herdr plugin list` reports that GitRail is absent. Optional pane ownership state lives in
 `~/.cache/herdr-gitrail/panes/` and contains only Herdr pane identifiers.
+
+Closing the last rail releases its shared repository engines and lets the
+coordinator exit automatically. Its socket and lease live in an owner-only
+runtime directory under a suitable `XDG_RUNTIME_DIR`, or `/tmp/git-railgun-<uid>`.
+Do not delete another running checkout's runtime directory or kill processes
+by a broad name match. A subsequent launch validates a stale owner's identity
+before reclaiming that namespace.
+
+To roll back a candidate, close its verified rails, allow its coordinator to
+exit, and link the previously validated checkout before reopening rails.
+The new healthy-reconciliation setting is optional: an older checkout requires
+removing `refresh.reconcileIntervalMs` from any configuration you added, because
+unknown configuration keys are rejected. Implementation and fixture validation
+do not themselves install or relink the candidate.
 
 ## Configuration
 

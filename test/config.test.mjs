@@ -40,7 +40,6 @@ test("file previews open in a dedicated Herdr tab", async () => {
   assert.match(rail, /"--entrypoint", "file-preview", "--placement", "tab"/);
   assert.match(rail, /oldSubmodule: file\.oldSubmodule/);
   assert.match(rail, /oldSymlink: file\.oldSymlink/);
-  assert.match(rail, /createLatestSerialQueue\(openPreview\)/);
   assert.match(rail, /openOwnedPreview/);
 });
 
@@ -86,18 +85,10 @@ test("manual refresh confirmation is transient", async () => {
   assert.match(rail, /clearTimeout\(statusTimer\)/);
 });
 
-test("only user-requested refreshes show toolbar progress", async () => {
-  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
-  assert.match(rail, /if \(announce\) \{ refreshVisible = true; draw\(\); \}/);
-  assert.match(rail, /refreshQueuedAnnounce \|\|= announce/);
-  assert.match(rail, /reportAsync\(refreshState\(queuedAnnounce\)\)/);
-  assert.doesNotMatch(rail, /setTimeout\([\s\S]{0,200}refreshVisible = true/);
-});
-
 test("configuration validates version, launch mode, and refresh bounds", () => {
   assert.deepEqual(validateConfig(DEFAULT_CONFIG), []);
-  assert.deepEqual(validateConfig({ version: 1, herdr: { autoOpen: false, sidebarWidth: 34 }, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000 } }), []);
-  assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2 } }).length >= 3);
+  assert.deepEqual(validateConfig({ version: 1, herdr: { autoOpen: false, sidebarWidth: 34 }, editor: { client: "nvim", args: [], mode: "terminal" }, refresh: { pollIntervalMs: 5000, reconcileIntervalMs: 60_000 } }), []);
+  assert.ok(validateConfig({ version: 2, editor: { client: "" }, refresh: { pollIntervalMs: 2, reconcileIntervalMs: 0 } }).length >= 4);
 });
 
 test("the shipped example is governed by runtime validation alone", async () => {
@@ -245,12 +236,14 @@ test("an explicit Glow TUI rule is preserved", async (t) => {
 test("environment overrides do not mutate built-in defaults", (t) => {
   const { environment } = hermeticEnvironment(t);
   const before = JSON.stringify(DEFAULT_CONFIG);
-  const first = loadConfig({ ...environment, GIT_RAIL_CLIENT_ARGS: '["-f"]', GIT_RAIL_POLL_INTERVAL_MS: "2000" });
+  const first = loadConfig({ ...environment, GIT_RAIL_CLIENT_ARGS: '["-f"]', GIT_RAIL_POLL_INTERVAL_MS: "2000", GIT_RAIL_RECONCILE_INTERVAL_MS: "60000" });
   const second = loadConfig(environment);
   assert.deepEqual(first.errors, []);
   assert.equal(JSON.stringify(DEFAULT_CONFIG), before);
   assert.deepEqual(second.config.editor.args, []);
   assert.equal(second.config.refresh.pollIntervalMs, 10_000);
+  assert.equal(first.config.refresh.reconcileIntervalMs, 60_000);
+  assert.equal(second.config.refresh.reconcileIntervalMs, 300_000);
 });
 
 test("editor integration is optional and EDITOR remains a fallback", (t) => {
@@ -273,11 +266,13 @@ test("invalid environment overrides report errors without replacing valid defaul
     GIT_RAIL_CLIENT_ARGS: "not-json",
     GIT_RAIL_CLIENT_MODE: "embedded",
     GIT_RAIL_POLL_INTERVAL_MS: "NaN",
+    GIT_RAIL_RECONCILE_INTERVAL_MS: "0",
   });
   assert.equal(config.baseRef, undefined);
   assert.deepEqual(config.editor, DEFAULT_CONFIG.editor);
   assert.equal(config.refresh.pollIntervalMs, DEFAULT_CONFIG.refresh.pollIntervalMs);
-  for (const variable of ["GIT_RAIL_BASE", "GIT_RAIL_CLIENT", "GIT_RAIL_CLIENT_ARGS", "GIT_RAIL_CLIENT_MODE", "GIT_RAIL_POLL_INTERVAL_MS"]) {
+  assert.equal(config.refresh.reconcileIntervalMs, DEFAULT_CONFIG.refresh.reconcileIntervalMs);
+  for (const variable of ["GIT_RAIL_BASE", "GIT_RAIL_CLIENT", "GIT_RAIL_CLIENT_ARGS", "GIT_RAIL_CLIENT_MODE", "GIT_RAIL_POLL_INTERVAL_MS", "GIT_RAIL_RECONCILE_INTERVAL_MS"]) {
     assert.ok(errors.some((error) => error.startsWith(`${variable}:`)), `${variable} should report its invalid value`);
   }
 });

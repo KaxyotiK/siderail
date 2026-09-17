@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { debugLog } from "./debug-log.mjs";
+
+const gitProcessStorage = new AsyncLocalStorage();
 
 export class ProcessError extends Error {
   constructor(message, details = {}) {
@@ -21,6 +24,7 @@ export function runCommand(command, args = [], options = {}) {
     killGraceMs = 250,
     waitForTermination = false,
     signal,
+    baseEnv,
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -31,7 +35,7 @@ export function runCommand(command, args = [], options = {}) {
     const startedAt = Date.now();
     const child = spawn(command, args, {
       cwd,
-      env: env ? { ...process.env, ...env } : process.env,
+      env: env ? { ...(baseEnv || process.env), ...env } : baseEnv || process.env,
       detached: process.platform !== "win32",
       shell: false,
       stdio: [stdinInput === undefined ? "ignore" : "pipe", "pipe", "pipe"],
@@ -157,11 +161,35 @@ export function runCommand(command, args = [], options = {}) {
 }
 
 export function runGit(cwd, args, options = {}) {
-  return runCommand("git", args, {
+  const context = gitProcessStorage.getStore();
+  const {
+    gitExecutable = context?.executable || "git",
+    baseEnv = context?.environment,
+    ...commandOptions
+  } = options;
+  if (commandOptions.signal === undefined && context?.signal) commandOptions.signal = context.signal;
+  return runCommand(gitExecutable, args, {
     cwd,
-    ...options,
+    ...commandOptions,
+    baseEnv,
     // Background reads must never refresh the index, even if a caller passes
     // an environment that enables Git's optional locks.
-    env: { ...(options.env || {}), GIT_OPTIONAL_LOCKS: "0" },
+    env: { ...(commandOptions.env || {}), GIT_OPTIONAL_LOCKS: "0" },
   });
+}
+
+export function withGitProcessContext({ environment = process.env, executable = "git", signal } = {}, callback) {
+  if (typeof callback !== "function") throw new TypeError("withGitProcessContext requires a callback");
+  if (!environment || typeof environment !== "object" || Array.isArray(environment)) {
+    throw new TypeError("Git process environment must be an object");
+  }
+  if (typeof executable !== "string" || !executable.trim()) {
+    throw new TypeError("Git executable must be a non-empty string");
+  }
+  const context = Object.freeze({
+    environment: Object.freeze({ ...environment }),
+    executable,
+    signal,
+  });
+  return gitProcessStorage.run(context, callback);
 }

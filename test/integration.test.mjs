@@ -346,7 +346,9 @@ test("refresh and commit details use one exact-copy diff scan per comparison", a
   t.after(() => removeFixtureRepository(root));
   let state;
   const refreshCommands = await traceGitCommands(t, async () => {
-    state = await repositoryState(t, root);
+    // The provider now honors its complete explicit environment, including
+    // trace settings; the hermetic helper deliberately strips ambient GIT_*.
+    state = await repositoryState(t, root, { env: { GIT_TRACE2_EVENT: process.env.GIT_TRACE2_EVENT } });
   });
   const refreshDiffs = refreshCommands.filter(([command]) => command === "diff");
   // Base-ref discovery can take a different number of cheap rev-parse calls

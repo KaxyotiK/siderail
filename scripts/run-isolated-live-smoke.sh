@@ -56,21 +56,50 @@ stop_server() {
   server_pid=""
 }
 
+verify_coordinator_cleanup() {
+  "$node_bin" --input-type=module - "$GIT_RAIL_PERFORMANCE_LOG" "$XDG_RUNTIME_DIR" <<'NODE'
+import fs from 'node:fs';
+import path from 'node:path';
+const [log, root] = process.argv.slice(2);
+const entries = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+const owners = entries.filter((entry) => entry.event === 'component' && entry.role === 'coordinator' && entry.phase === 'started');
+if (!owners.length) throw new Error('isolated live smoke did not exercise the shared coordinator');
+const deadline = Date.now() + 5000;
+function alive(pid) { try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } }
+function runtimeFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, {withFileTypes: true}).flatMap((entry) => {
+    const file = path.join(directory, entry.name);
+    return entry.isDirectory() ? runtimeFiles(file) : [file];
+  });
+}
+while (owners.some((owner) => alive(owner.pid)) || runtimeFiles(path.join(root, 'git-railgun')).length) {
+  if (Date.now() >= deadline) throw new Error('candidate coordinator process or owned socket/lease survived uninstall');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+console.log(`Verified cleanup of ${new Set(owners.map((owner) => owner.pid)).size} candidate coordinator(s)`);
+NODE
+}
+
 for watch_mode in watch-only poll-only; do
   if [[ $watch_mode = watch-only ]]; then mode_key=w; else mode_key=p; fi
   mode_root="$release_root/$mode_key"
   export XDG_CONFIG_HOME="$mode_root/c"
   export XDG_CACHE_HOME="$mode_root/k"
   export XDG_STATE_HOME="$mode_root/s"
+  export XDG_RUNTIME_DIR="$mode_root/r"
+  export GIT_RAIL_PERFORMANCE_LOG="$mode_root/components.jsonl"
   export HERDR_SESSION="gr${mode_key}${$}"
   export GIT_RAIL_WATCH_MODE=$watch_mode
   mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
+  mkdir -m 700 "$XDG_RUNTIME_DIR"
 
   start_server
   "$herdr_bin" plugin link "$candidate_root"
   (cd "$candidate_root" && env PATH="$release_bin" "$node_bin" scripts/live-herdr-smoke.mjs)
   (cd "$candidate_root" && env PATH="$release_bin" /bin/bash scripts/node-launcher.sh scripts/uninstall-herdr-plugin.mjs)
   test "$("$herdr_bin" plugin list)" = "No plugins installed."
+  verify_coordinator_cleanup
   stop_server
 
   start_server

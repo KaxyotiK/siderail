@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveHerdrTabCwd, selectTabContentPane } from "../src/herdr-context.mjs";
+import {
+  resolveHerdrTabCwd,
+  sameHerdrSnapshotContext,
+  selectHerdrSnapshotContext,
+  selectTabContentPane,
+} from "../src/herdr-context.mjs";
 
 test("content selection follows each tab's focused pane and ignores GitRail panes", () => {
   const panes = [
@@ -125,4 +130,46 @@ test("a moved rail resolves cwd from its current workspace instead of its launch
   });
   assert.ok(calls.some((args) => args.join(" ") === "pane list --workspace w2"));
   assert.equal(calls.some((args) => args.join(" ") === "pane list --workspace w1"), false);
+});
+
+test("snapshot context follows a moved rail by terminal identity and reports visibility", () => {
+  const snapshot = {
+    focused_workspace_id: "w2",
+    focused_tab_id: "w2:t4",
+    panes: [
+      { pane_id: "w2:p1", terminal_id: "content", workspace_id: "w2", tab_id: "w2:t4", foreground_cwd: "/repo" },
+      { pane_id: "w2:p3", terminal_id: "rail-terminal", workspace_id: "w2", tab_id: "w2:t4", label: "HERDR GITRAIL" },
+    ],
+    layouts: [{ workspace_id: "w2", tab_id: "w2:t4", focused_pane_id: "w2:p1", zoomed: false }],
+  };
+  assert.deepEqual(selectHerdrSnapshotContext(snapshot, {
+    railPaneId: "w1:p3",
+    railTerminalId: "rail-terminal",
+    fallbackCwd: "/old",
+  }), {
+    cwd: "/repo",
+    sourcePaneId: "w2:p1",
+    tabId: "w2:t4",
+    workspaceId: "w2",
+    railPaneId: "w2:p3",
+    railTerminalId: "rail-terminal",
+    hasContent: true,
+    visible: true,
+  });
+});
+
+test("snapshot context distinguishes hidden and no-content rails", () => {
+  const base = {
+    focused_workspace_id: "w1",
+    focused_tab_id: "w1:t2",
+    panes: [{ pane_id: "w1:p3", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "HERDR GITRAIL" }],
+    layouts: [{ workspace_id: "w1", tab_id: "w1:t1", focused_pane_id: "w1:p3", zoomed: false }],
+  };
+  const context = selectHerdrSnapshotContext(base, { railPaneId: "w1:p3", fallbackCwd: "/fallback" });
+  assert.equal(context.hasContent, false);
+  assert.equal(context.visible, false);
+  assert.equal(context.sourcePaneId, "");
+  assert.equal(context.cwd, "/fallback");
+  assert.equal(sameHerdrSnapshotContext(context, { ...context }), true);
+  assert.equal(sameHerdrSnapshotContext(context, { ...context, visible: true }), false);
 });

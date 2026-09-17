@@ -19,7 +19,9 @@ export function parseCommitLogZ(output) {
   const commits = [];
   for (let index = 0; index + 4 < fields.length; index += 5) {
     const [hash, shortHash, message, author, age] = fields.slice(index, index + 5);
-    if (hash) commits.push({ hash, shortHash, message, author, age });
+    if (hash) commits.push({ hash, shortHash, message, author,
+      ...(/^\d+$/.test(age) ? { authoredAtMs: Number(age) * 1_000 } : { age }),
+    });
   }
   return commits;
 }

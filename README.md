@@ -189,8 +189,8 @@ model keeps all applicable states rather than selecting one ambiguous status.
 A refresh is intentionally eventually consistent. GitRail assembles a frame
 from several bounded Git commands rather than claiming an atomic snapshot of
 HEAD, the index, and the worktree. A repository changing during refresh can
-briefly show adjacent states or counts; filesystem invalidation and the recovery
-poll converge on the next refresh. A failed refresh keeps the last usable state,
+briefly show adjacent states or counts; filesystem invalidation and bounded
+reconciliation converge on the next refresh. A failed refresh keeps the last usable state,
 and `r` always requests an immediate retry.
 
 ## Configuration
@@ -260,17 +260,27 @@ tab when Herdr starts or a workspace or tab is created. Disable that globally in
 
 Non-Git tabs and GitRail's own file-preview tabs are ignored. Manual **Open
 GitRail** actions remain available when automatic opening is disabled.
-Once open, each rail follows the focused content pane in its own tab. Changing
-that pane's directory updates the repository name and branch on refresh or the
-recovery poll, including transitions into and out of Git worktrees.
+Once open, each rail follows the focused content pane in its own tab. Host
+context is checked independently of Git state. Herdr 0.8.2 does not announce
+shell directory changes, so the context source uses bounded snapshots. An
+unchanged context does not run Git. Tabs without a content pane suspend their
+repository subscription; hidden rails retain the latest snapshot without
+redrawing. Visible commit ages advance locally once per minute.
 
-Filesystem events are a refresh optimization. GitRail watches the worktree, its
-absolute per-worktree Git directory, and the shared Git directory when the
-platform supports recursive watching. The jittered recovery poll remains the
-authoritative fallback when a watcher cannot be installed. It defaults to 10
-seconds, accepts 1–300 seconds, and varies each interval by ±10% to avoid refresh
-storms. Set `refresh.pollIntervalMs` in user configuration or
-`GIT_RAIL_POLL_INTERVAL_MS` for the process.
+Native filesystem events drive ordinary refreshes. GitRail watches relevant
+worktree and Git metadata, batches bursts, and caches Git's classification of
+ignored output. Healthy watchers use a full safety reconciliation every five
+minutes (±10%, at most 330 seconds by default). Set
+`refresh.reconcileIntervalMs` or `GIT_RAIL_RECONCILE_INTERVAL_MS` to an integer
+from 30,000 to 3,600,000 milliseconds; zero is invalid.
+
+A failed watcher or `poll-only` mode uses `refresh.pollIntervalMs` /
+`GIT_RAIL_POLL_INTERVAL_MS` instead: default 10,000 ms, accepted range
+1,000–300,000 ms, with ±10% jitter. **Compatibility change:** an existing
+`pollIntervalMs: 1000` now controls degraded recovery, not healthy one-second
+full reads. Existing configuration remains valid and is never rewritten.
+Successful full reads reset the safety deadline. Failures keep the last valid
+state, expose degraded status, and retry watchers with bounded backoff.
 
 New rails open at the configured terminal-column width. The installed default
 matches the 34-column development rail; narrower layouts cap the rail at half
@@ -356,12 +366,14 @@ For example, two global actions can share the wildcard pattern:
 
 Supported overrides include `GIT_RAIL_BASE`, `GIT_RAIL_CLIENT`,
 `GIT_RAIL_CLIENT_ARGS` (a JSON string array), `GIT_RAIL_CLIENT_MODE`, and
-`GIT_RAIL_POLL_INTERVAL_MS`. Set `GIT_RAIL_DEBUG_LOG` to an explicit file path
+`GIT_RAIL_POLL_INTERVAL_MS`, and `GIT_RAIL_RECONCILE_INTERVAL_MS`. Set `GIT_RAIL_DEBUG_LOG` to an explicit file path
 for sanitized operation names, timestamps, durations, and exit status; source,
 diffs, environment values, and command arguments are never logged.
 Release validation may set `GIT_RAIL_WATCH_MODE` to `watch-only` or `poll-only`
 to prove the two invalidation paths independently. Ordinary runs leave it unset
-and retain both filesystem invalidation and the recovery poll.
+and retain filesystem invalidation plus infrequent healthy reconciliation.
+`watch-only` still retains the safety reconciliation and explicit error recovery;
+`poll-only` disables filesystem watchers and uses the degraded interval.
 
 Explicit `terminal`, `external`, and viewer-only `embedded` modes override
 executable heuristics. `system` uses macOS `open` or Linux `xdg-open`; `none`

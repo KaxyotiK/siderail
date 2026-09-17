@@ -10,7 +10,7 @@ import {
   statusName,
 } from "./git-parsers.mjs";
 import { buildPathIndex } from "./model.mjs";
-import { ProcessError, runGit } from "./process.mjs";
+import { ProcessError, runGit, withGitProcessContext } from "./process.mjs";
 
 const UNTRACKED_STATS_FILE_LIMIT = 256;
 const UNTRACKED_STATS_BYTE_LIMIT = 16 * 1024 * 1024;
@@ -435,7 +435,7 @@ async function commitState(repoRoot, baseRef) {
   };
   const range = `${baseRef}..HEAD`;
   const [log, countText] = await Promise.all([
-    gitText(repoRoot, ["log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H%x00%h%x00%s%x00%an%x00%ar", range]),
+    gitText(repoRoot, ["log", "--first-parent", `--max-count=${HISTORY_LIMIT}`, "-z", "--format=%H%x00%h%x00%s%x00%an%x00%at", range]),
     gitText(repoRoot, ["rev-list", "--first-parent", "--count", range]),
   ]);
   const commits = parseCommitLogZ(log);
@@ -476,6 +476,13 @@ export async function getCommitFiles(repoRoot, commitHash, maxOutputBytes = 16 *
 }
 
 export async function getRepositoryState(cwd, options = {}) {
+  if (!options.gitProcessContext && (options.env || options.gitExecutable)) {
+    return withGitProcessContext({
+      environment: options.env || process.env,
+      executable: options.gitExecutable || "git",
+      signal: options.signal,
+    }, () => getRepositoryState(cwd, { ...options, gitProcessContext: true }));
+  }
   const repoRoot = await resolveRepository(cwd);
   if (!repoRoot) {
     const { config, errors: configErrors } = loadConfig(options.env || process.env);
