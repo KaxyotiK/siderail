@@ -5,10 +5,10 @@ and 100 terminal columns. Each one renders the exact bytes
 `scripts/siderail.mjs --demo --snapshot` writes at that width, with its complete
 boundary and footer; the content is not cropped or hand-edited.
 
-- Visual source: `a1046a00386620c74315b93bdd92c8ffe19e1df3`
-- Capture source: `a1046a00386620c74315b93bdd92c8ffe19e1df3`
+- Visual source: `6ae7649f7e2d95e8d7f0e69e15a92cfed9af9f31`
+- Capture source: `6ae7649f7e2d95e8d7f0e69e15a92cfed9af9f31`
 - Herdr: `0.8.2`
-- Captured: `2026-09-01`, macOS 26.5.2
+- Captured: `2026-09-23`, macOS 26.6.2
 
 | Narrow (36) | Standard (52) | Wide (100) |
 | --- | --- | --- |
