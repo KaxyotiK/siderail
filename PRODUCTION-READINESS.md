@@ -36,7 +36,7 @@ the current checkout is not tag-ready.
 | L5 | Node 22/24 checks enforce 95/86/95 coverage floors; exact archive, poisoned environment, and dependency audit are local gates | `npm run check`, `docs/RELEASING.md` | macOS/Linux | candidate pass |
 | L6 | 36/52/100-column PNG bytes match the capture-source commit and candidate output matches the visual-source commit | `npm run screenshots:verify`, `docs/screenshots/README.md` | real Herdr | pending new candidate |
 | L7 | Security policy has no fictional reporting channel or response promise | `SECURITY.md` review and documentation assertion | n/a | candidate pass |
-| L2 | Candidate checks, artifact, live behavior, uninstall, and screenshots are bound to one SHA and retained as hashed logs | `scripts/release-evidence.mjs`, `docs/RELEASING.md` eight-cell contract | macOS/Linux | pending new candidate |
+| L2 | Candidate checks, artifact, live behavior, uninstall, and screenshots are bound to one SHA and retained as hashed logs | `scripts/release-evidence.mjs`, `docs/RELEASING.md` nine-cell contract, including the npm install lifecycle | macOS/Linux | pending new candidate |
 
 ## Release gate
 

@@ -217,6 +217,41 @@ test "$(git rev-parse HEAD)" = "$candidate_sha"
 test -z "$(git status --porcelain)"
 ```
 
+## npm install lifecycle
+
+Run this block in the coordinator shell on macOS or Linux with Herdr 0.8.x and
+Node 22 or 24. `scripts/verify-npm-install.sh` packs the candidate from
+`git archive`, installs it globally into a private npm prefix, and runs
+`siderail setup` against a private Herdr session and a private cmux `HOME`. It
+then upgrades to a patch-bumped package while a rail is open and proves that
+the rail restarts onto the new install in place, that toggle still verifies it,
+and that `siderail uninstall` leaves no registration or process behind. It
+never reads or writes the operator's Herdr, cmux, or npm configuration. The
+verified tarball is kept for publishing.
+
+```bash
+set -euo pipefail
+case "$(uname -s)" in
+  Darwin) platform="macOS $(sw_vers -productVersion)" ;;
+  Linux) platform="Linux $(. /etc/os-release && printf '%s' "$PRETTY_NAME")" ;;
+  *) echo "the npm install lifecycle requires macOS or Linux" >&2; exit 1 ;;
+esac
+npm_log="$evidence_root/npm-install.log"
+test ! -e "$evidence_root/package"
+{
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+  HERDR_BIN_PATH=$(command -v herdr) /bin/bash scripts/verify-npm-install.sh \
+    "$candidate_sha" "$evidence_root/package"
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+} 2>&1 | tee "$npm_log"
+npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+  --cell npm-install --command "pack; global install; setup; in-place upgrade; uninstall" \
+  --status pass --evidence-file "$npm_log" --platform "$platform" \
+  --node "$(node --version)" --herdr "$(herdr --version)"
+```
+
 ## Screenshots
 
 The verifier checks PNG dimensions, requires exact PNG-byte equality with the
@@ -243,7 +278,7 @@ npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidat
 
 ## Verify and seal
 
-All eight required cells must pass before evidence can be sealed:
+All nine required cells must pass before evidence can be sealed:
 
 ```bash
 set -euo pipefail
@@ -266,7 +301,7 @@ npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidat
   --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
 ```
 
-The evidence-only direct-child commit contains the manifest and all eight hashed
+The evidence-only direct-child commit contains the manifest and all nine hashed
 logs. L2b is complete only after that commit is reviewed and retained in the
 repository. A subsequent status-only documentation commit may mark L2b and the
 readiness rows complete while naming both immutable SHAs. Creating or pushing
@@ -280,3 +315,23 @@ git show --no-patch v0.1.0
 ```
 
 Do not move an existing tag.
+
+## Publish to npm
+
+Publishing requires the pushed `v0.1.0` tag and its own explicit
+authorization. Publish the exact tarball that the npm install lifecycle
+verified, after checking its digest against the sealed log:
+
+```bash
+set -euo pipefail
+tarball="$evidence_root/package/siderail-0.1.0.tgz"
+test -f "$tarball"
+digest=$(shasum -a 256 "$tarball" | cut -d' ' -f1)
+grep -q "siderail-0.1.0.tgz: .* sha256 $digest\$" "release-evidence/0.1.0/$candidate_sha/files/npm-install.log"
+test "$(git rev-parse "v0.1.0^{commit}")" = "$candidate_sha"
+npm publish "$tarball" --access public
+npm view siderail@0.1.0 version
+```
+
+npm does not allow a published version to be reused. A defect found after
+publishing ships as a new patch version through a new candidate.

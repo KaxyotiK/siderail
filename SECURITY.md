@@ -2,9 +2,9 @@
 
 ## Supported versions
 
-SideRail is currently unreleased, with no tagged releases. Security fixes target
-the `main` development branch. After the first release, security fixes will
-target the latest tagged release.
+Security fixes target the latest release of the `siderail` npm package and the
+`main` branch. Update with `npm install -g siderail@latest`; open sidebars
+restart onto the fixed version automatically.
 
 ## Reporting a vulnerability
 

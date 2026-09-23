@@ -34,7 +34,7 @@ test("public installation and release evidence instructions enforce the candidat
   assert.match(readme, /macOS or Linux/);
   assert.doesNotMatch(releasing, /record-ci|gh workflow|gh run/);
   assert.match(releasing, /record-file/);
-  assert.match(releasing, /All eight required/);
+  assert.match(releasing, /All nine required/);
   assert.match(releasing, /for live_cell in live-macos live-linux/);
   assert.match(releasing, /live-macos-handoff/);
   assert.match(releasing, /live-linux-handoff/);

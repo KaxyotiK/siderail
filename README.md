@@ -1,7 +1,5 @@
 # SideRail
 
-*Why Railgun? `siderail` was taken—and because Quake. It's a sidebar.*
-
 SideRail is a compact, read-only sidebar for a Herdr tab's current
 directory. Inside a worktree, every row retains its exact Git scope, so
 Against-base, Commit, Staged, Unstaged, Untracked, and clean-file previews
@@ -18,7 +16,7 @@ cmux's left/custom-sidebar interpreter or ExtensionKit. See
 
 - Node.js 22 or newer
 - Git 2.35 or newer
-- Herdr 0.8.x
+- Herdr 0.8.x, cmux, or both
 - macOS or Linux
 
 The Herdr host requires Herdr 0.8.x. The cmux host instead requires a cmux
@@ -36,29 +34,30 @@ application, bypassing the generic Diff/Raw preview entirely.
 
 ## Install and launch
 
-SideRail is currently an unreleased development checkout. No tagged release is
-available yet; see [production readiness](PRODUCTION-READINESS.md) for the
-current release status.
-
-Clone the repository and install its development dependencies:
+Install the package globally, then register it with your hosts:
 
 ```bash
-git clone https://github.com/KaxyotiK/siderail.git
-cd siderail
-npm ci --ignore-scripts
-npm run check
+npm install -g siderail
+siderail setup
 ```
+
+`siderail setup` configures every host it finds: it links the install as
+Herdr's `siderail` plugin and adds a SideRail control to cmux's global Dock
+configuration. Run `siderail setup herdr` or `siderail setup cmux` to configure
+one host. Setup is safe to repeat; it changes nothing when the registrations
+already point at this install. `siderail status` shows the installed version and
+each host's registration.
 
 ### Herdr
 
-Link the checkout and open the sidebar:
+Open the sidebar in the current tab:
 
 ```bash
-herdr plugin link .
 herdr plugin action invoke siderail.open-siderail
 ```
 
-SideRail also declares `siderail.toggle-siderail`, which opens or closes
+After setup, SideRail also opens without taking focus in Git-backed tabs created
+later. SideRail also declares `siderail.toggle-siderail`, which opens or closes
 the verified plugin-owned sidebar in the current tab. Key bindings belong to
 Herdr rather than SideRail configuration. For example:
 
@@ -93,16 +92,50 @@ terminal output using a reference dark palette; see
 
 ### cmux Dock
 
-This checkout includes `.cmux/dock.json`. After running the install and check
-commands above, review the Dock control and accept cmux's project trust prompt.
-A direct development launch is also available from a cmux terminal in this
-checkout:
+`siderail setup` adds a `siderail` control to `~/.config/cmux/dock.json`,
+cmux's personal Dock configuration, and leaves any other controls in place.
+cmux seeds new Docks from that file; use cmux's Dock config reload for a Dock
+that is already open. A project with its own `.cmux/dock.json` uses that file
+instead. See the [cmux guide](docs/CMUX.md).
+
+### Update
 
 ```bash
-npm run cmux:launch
+npm install -g siderail@latest
 ```
 
-See the [cmux guide](docs/CMUX.md) to use SideRail with another project.
+Open sidebars notice the replaced install and restart on the new version in
+place within a few seconds. If you switch Node versions with a version manager
+such as nvm, fnm, or Volta, the global install moves; `siderail status` reports
+the stale registration and `siderail setup` repoints it.
+
+### Uninstall
+
+```bash
+siderail uninstall
+npm uninstall -g siderail
+```
+
+`siderail uninstall` removes only registrations that point at this install. In
+Herdr it first closes the sidebars it can prove it owns, so Herdr must be
+running. Configuration in `~/.config/siderail/` is left in place.
+
+### From a checkout
+
+To develop SideRail, clone the repository, install its development
+dependencies, and link the checkout instead of the npm package:
+
+```bash
+git clone https://github.com/KaxyotiK/siderail.git
+cd siderail
+npm ci --ignore-scripts
+npm run check
+herdr plugin link .
+```
+
+The checkout's `.cmux/dock.json` offers the same Dock control as a project
+config; review it and accept cmux's project trust prompt, or run
+`npm run cmux:launch` from a cmux terminal in the checkout.
 
 ## Interaction
 

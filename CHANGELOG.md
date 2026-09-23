@@ -81,6 +81,16 @@ intentional configuration changes documented here.
 
 ### Installation and upgrade
 
+- Publishes as the `siderail` npm package with a `siderail` command:
+  `siderail setup` links the install as Herdr plugin `siderail` and adds a
+  SideRail control to cmux's global `~/.config/cmux/dock.json`;
+  `siderail status` reports each host's registration and flags stale ones;
+  `siderail uninstall` removes only this install's registrations.
+- Updates with `npm install -g siderail@latest`. Open sidebars detect the
+  replaced install and restart on the new version in place.
+- Renames the pre-release project from GitRail to SideRail: plugin id
+  `siderail`, `~/.config/siderail/`, `SIDERAIL_*` environment variables, and
+  the `branch.<name>.siderail-base` Git config key.
 - Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS and Linux through
   reproducible local release checks. The project does not use GitHub Actions.
 - Keeps owner-only exact-revision copies available to detached external viewers
@@ -88,6 +98,6 @@ intentional configuration changes documented here.
 - Routes all manifest entrypoints through a launcher that resolves an absolute
   Node executable and rejects unsupported versions before layout or terminal
   mutation.
-- This is the first release, so no public upgrade or migration path exists.
-  Pre-release checkouts should be unlinked and installed again from the release
-  candidate.
+- This is the first release, so no upgrade or migration path from earlier
+  versions exists. Remove a pre-release checkout's link (plugin
+  `local.git-rail`) and Dock control, then install the package.

@@ -25,6 +25,9 @@ function metadataFor(cell) {
   if (cell === "live-linux") {
     return { platform: "Linux Ubuntu 24.04", node: "v24.6.0", herdr: "herdr 0.8.2" };
   }
+  if (cell === "npm-install") {
+    return { platform: "macOS 26.0", node: "v24.6.0", herdr: "herdr 0.8.2" };
+  }
   if (cell === "screenshots") return { visualSourceSha: SHA, captureSourceSha: SHA };
   return {};
 }
@@ -53,7 +56,7 @@ test("archive member verification rejects local-only and removed artifacts", () 
   assert.throws(() => validateArchiveMembers(`${required}schema/v1/config.json\n`), /forbidden/);
 });
 
-test("release evidence binds eight hashed local logs to one candidate", (context) => {
+test("release evidence binds nine hashed local logs to one candidate", (context) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-evidence-"));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, "evidence.json");

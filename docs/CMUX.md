@@ -21,7 +21,29 @@ running Git. See [refresh recovery settings](TROUBLESHOOTING.md#state-appears-st
   CLI commands
 - macOS (cmux's supported host platform)
 
-Run the checks before trusting a project Dock config:
+## Global Dock control
+
+Install the package and add its Dock control to cmux's personal configuration:
+
+```bash
+npm install -g siderail
+siderail setup cmux
+```
+
+Setup adds a control with id `siderail` to `~/.config/cmux/dock.json`, or
+updates that control's command when the install has moved, and keeps every
+other control and top-level key. Its command runs the installed
+`scripts/cmux-node-launcher.sh` and `scripts/cmux-siderail.mjs` by absolute
+path, quoted for the Dock terminal's login shell, with `cwd` set to `.`. cmux
+starts the global configuration without a project trust gate. It applies in
+every project that does not have its own `.cmux/dock.json`; inside a project
+that does, add the same control to that project's file or use the direct
+launch below. Do not commit the machine-specific absolute install path to a
+shared project config.
+
+## Project Dock control
+
+Run the checks before trusting a project Dock config in a development checkout:
 
 ```bash
 npm ci --ignore-scripts
@@ -29,9 +51,7 @@ npm run check
 python3 -m json.tool .cmux/dock.json
 ```
 
-## Project Dock control
-
-This checkout includes [`.cmux/dock.json`](../.cmux/dock.json):
+The checkout includes [`.cmux/dock.json`](../.cmux/dock.json):
 
 ```json
 {
@@ -58,10 +78,6 @@ this workspace already has a restored or intentionally empty Dock, use cmux's
 Dock config reload action or the direct launch command below. Closing a seeded
 control and saving the session intentionally keeps it closed on restart.
 
-To use the control in another repository, copy the control into that
-repository's `.cmux/dock.json` and make its command resolve this SideRail
-checkout (or a packaged installation) explicitly. Do not commit a
-machine-specific absolute path to a shared project config.
 
 ## Direct launch
 
@@ -134,11 +150,17 @@ duplicate preview. Enter remains the fully deterministic keyboard open action.
 
 ## Remove or upgrade
 
-Remove the `siderail` control from the applicable `dock.json`, validate the
-JSON, and reload the Dock config. That affects only the Dock control; it does
-not unlink or alter the Herdr plugin. To upgrade, update this checkout, run
-`npm ci --ignore-scripts` and `npm run check`, then reload or relaunch the Dock
-control.
+`siderail uninstall cmux` removes the `siderail` control from
+`~/.config/cmux/dock.json`; reload the Dock config for an open Dock. That
+affects only the Dock control; it does not unlink or alter the Herdr plugin.
+For a project config, remove the control from that `.cmux/dock.json`, validate
+the JSON, and reload the Dock config.
+
+To upgrade, run `npm install -g siderail@latest`. The control's path does not
+change, and an open SideRail Dock terminal detects the replaced install and
+restarts on the new version in the same surface. In a development checkout,
+update the checkout, run `npm ci --ignore-scripts` and `npm run check`, then
+reload or relaunch the Dock control.
 
 ## Maintainer details
 
