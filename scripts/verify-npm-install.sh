@@ -155,6 +155,23 @@ for _ in $(seq 1 150); do reopened=$(rail_in_tab "$tab"); [[ -n $reopened ]] && 
 [[ -n $reopened ]] || fail "toggle did not reopen the rail"
 echo "rail reopened as $reopened"
 
+step "a rail whose launcher alone is killed exits instead of lingering"
+pids=$("$herdr_bin" pane process-info --pane "$reopened" | json '
+  const f=j.result.process_info.foreground_processes;
+  const launcher=f.find((p)=>p.argv.includes("scripts/node-launcher.sh"));
+  const rail=f.find((p)=>/node$/.test(p.argv[0])&&p.argv.includes("scripts/siderail.mjs"));
+  if(!launcher||!rail)process.exit(1);
+  process.stdout.write(`${launcher.pid} ${rail.pid}`)') || fail "could not identify the rail's launcher and Node processes"
+read -r launcher_pid rail_pid <<<"$pids"
+kill -TERM "$launcher_pid"
+for _ in $(seq 1 50); do kill -0 "$rail_pid" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$rail_pid" 2>/dev/null; then fail "rail $rail_pid kept running after its launcher $launcher_pid was killed"; fi
+echo "rail $rail_pid exited after its launcher $launcher_pid was killed"
+"$herdr_bin" plugin action invoke siderail.toggle-siderail >/dev/null
+reopened=""
+for _ in $(seq 1 150); do reopened=$(rail_in_tab "$tab"); [[ -n $reopened ]] && break; sleep 0.2; done
+[[ -n $reopened ]] || fail "toggle did not reopen the rail for uninstall"
+
 step "siderail uninstall removes only this install's registrations"
 "$siderail" uninstall
 test "$("$herdr_bin" plugin list)" = "No plugins installed." || fail "the Herdr plugin is still linked"
