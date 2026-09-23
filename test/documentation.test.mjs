@@ -119,3 +119,16 @@ test("sealed evidence is excluded from later archives and preserves terminal byt
   assert.match(attributes, /^\/release-evidence\/ export-ignore$/m);
   assert.match(attributes, /^\/release-evidence\/\*\*\/\*\.log -whitespace$/m);
 });
+
+test("the Docker Linux worker pins a checksummed Herdr and is part of the release runbook", async () => {
+  const releasing = await fs.readFile("docs/RELEASING.md", "utf8");
+  const dockerfile = await fs.readFile("scripts/linux-worker/Dockerfile", "utf8");
+  const worker = await fs.readFile("scripts/run-linux-worker.sh", "utf8");
+  assert.match(releasing, /scripts\/run-linux-worker\.sh "\$candidate_sha" "\$evidence_root\/live-linux-handoff"/);
+  assert.match(dockerfile, /ARG HERDR_VERSION=0\.8\.\d+/);
+  assert.equal((dockerfile.match(/sum=[0-9a-f]{64}/g) || []).length, 2);
+  assert.match(dockerfile, /sha256sum -c -/);
+  assert.match(worker, /--volume "\$git_directory:\/source\.git:ro"/);
+  assert.match(worker, /--interactive/);
+  assert.match(worker, /did not write/);
+});

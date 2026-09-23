@@ -190,6 +190,23 @@ herdr --version > "$handoff_root/herdr.txt"
 chmod 600 "$handoff_root"/*
 ```
 
+The Linux worker can run on the coordinator's Mac in Docker instead of on a
+separate Linux host, which needs no hosted CI. `scripts/run-linux-worker.sh`
+builds `scripts/linux-worker/Dockerfile` (Debian 12, the chosen Node major, and
+Herdr 0.8.2 verified against a pinned SHA-256), clones the candidate from this
+repository's Git directory mounted read-only, runs the same live smoke, and
+writes the handoff directly to its final path. It refuses to report success
+unless every handoff file exists and names the candidate. Docker Desktop runs
+the container on its own Linux VM kernel; a physical Linux host running the
+block above remains equally acceptable.
+
+```bash
+set -euo pipefail
+test "$(git rev-parse HEAD)" = "$candidate_sha"
+test -z "$(git status --porcelain)"
+/bin/bash scripts/run-linux-worker.sh "$candidate_sha" "$evidence_root/live-linux-handoff" 24
+```
+
 Transfer both completed directories to the coordinator without changing their
 contents, naming them `$evidence_root/live-macos-handoff` and
 `$evidence_root/live-linux-handoff`. Then, back in the original coordinator

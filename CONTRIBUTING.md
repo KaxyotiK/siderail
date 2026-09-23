@@ -13,7 +13,10 @@ npm run snapshot
 
 Changes to packaging, `siderail setup`, or the launchers must also pass
 `npm run install:verify`, which installs the committed package into a private
-npm prefix, Herdr session, and cmux `HOME`.
+npm prefix, Herdr session, and cmux `HOME`. To repeat it and the live smoke on Linux
+without a Linux machine, run
+`scripts/run-linux-worker.sh HEAD <new-absolute-directory> 24 npm-install` or
+`... 24 live` with Docker; the log lands in that directory.
 
 Changes to Git parsing or previews must include a disposable-repository test
 that independently checks the expected Git command. UI changes must cover a
