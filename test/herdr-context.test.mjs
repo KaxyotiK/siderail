@@ -11,7 +11,7 @@ test("content selection follows each tab's focused pane and ignores SideRail pan
   const panes = [
     { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/repo/one" },
     { pane_id: "w1:p2", tab_id: "w1:t1", foreground_cwd: "/repo/two" },
-    { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER SIDERAIL" },
+    { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDR GITRAIL" },
     { pane_id: "w1:p4", tab_id: "w1:t1", label: "SIDERAIL" },
   ];
   assert.equal(selectTabContentPane(panes, { focused_pane_id: "w1:p2" }, {
@@ -40,7 +40,7 @@ test("live cwd resolution is scoped to the rail's own tab", async () => {
       return { stdout: JSON.stringify({ result: { panes: [
         { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/other-tab" },
         { pane_id: "w1:p2", tab_id: "w1:t2", foreground_cwd: "/repo/current" },
-        { pane_id: "w1:p3", tab_id: "w1:t2", label: "HERDER SIDERAIL" },
+        { pane_id: "w1:p3", tab_id: "w1:t2", label: "HERDR GITRAIL" },
       ] } }) };
     }
     return { stdout: JSON.stringify({ result: { layout: { focused_pane_id: "w1:p2" } } }) };
@@ -63,7 +63,7 @@ test("a focused SideRail Demo never becomes the main rail's content source", () 
   const panes = [
     { pane_id: "w1:p1", foreground_cwd: "/repo/customer" },
     { pane_id: "w1:p2", foreground_cwd: "/plugin", label: "SideRail Demo" },
-    { pane_id: "w1:p3", label: "HERDER SIDERAIL" },
+    { pane_id: "w1:p3", label: "HERDR GITRAIL" },
   ];
   assert.equal(selectTabContentPane(panes, { focused_pane_id: "w1:p2" }, {
     railPaneId: "w1:p3",
@@ -82,7 +82,7 @@ test("a stored SideRail Demo source is discarded in favor of real tab content", 
       return { stdout: JSON.stringify({ result: { panes: [
         { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/repo/customer" },
         { pane_id: "w1:p2", tab_id: "w1:t1", foreground_cwd: "/plugin", label: "SideRail Demo" },
-        { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER SIDERAIL" },
+        { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDR GITRAIL" },
       ] } }) };
     }
     return { stdout: JSON.stringify({ result: { layout: { focused_pane_id: "w1:p3" } } }) };
@@ -112,7 +112,7 @@ test("a moved rail resolves cwd from its current workspace instead of its launch
     if (args[0] === "pane" && args[1] === "list") {
       return { stdout: JSON.stringify({ result: { panes: [
         { pane_id: "w2:p1", tab_id: "w2:t4", foreground_cwd: "/new/repo" },
-        { pane_id: "w2:p3", tab_id: "w2:t4", label: "HERDER SIDERAIL" },
+        { pane_id: "w2:p3", tab_id: "w2:t4", label: "HERDR GITRAIL" },
       ] } }) };
     }
     return { stdout: JSON.stringify({ result: { layout: { focused_pane_id: "w2:p1" } } }) };

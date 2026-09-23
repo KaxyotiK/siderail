@@ -11,7 +11,7 @@ import { runCommand } from "../src/process.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 
-const RAIL_LABELS = new Set(["SIDERAIL", "HERDER SIDERAIL"]);
+const RAIL_LABELS = new Set(["SIDERAIL", "HERDR GITRAIL"]);
 assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
 const DEMO_LABEL = "SideRail Demo";

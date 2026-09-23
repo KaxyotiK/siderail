@@ -4,7 +4,7 @@ function parseJson(value) {
 
 const SIDERAIL_LABELS = new Set([
   "SIDERAIL",
-  "HERDER SIDERAIL",
+  "HERDR GITRAIL",
   "Grove Git Rail",
   "SideRail Demo",
   "SideRail Preview",

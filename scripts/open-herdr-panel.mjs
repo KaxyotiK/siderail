@@ -26,7 +26,7 @@ const PLUGIN_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const ENTRYPOINT_IDENTITIES = Object.freeze({
   // Linked-checkout upgrades can leave panes with the older title running.
-  "git-tui": { current: [RAIL_LABEL, "HERDER SIDERAIL"], legacy: [LEGACY_RAIL_LABEL] },
+  "git-tui": { current: [RAIL_LABEL, "HERDR GITRAIL"], legacy: [LEGACY_RAIL_LABEL] },
   "git-mockup": { current: [DEMO_LABEL], legacy: [] },
 });
 

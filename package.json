@@ -2,8 +2,16 @@
   "name": "siderail",
   "version": "0.1.0",
   "description": "A compact, read-only Files and Git sidebar for Herdr and cmux",
+  "keywords": [
+    "herdr",
+    "herdr-plugin",
+    "cmux",
+    "git",
+    "sidebar",
+    "tui",
+    "terminal"
+  ],
   "type": "module",
-  "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/KaxyotiK/siderail.git"
@@ -15,6 +23,33 @@
   "engines": {
     "node": ">=22"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "bin": {
+    "siderail": "scripts/cli.mjs"
+  },
+  "files": [
+    "src/",
+    "scripts/auto-open-herdr-tabs.mjs",
+    "scripts/cli.mjs",
+    "scripts/cmux-node-launcher.sh",
+    "scripts/cmux-siderail.mjs",
+    "scripts/file-preview.mjs",
+    "scripts/git-state-coordinator.mjs",
+    "scripts/node-launcher.sh",
+    "scripts/open-herdr-panel.mjs",
+    "scripts/open-herdr-panel.sh",
+    "scripts/resize-herdr-sidebar.mjs",
+    "scripts/siderail.mjs",
+    "scripts/temporary-copy-cleaner.mjs",
+    "scripts/uninstall-herdr-plugin.mjs",
+    "herdr-plugin.toml",
+    "siderail.config.example.json",
+    "CHANGELOG.md",
+    "docs/*.md"
+  ],
   "scripts": {
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "lint": "node scripts/lint.mjs && eslint . && knip --include exports",
@@ -38,7 +73,14 @@
     "knip": "6.34.0"
   },
   "knip": {
-    "entry": ["scripts/*.mjs", "test/*.test.mjs"],
-    "project": ["src/**/*.mjs", "scripts/**/*.mjs", "test/**/*.mjs"]
+    "entry": [
+      "scripts/*.mjs",
+      "test/*.test.mjs"
+    ],
+    "project": [
+      "src/**/*.mjs",
+      "scripts/**/*.mjs",
+      "test/**/*.mjs"
+    ]
   }
 }

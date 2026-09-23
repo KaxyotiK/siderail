@@ -10,7 +10,7 @@ assertSupportedNode();
 
 const OWNED_LABELS = new Map([
   ["SIDERAIL", { script: "scripts/siderail.mjs", demo: false }],
-  ["HERDER SIDERAIL", { script: "scripts/siderail.mjs", demo: false }],
+  ["HERDR GITRAIL", { script: "scripts/siderail.mjs", demo: false }],
   ["Grove Git Rail", { script: "scripts/siderail.mjs", demo: false }],
   ["SideRail Demo", { script: "scripts/siderail.mjs", demo: true }],
   ["SideRail Preview", { script: "scripts/file-preview.mjs", demo: false }],

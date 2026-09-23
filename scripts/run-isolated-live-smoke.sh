@@ -108,7 +108,7 @@ for watch_mode in watch-only poll-only; do
   unlink_tab=$("$node_bin" -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).result.tab.tab_id)' <<<"$unlink_proof")
   sleep 1
   panes=$("$herdr_bin" pane list)
-  "$node_bin" -e 'const fs=require("node:fs");const [tab]=process.argv.slice(1);const panes=JSON.parse(fs.readFileSync(0,"utf8")).result.panes;if(panes.some((pane)=>pane.tab_id===tab&&["SIDERAIL","HERDER SIDERAIL"].includes(pane.label)))process.exit(1)' "$unlink_tab" <<<"$panes"
+  "$node_bin" -e 'const fs=require("node:fs");const [tab]=process.argv.slice(1);const panes=JSON.parse(fs.readFileSync(0,"utf8")).result.panes;if(panes.some((pane)=>pane.tab_id===tab&&["SIDERAIL","HERDR GITRAIL"].includes(pane.label)))process.exit(1)' "$unlink_tab" <<<"$panes"
   stop_server
 done
 

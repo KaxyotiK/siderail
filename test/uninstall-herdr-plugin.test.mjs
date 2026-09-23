@@ -10,7 +10,7 @@ test("uninstall closes only live pane instances owned by this checkout before un
   const pluginRoot = "/plugin";
   const panes = [
     { pane_id: "rail", terminal_id: "term-rail", workspace_id: "w1", label: "SIDERAIL" },
-    { pane_id: "older-rail", terminal_id: "term-older-rail", workspace_id: "w1", label: "HERDER SIDERAIL" },
+    { pane_id: "older-rail", terminal_id: "term-older-rail", workspace_id: "w1", label: "HERDR GITRAIL" },
     { pane_id: "preview", terminal_id: "term-preview", workspace_id: "w1", label: "SideRail Preview" },
     { pane_id: "shell", terminal_id: "term-shell", workspace_id: "w1", label: "shell" },
   ];

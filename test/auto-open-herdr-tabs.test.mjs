@@ -38,7 +38,7 @@ test("startup reconciliation chooses one non-SideRail pane per tab", () => {
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repos/one-a" },
     { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p6", cwd: "/rail-checkout", focused: true, label: "SIDERAIL" },
     { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p1", cwd: "/repos/one", focused: true },
-    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p3", label: "HERDER SIDERAIL" },
+    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p3", label: "HERDR GITRAIL" },
     { workspace_id: "w1", tab_id: "w1:t3", pane_id: "w1:p4", cwd: "/repos/preview", label: "SideRail Preview" },
     { workspace_id: "w1", tab_id: "w1:t4", pane_id: "w1:p5", cwd: "/repos/demo", label: "SideRail Demo" },
     { workspace_id: "w2", tab_id: "w2:t1", pane_id: "w2:p1", cwd: "/wrong" },
@@ -250,9 +250,9 @@ if [ "$1" = "pane" ] && [ "$2" = "list" ]; then
 elif [ "$1" = "pane" ] && [ "$2" = "layout" ]; then
   printf '%s\\n' '{"result":{"layout":{"area":{"x":0,"y":0,"width":68,"height":20},"focused_pane_id":"w1:p1","panes":[{"pane_id":"w1:p1","rect":{"x":0,"y":0,"width":68,"height":20}}],"splits":[]}}}'
 elif [ "$1" = "plugin" ] && [ "$2" = "pane" ] && [ "$3" = "open" ]; then
-  printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","terminal_id":"term-p2","label":"HERDER SIDERAIL"}}}}'
+  printf '%s\\n' '{"result":{"plugin_pane":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","terminal_id":"term-p2","label":"HERDR GITRAIL"}}}}'
 elif [ "$1" = "pane" ] && [ "$2" = "get" ] && [ "$3" = "w1:p2" ]; then
-  printf '%s\\n' '{"result":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","terminal_id":"term-p2","label":"HERDER SIDERAIL"}}}'
+  printf '%s\\n' '{"result":{"pane":{"workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:p2","terminal_id":"term-p2","label":"HERDR GITRAIL"}}}'
 else
   printf '%s\\n' '{"result":{"type":"ok"}}'
 fi
