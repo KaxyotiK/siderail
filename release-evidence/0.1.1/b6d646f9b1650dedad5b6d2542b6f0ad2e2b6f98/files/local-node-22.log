@@ -1,0 +1,3431 @@
+
+added 91 packages, and audited 92 packages in 2s
+
+29 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+> siderail@0.1.1 check
+> npm run lint && npm run test:coverage
+
+
+> siderail@0.1.1 lint
+> node scripts/lint.mjs && eslint . && knip --include exports
+
+
+> siderail@0.1.1 test:coverage
+> node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='src/**/*.mjs' --test-coverage-lines=95 --test-coverage-branches=86 --test-coverage-functions=95 test/*.test.mjs
+
+TAP version 13
+# Subtest: tab creation uses the event tab instead of the globally focused tab
+ok 1 - tab creation uses the event tab instead of the globally focused tab
+  ---
+  duration_ms: 1.498167
+  type: 'test'
+  ...
+# Subtest: startup reconciliation chooses one non-SideRail pane per tab
+ok 2 - startup reconciliation chooses one non-SideRail pane per tab
+  ---
+  duration_ms: 0.364375
+  type: 'test'
+  ...
+# Subtest: event reconciliation filters to the created tab
+ok 3 - event reconciliation filters to the created tab
+  ---
+  duration_ms: 0.082917
+  type: 'test'
+  ...
+# Subtest: legacy layout-staging tabs never trigger auto-open
+ok 4 - legacy layout-staging tabs never trigger auto-open
+  ---
+  duration_ms: 0.059333
+  type: 'test'
+  ...
+# Subtest: bounded sweep caps workers and preserves mixed partial results
+ok 5 - bounded sweep caps workers and preserves mixed partial results
+  ---
+  duration_ms: 1.373917
+  type: 'test'
+  ...
+# Subtest: bounded sweep does not dequeue work after its global deadline
+ok 6 - bounded sweep does not dequeue work after its global deadline
+  ---
+  duration_ms: 0.110542
+  type: 'test'
+  ...
+# Subtest: bounded sweep cancels every target when the deadline has already expired
+ok 7 - bounded sweep cancels every target when the deadline has already expired
+  ---
+  duration_ms: 0.104041
+  type: 'test'
+  ...
+# Subtest: bounded sweep reports both active and queued jobs as deadline-cancelled
+ok 8 - bounded sweep reports both active and queued jobs as deadline-cancelled
+  ---
+  duration_ms: 0.732584
+  type: 'test'
+  ...
+# Subtest: auto-open target gives its process group the remaining deadline and recovery grace
+ok 9 - auto-open target gives its process group the remaining deadline and recovery grace
+  ---
+  duration_ms: 2.550875
+  type: 'test'
+  ...
+# Subtest: the global auto-open deadline starts before Herdr discovery
+ok 10 - the global auto-open deadline starts before Herdr discovery
+  ---
+  duration_ms: 5.440333
+  type: 'test'
+  ...
+# Subtest: only user configuration can disable automatic Herdr opening
+ok 11 - only user configuration can disable automatic Herdr opening
+  ---
+  duration_ms: 2.90625
+  type: 'test'
+  ...
+# Subtest: non-Git legacy labels never authorize closing a user pane
+ok 12 - non-Git legacy labels never authorize closing a user pane
+  ---
+  duration_ms: 183.540417
+  type: 'test'
+  ...
+# Subtest: Herdr launch keeps plugin code rooted while passing the selected repository explicitly
+ok 13 - Herdr launch keeps plugin code rooted while passing the selected repository explicitly
+  ---
+  duration_ms: 491.102791
+  type: 'test'
+  ...
+# Subtest: help and version need no host
+ok 14 - help and version need no host
+  ---
+  duration_ms: 21.938792
+  type: 'test'
+  ...
+# Subtest: unknown commands and hosts fail with usage
+ok 15 - unknown commands and hosts fail with usage
+  ---
+  duration_ms: 2.285458
+  type: 'test'
+  ...
+# Subtest: setup with no host registers every detected host
+ok 16 - setup with no host registers every detected host
+  ---
+  duration_ms: 4.159125
+  type: 'test'
+  ...
+# Subtest: setup skips missing hosts, and fails when none is found
+ok 17 - setup skips missing hosts, and fails when none is found
+  ---
+  duration_ms: 5.003375
+  type: 'test'
+  ...
+# Subtest: cmux is detected from PATH or the macOS application
+ok 18 - cmux is detected from PATH or the macOS application
+  ---
+  duration_ms: 21.443375
+  type: 'test'
+  ...
+# Subtest: setup reports a moved Herdr link and an updated Dock control
+ok 19 - setup reports a moved Herdr link and an updated Dock control
+  ---
+  duration_ms: 1.915875
+  type: 'test'
+  ...
+# Subtest: status reports each host, including stale and missing registrations
+ok 20 - status reports each host, including stale and missing registrations
+  ---
+  duration_ms: 6.262667
+  type: 'test'
+  ...
+# Subtest: uninstall removes only registrations that belong to this install
+ok 21 - uninstall removes only registrations that belong to this install
+  ---
+  duration_ms: 4.004041
+  type: 'test'
+  ...
+# Subtest: explicit cmux uninstall removes a control from another install
+ok 22 - explicit cmux uninstall removes a control from another install
+  ---
+  duration_ms: 1.943791
+  type: 'test'
+  ...
+# Subtest: Herdr failures other than a missing executable propagate
+ok 23 - Herdr failures other than a missing executable propagate
+  ---
+  duration_ms: 0.800958
+  type: 'test'
+  ...
+# Subtest: the installed bin runs through a symlink and reports errors on stderr
+ok 24 - the installed bin runs through a symlink and reports errors on stderr
+  ---
+  duration_ms: 174.507041
+  type: 'test'
+  ...
+# Subtest: the bin exits cleanly when its reader closes the pipe early
+ok 25 - the bin exits cleanly when its reader closes the pipe early
+  ---
+  duration_ms: 211.674541
+  type: 'test'
+  ...
+# Subtest: uninstall unlinks only the plugin id it verified, whatever HERDR_PLUGIN_ID says
+ok 26 - uninstall unlinks only the plugin id it verified, whatever HERDR_PLUGIN_ID says
+  ---
+  duration_ms: 1.092667
+  type: 'test'
+  ...
+# Subtest: default uninstall recognizes this install's control at a quoted path and leaves a quoted foreign one
+ok 27 - default uninstall recognizes this install's control at a quoted path and leaves a quoted foreign one
+  ---
+  duration_ms: 3.274625
+  type: 'test'
+  ...
+# Subtest: cmux context events are scoped to the Dock owner window
+ok 28 - cmux context events are scoped to the Dock owner window
+  ---
+  duration_ms: 0.833292
+  type: 'test'
+  ...
+# Subtest: cmux context watcher decodes chunked events and closes its child
+ok 29 - cmux context watcher decodes chunked events and closes its child
+  ---
+  duration_ms: 1.681834
+  type: 'test'
+  ...
+# Subtest: cmux context watcher tolerates an unavailable stream without an error observer
+ok 30 - cmux context watcher tolerates an unavailable stream without an error observer
+  ---
+  duration_ms: 0.332708
+  type: 'test'
+  ...
+# Subtest: an unscoped watcher accepts every window while events without a window are never dropped
+ok 31 - an unscoped watcher accepts every window while events without a window are never dropped
+  ---
+  duration_ms: 0.067209
+  type: 'test'
+  ...
+# Subtest: an event payload window overrides nothing when the frame already names another window
+ok 32 - an event payload window overrides nothing when the frame already names another window
+  ---
+  duration_ms: 0.052084
+  type: 'test'
+  ...
+# Subtest: closing a cmux context watcher twice kills its child exactly once
+ok 33 - closing a cmux context watcher twice kills its child exactly once
+  ---
+  duration_ms: 0.259958
+  type: 'test'
+  ...
+# Subtest: a clean cmux event stream exit is not an error but still reports the lost stream
+ok 34 - a clean cmux event stream exit is not an error but still reports the lost stream
+  ---
+  duration_ms: 0.271583
+  type: 'test'
+  ...
+# Subtest: an unrequested cmux event stream failure reports both the error and the lost stream
+ok 35 - an unrequested cmux event stream failure reports both the error and the lost stream
+  ---
+  duration_ms: 0.329875
+  type: 'test'
+  ...
+# Subtest: closing a cmux context watcher deliberately reports neither an error nor a lost stream
+ok 36 - closing a cmux context watcher deliberately reports neither an error nor a lost stream
+  ---
+  duration_ms: 0.252292
+  type: 'test'
+  ...
+# Subtest: a cmux context watcher without a close observer still tolerates an exit
+ok 37 - a cmux context watcher without a close observer still tolerates an exit
+  ---
+  duration_ms: 0.231458
+  type: 'test'
+  ...
+# Subtest: cmux executable selection prefers an explicit override and then the bundled CLI
+ok 38 - cmux executable selection prefers an explicit override and then the bundled CLI
+  ---
+  duration_ms: 1.076959
+  type: 'test'
+  ...
+# Subtest: cmux Dock control ownership is keyed by its own surface, not the workspace it follows
+ok 39 - cmux Dock control ownership is keyed by its own surface, not the workspace it follows
+  ---
+  duration_ms: 10.422667
+  type: 'test'
+  ...
+# Subtest: cmux Dock control registration rejects incomplete, missing, malformed, and mismatched ownership
+ok 40 - cmux Dock control registration rejects incomplete, missing, malformed, and mismatched ownership
+  ---
+  duration_ms: 6.499416
+  type: 'test'
+  ...
+# Subtest: cmux Dock control registration follows a live surface across workspace changes
+ok 41 - cmux Dock control registration follows a live surface across workspace changes
+  ---
+  duration_ms: 1.988667
+  type: 'test'
+  ...
+# Subtest: cmux Dock registration liveness requires the recorded process
+ok 42 - cmux Dock registration liveness requires the recorded process
+  ---
+  duration_ms: 0.177042
+  type: 'test'
+  ...
+# Subtest: a reused process id cannot revive a version 3 registration
+ok 43 - a reused process id cannot revive a version 3 registration
+  ---
+  duration_ms: 0.099167
+  type: 'test'
+  ...
+# Subtest: a markerless version 3 record is invalid rather than silently process-id only
+ok 44 - a markerless version 3 record is invalid rather than silently process-id only
+  ---
+  duration_ms: 1.937042
+  type: 'test'
+  ...
+# Subtest: registration fails rather than writing a version 3 record without a start marker
+ok 45 - registration fails rather than writing a version 3 record without a start marker
+  ---
+  duration_ms: 1.516917
+  type: 'test'
+  ...
+# Subtest: the process start marker is read in a fixed locale and zone
+ok 46 - the process start marker is read in a fixed locale and zone
+  ---
+  duration_ms: 0.190625
+  type: 'test'
+  ...
+# Subtest: the process start marker rejects a row that belongs to another process
+ok 47 - the process start marker rejects a row that belongs to another process
+  ---
+  duration_ms: 0.340791
+  type: 'test'
+  ...
+# Subtest: main workspace selection never treats the SideRail Dock surface as its source surface
+ok 48 - main workspace selection never treats the SideRail Dock surface as its source surface
+  ---
+  duration_ms: 0.086083
+  type: 'test'
+  ...
+# Subtest: cmux context resolves live main-area cwd while preserving every Dock identity
+ok 49 - cmux context resolves live main-area cwd while preserving every Dock identity
+  ---
+  duration_ms: 1.136416
+  type: 'test'
+  ...
+# Subtest: cmux context falls back to the configured project cwd when discovery fails
+ok 50 - cmux context falls back to the configured project cwd when discovery fails
+  ---
+  duration_ms: 0.153959
+  type: 'test'
+  ...
+# Subtest: cmux context can resolve an older caller-scoped workspace without a window id
+ok 51 - cmux context can resolve an older caller-scoped workspace without a window id
+  ---
+  duration_ms: 0.432416
+  type: 'test'
+  ...
+# Subtest: cmux context remains anchored to its owner window when global focus moves
+ok 52 - cmux context remains anchored to its owner window when global focus moves
+  ---
+  duration_ms: 0.312917
+  type: 'test'
+  ...
+# Subtest: cmux context recovers the selected project from the focused surface when workspace cwd is stale
+ok 53 - cmux context recovers the selected project from the focused surface when workspace cwd is stale
+  ---
+  duration_ms: 0.540875
+  type: 'test'
+  ...
+# Subtest: cmux context pins a valid main-surface launch folder when Dock activity contaminates workspace cwd
+ok 54 - cmux context pins a valid main-surface launch folder when Dock activity contaminates workspace cwd
+  ---
+  duration_ms: 0.418042
+  type: 'test'
+  ...
+# Subtest: cmux context never substitutes the SideRail Dock cwd for a missing selected project
+ok 55 - cmux context never substitutes the SideRail Dock cwd for a missing selected project
+  ---
+  duration_ms: 0.189
+  type: 'test'
+  ...
+# Subtest: Dock owner window is discovered from the Dock's own surface when cmux reports no caller
+ok 56 - Dock owner window is discovered from the Dock's own surface when cmux reports no caller
+  ---
+  duration_ms: 0.130875
+  type: 'test'
+  ...
+# Subtest: Dock owner window discovery is skipped without a surface of its own
+ok 57 - Dock owner window discovery is skipped without a surface of its own
+  ---
+  duration_ms: 0.048334
+  type: 'test'
+  ...
+# Subtest: Dock owner window falls back to a live window hint before the global-Dock workspace convention
+ok 58 - Dock owner window falls back to a live window hint before the global-Dock workspace convention
+  ---
+  duration_ms: 0.104792
+  type: 'test'
+  ...
+# Subtest: cmux context resolves the Dock-owning window when identify has no caller and focus is elsewhere
+ok 59 - cmux context resolves the Dock-owning window when identify has no caller and focus is elsewhere
+  ---
+  duration_ms: 0.893417
+  type: 'test'
+  ...
+# Subtest: cmux context never resolves the focused window's project for a Dock owned by another window
+ok 60 - cmux context never resolves the focused window's project for a Dock owned by another window
+  ---
+  duration_ms: 0.408875
+  type: 'test'
+  ...
+# Subtest: cmux context reuses a cached owner window without repeating Dock discovery
+ok 61 - cmux context reuses a cached owner window without repeating Dock discovery
+  ---
+  duration_ms: 0.489709
+  type: 'test'
+  ...
+# Subtest: cmux context still resolves a project when Dock owner discovery fails outright
+ok 62 - cmux context still resolves a project when Dock owner discovery fails outright
+  ---
+  duration_ms: 0.388625
+  type: 'test'
+  ...
+# Subtest: a checked-out candidate outranks an existing but unversioned directory
+ok 63 - a checked-out candidate outranks an existing but unversioned directory
+  ---
+  duration_ms: 0.159417
+  type: 'test'
+  ...
+# Subtest: no checked-out candidate keeps the first existing directory rather than an unusable path
+ok 64 - no checked-out candidate keeps the first existing directory rather than an unusable path
+  ---
+  duration_ms: 0.143166
+  type: 'test'
+  ...
+# Subtest: repository detection accepts a linked worktree whose .git is a file
+ok 65 - repository detection accepts a linked worktree whose .git is a file
+  ---
+  duration_ms: 2.279333
+  type: 'test'
+  ...
+# Subtest: cmux Dock control state paths cannot escape the SideRail cache directory
+ok 66 - cmux Dock control state paths cannot escape the SideRail cache directory
+  ---
+  duration_ms: 2.000166
+  type: 'test'
+  ...
+# Subtest: cmux Dock control lookup ignores another control's record for the same surface
+ok 67 - cmux Dock control lookup ignores another control's record for the same surface
+  ---
+  duration_ms: 2.560166
+  type: 'test'
+  ...
+# Subtest: cmux Dock control lookup prefers the current workspace and then the newest record
+ok 68 - cmux Dock control lookup prefers the current workspace and then the newest record
+  ---
+  duration_ms: 2.41175
+  type: 'test'
+  ...
+# Subtest: a main surface launched from home does not outrank the workspace's checked-out project
+ok 69 - a main surface launched from home does not outrank the workspace's checked-out project
+  ---
+  duration_ms: 0.243084
+  type: 'test'
+  ...
+# Subtest: a legacy record is migrated forward and its duplicates for the same surface are removed
+ok 70 - a legacy record is migrated forward and its duplicates for the same surface are removed
+  ---
+  duration_ms: 5.076042
+  type: 'test'
+  ...
+# Subtest: a version 3 record is preferred without ever scanning legacy records
+ok 71 - a version 3 record is preferred without ever scanning legacy records
+  ---
+  duration_ms: 1.851
+  type: 'test'
+  ...
+# Subtest: a failed migration still returns the legacy record rather than losing the control
+ok 72 - a failed migration still returns the legacy record rather than losing the control
+  ---
+  duration_ms: 2.370583
+  type: 'test'
+  ...
+# Subtest: legacy selection prefers the current workspace and then the newest record
+ok 73 - legacy selection prefers the current workspace and then the newest record
+  ---
+  duration_ms: 19.709917
+  type: 'test'
+  ...
+# Subtest: a dead process never causes a record to be pruned, so relaunch can still find its Dock
+ok 74 - a dead process never causes a record to be pruned, so relaunch can still find its Dock
+  ---
+  duration_ms: 2.218458
+  type: 'test'
+  ...
+# Subtest: a registration landing mid-migration is never clobbered by the legacy record
+ok 75 - a registration landing mid-migration is never clobbered by the legacy record
+  ---
+  duration_ms: 3.271083
+  type: 'test'
+  ...
+# Subtest: concurrent migrations of one legacy record agree on a single canonical winner
+ok 76 - concurrent migrations of one legacy record agree on a single canonical winner
+  ---
+  duration_ms: 7.163041
+  type: 'test'
+  ...
+# Subtest: manual launch creates one unfocused Dock terminal and reveals Dock without stealing focus
+ok 77 - manual launch creates one unfocused Dock terminal and reveals Dock without stealing focus
+  ---
+  duration_ms: 3.486834
+  type: 'test'
+  ...
+# Subtest: manual launch adopts an existing SideRail Dock surface instead of duplicating it
+ok 78 - manual launch adopts an existing SideRail Dock surface instead of duplicating it
+  ---
+  duration_ms: 1.816334
+  type: 'test'
+  ...
+# Subtest: manual launch recognizes its configured Dock caller identity even with cmux's startup wrapper
+ok 79 - manual launch recognizes its configured Dock caller identity even with cmux's startup wrapper
+  ---
+  duration_ms: 0.533583
+  type: 'test'
+  ...
+# Subtest: manual launch can coexist with an unrelated configured Dock control
+ok 80 - manual launch can coexist with an unrelated configured Dock control
+  ---
+  duration_ms: 0.589541
+  type: 'test'
+  ...
+# Subtest: manual launch adopts a registered configured SideRail control
+ok 81 - manual launch adopts a registered configured SideRail control
+  ---
+  duration_ms: 0.605208
+  type: 'test'
+  ...
+# Subtest: manual launch finds an active configured control after the main workspace changes
+ok 82 - manual launch finds an active configured control after the main workspace changes
+  ---
+  duration_ms: 0.406667
+  type: 'test'
+  ...
+# Subtest: manual launch reuses a registered post-q login shell
+ok 83 - manual launch reuses a registered post-q login shell
+  ---
+  duration_ms: 0.55675
+  type: 'test'
+  ...
+# Subtest: manual launch waits for a starting configured control to register
+ok 84 - manual launch waits for a starting configured control to register
+  ---
+  duration_ms: 0.382292
+  type: 'test'
+  ...
+# Subtest: manual launch adopts a Dock surface with an exposed SideRail control id
+ok 85 - manual launch adopts a Dock surface with an exposed SideRail control id
+  ---
+  duration_ms: 0.403167
+  type: 'test'
+  ...
+# Subtest: manual launch fails closed without a selected main workspace or Dock response
+ok 86 - manual launch fails closed without a selected main workspace or Dock response
+  ---
+  duration_ms: 1.179083
+  type: 'test'
+  ...
+# Subtest: Dock relaunch command restates variables and quotes shell metacharacters
+ok 87 - Dock relaunch command restates variables and quotes shell metacharacters
+  ---
+  duration_ms: 0.120667
+  type: 'test'
+  ...
+# Subtest: relaunching an existing Dock surface restores the owner window and project directory
+ok 88 - relaunching an existing Dock surface restores the owner window and project directory
+  ---
+  duration_ms: 0.63225
+  type: 'test'
+  ...
+# Subtest: a relaunched Dock surface receives exactly the environment a created one does
+ok 89 - a relaunched Dock surface receives exactly the environment a created one does
+  ---
+  duration_ms: 0.5435
+  type: 'test'
+  ...
+# Subtest: a Dock launch without a resolvable owner window omits the window variable rather than guessing
+ok 90 - a Dock launch without a resolvable owner window omits the window variable rather than guessing
+  ---
+  duration_ms: 0.368625
+  type: 'test'
+  ...
+# Subtest: a relaunch decision awaits an asynchronous liveness verdict
+ok 91 - a relaunch decision awaits an asynchronous liveness verdict
+  ---
+  duration_ms: 0.379125
+  type: 'test'
+  ...
+# Subtest: an active registration is still adopted rather than relaunched
+ok 92 - an active registration is still adopted rather than relaunched
+  ---
+  duration_ms: 0.400708
+  type: 'test'
+  ...
+# Subtest: clean rows open an exact read-only materialization in cmux's native file viewer
+ok 93 - clean rows open an exact read-only materialization in cmux's native file viewer
+  ---
+  duration_ms: 10.9955
+  type: 'test'
+  ...
+# Subtest: changed rows open their exact selected revision in cmux's native file viewer
+ok 94 - changed rows open their exact selected revision in cmux's native file viewer
+  ---
+  duration_ms: 4.047125
+  type: 'test'
+  ...
+# Subtest: missing main surface falls back within the explicit workspace without inheriting the Dock surface
+ok 95 - missing main surface falls back within the explicit workspace without inheriting the Dock surface
+  ---
+  duration_ms: 2.390917
+  type: 'test'
+  ...
+# Subtest: Dock surface is never closed from stale cmux native-preview state
+ok 96 - Dock surface is never closed from stale cmux native-preview state
+  ---
+  duration_ms: 2.300417
+  type: 'test'
+  ...
+# Subtest: foreign type is never closed from stale cmux native-preview state
+ok 97 - foreign type is never closed from stale cmux native-preview state
+  ---
+  duration_ms: 2.781541
+  type: 'test'
+  ...
+# Subtest: foreign id is never closed from stale cmux native-preview state
+ok 98 - foreign id is never closed from stale cmux native-preview state
+  ---
+  duration_ms: 2.924
+  type: 'test'
+  ...
+# Subtest: a missing stale surface releases its retained native-file materialization
+ok 99 - a missing stale surface releases its retained native-file materialization
+  ---
+  duration_ms: 4.097459
+  type: 'test'
+  ...
+# Subtest: each open adds a new native tab and stable ownership survives Dock surface rotation
+ok 100 - each open adds a new native tab and stable ownership survives Dock surface rotation
+  ---
+  duration_ms: 8.669833
+  type: 'test'
+  ...
+# Subtest: stable control ownership migrates legacy surface-keyed preview state
+ok 101 - stable control ownership migrates legacy surface-keyed preview state
+  ---
+  duration_ms: 14.846916
+  type: 'test'
+  ...
+# Subtest: replacement-era ownership migrates without closing its native tabs
+ok 102 - replacement-era ownership migrates without closing its native tabs
+  ---
+  duration_ms: 2.438667
+  type: 'test'
+  ...
+# Subtest: unreadable legacy ownership is reported without blocking a new preview
+ok 103 - unreadable legacy ownership is reported without blocking a new preview
+  ---
+  duration_ms: 2.33
+  type: 'test'
+  ...
+# Subtest: native identity names the actual bytes for clean and deletion fallbacks
+    # Subtest: clean Files row
+    ok 1 - clean Files row
+      ---
+      duration_ms: 2.211417
+      type: 'test'
+      ...
+    # Subtest: staged deletion
+    ok 2 - staged deletion
+      ---
+      duration_ms: 2.206375
+      type: 'test'
+      ...
+    # Subtest: commit deletion
+    ok 3 - commit deletion
+      ---
+      duration_ms: 2.254208
+      type: 'test'
+      ...
+    # Subtest: unstaged worktree
+    ok 4 - unstaged worktree
+      ---
+      duration_ms: 2.122542
+      type: 'test'
+      ...
+    # Subtest: untracked worktree
+    ok 5 - untracked worktree
+      ---
+      duration_ms: 2.015417
+      type: 'test'
+      ...
+    # Subtest: against-base revision
+    ok 6 - against-base revision
+      ---
+      duration_ms: 1.871208
+      type: 'test'
+      ...
+    # Subtest: against-base worktree fallback
+    ok 7 - against-base worktree fallback
+      ---
+      duration_ms: 2.599209
+      type: 'test'
+      ...
+    # Subtest: selected commit revision
+    ok 8 - selected commit revision
+      ---
+      duration_ms: 1.694792
+      type: 'test'
+      ...
+    # Subtest: filesystem worktree
+    ok 9 - filesystem worktree
+      ---
+      duration_ms: 1.8685
+      type: 'test'
+      ...
+    1..9
+ok 104 - native identity names the actual bytes for clean and deletion fallbacks
+  ---
+  duration_ms: 19.611542
+  type: 'test'
+  ...
+# Subtest: transient discovery failures retain open tabs and later prune only closed tabs
+ok 105 - transient discovery failures retain open tabs and later prune only closed tabs
+  ---
+  duration_ms: 5.817625
+  type: 'test'
+  ...
+# Subtest: malformed ownership is ignored while an unreadable ownership path fails before cmux mutation
+ok 106 - malformed ownership is ignored while an unreadable ownership path fails before cmux mutation
+  ---
+  duration_ms: 2.481209
+  type: 'test'
+  ...
+# Subtest: ownership write failure closes the new native surface and removes its materialization
+ok 107 - ownership write failure closes the new native surface and removes its materialization
+  ---
+  duration_ms: 1.787084
+  type: 'test'
+  ...
+# Subtest: ownership failure reports failed compensation without hiding either error
+ok 108 - ownership failure reports failed compensation without hiding either error
+  ---
+  duration_ms: 1.760375
+  type: 'test'
+  ...
+# Subtest: malformed native open responses fail and remove prepared files
+ok 109 - malformed native open responses fail and remove prepared files
+  ---
+  duration_ms: 1.511292
+  type: 'test'
+  ...
+# Subtest: partial native open reports failed close compensation
+ok 110 - partial native open reports failed close compensation
+  ---
+  duration_ms: 1.464041
+  type: 'test'
+  ...
+# Subtest: a failed native file-open command removes the prepared materialization
+ok 111 - a failed native file-open command removes the prepared materialization
+  ---
+  duration_ms: 1.496583
+  type: 'test'
+  ...
+# Subtest: direct file-open payloads and fallback filenames remain supported
+ok 112 - direct file-open payloads and fallback filenames remain supported
+  ---
+  duration_ms: 2.261416
+  type: 'test'
+  ...
+# Subtest: stale preview inspection failures are warnings and retain the old materialization
+ok 113 - stale preview inspection failures are warnings and retain the old materialization
+  ---
+  duration_ms: 2.492833
+  type: 'test'
+  ...
+# Subtest: a cleanup-state rewrite failure remains a warning after verified cleanup
+ok 114 - a cleanup-state rewrite failure remains a warning after verified cleanup
+  ---
+  duration_ms: 1.822916
+  type: 'test'
+  ...
+# Subtest: stale state can never remove a materialization outside SideRail's cache
+ok 115 - stale state can never remove a materialization outside SideRail's cache
+  ---
+  duration_ms: 3.627083
+  type: 'test'
+  ...
+# Subtest: cmux preview requires a resolved main workspace
+ok 116 - cmux preview requires a resolved main workspace
+  ---
+  duration_ms: 0.467916
+  type: 'test'
+  ...
+# Subtest: surface ownership requires exact id, native panel type, and main-area scope
+ok 117 - surface ownership requires exact id, native panel type, and main-area scope
+  ---
+  duration_ms: 0.168709
+  type: 'test'
+  ...
+# Subtest: a native open that returns no surface identity removes its materialization and fails
+ok 118 - a native open that returns no surface identity removes its materialization and fails
+  ---
+  duration_ms: 1.571917
+  type: 'test'
+  ...
+# Subtest: an unreadable materialization target is cleaned up rather than left half written
+ok 119 - an unreadable materialization target is cleaned up rather than left half written
+  ---
+  duration_ms: 0.898584
+  type: 'test'
+  ...
+# Subtest: preview ownership survives a cache directory that does not exist yet
+ok 120 - preview ownership survives a cache directory that does not exist yet
+  ---
+  duration_ms: 2.001875
+  type: 'test'
+  ...
+# Subtest: a preview state path is confined to the SideRail cache for hostile identities
+ok 121 - a preview state path is confined to the SideRail cache for hostile identities
+  ---
+  duration_ms: 0.508791
+  type: 'test'
+  ...
+# Subtest: cmux Dock restart command preserves absolute paths with shell metacharacters
+ok 122 - cmux Dock restart command preserves absolute paths with shell metacharacters
+  ---
+  duration_ms: 0.972167
+  type: 'test'
+  ...
+# Subtest: cmux Dock restart command restates the host environment a resume binding cannot store
+ok 123 - cmux Dock restart command restates the host environment a resume binding cannot store
+  ---
+  duration_ms: 0.190667
+  type: 'test'
+  ...
+# Subtest: cmux Dock resume registration is scoped to its window and surface
+ok 124 - cmux Dock resume registration is scoped to its window and surface
+  ---
+  duration_ms: 0.900333
+  type: 'test'
+  ...
+# Subtest: cmux Dock resume registration ignores foreign and incomplete controls
+ok 125 - cmux Dock resume registration ignores foreign and incomplete controls
+  ---
+  duration_ms: 0.087667
+  type: 'test'
+  ...
+# Subtest: cmux Dock resume registration survives a restore that dropped the owner window id
+ok 126 - cmux Dock resume registration survives a restore that dropped the owner window id
+  ---
+  duration_ms: 0.153042
+  type: 'test'
+  ...
+# Subtest: cmux Dock resume registration reports a retained manual approval
+ok 127 - cmux Dock resume registration reports a retained manual approval
+  ---
+  duration_ms: 0.087042
+  type: 'test'
+  ...
+# Subtest: live pane owns the single product title
+ok 128 - live pane owns the single product title
+  ---
+  duration_ms: 3.36725
+  type: 'test'
+  ...
+# Subtest: Herdr opens SideRail for restored and newly created tabs
+ok 129 - Herdr opens SideRail for restored and newly created tabs
+  ---
+  duration_ms: 1.054458
+  type: 'test'
+  ...
+# Subtest: Herdr exposes a current-tab SideRail toggle action
+ok 130 - Herdr exposes a current-tab SideRail toggle action
+  ---
+  duration_ms: 0.495125
+  type: 'test'
+  ...
+# Subtest: file previews open in a dedicated Herdr tab
+ok 131 - file previews open in a dedicated Herdr tab
+  ---
+  duration_ms: 0.769542
+  type: 'test'
+  ...
+# Subtest: cmux previews use native file tabs without changing the Herdr preview
+ok 132 - cmux previews use native file tabs without changing the Herdr preview
+  ---
+  duration_ms: 0.924334
+  type: 'test'
+  ...
+# Subtest: preview scrolling repaints in place without clearing the screen
+ok 133 - preview scrolling repaints in place without clearing the screen
+  ---
+  duration_ms: 0.791875
+  type: 'test'
+  ...
+# Subtest: manual refresh confirmation is transient
+ok 134 - manual refresh confirmation is transient
+  ---
+  duration_ms: 0.902875
+  type: 'test'
+  ...
+# Subtest: configuration validates version, launch mode, and refresh bounds
+ok 135 - configuration validates version, launch mode, and refresh bounds
+  ---
+  duration_ms: 1.107958
+  type: 'test'
+  ...
+# Subtest: the shipped example is governed by runtime validation alone
+ok 136 - the shipped example is governed by runtime validation alone
+  ---
+  duration_ms: 0.583834
+  type: 'test'
+  ...
+# Subtest: configuration requires a version and rejects nested unknown keys
+ok 137 - configuration requires a version and rejects nested unknown keys
+  ---
+  duration_ms: 0.287333
+  type: 'test'
+  ...
+# Subtest: viewer actions resolve conditionally by selected filename
+ok 138 - viewer actions resolve conditionally by selected filename
+  ---
+  duration_ms: 0.50475
+  type: 'test'
+  ...
+# Subtest: viewer executable preflight detects commands without invoking them
+ok 139 - viewer executable preflight detects commands without invoking them
+  ---
+  duration_ms: 2.597917
+  type: 'test'
+  ...
+# Subtest: installed Markdown rules bypass the generic preview only when system open is directly usable
+ok 140 - installed Markdown rules bypass the generic preview only when system open is directly usable
+  ---
+  duration_ms: 1.258
+  type: 'test'
+  ...
+# Subtest: configuration rejects mistyped structured values
+ok 141 - configuration rejects mistyped structured values
+  ---
+  duration_ms: 0.168916
+  type: 'test'
+  ...
+# Subtest: user configuration merges by key and environment wins
+ok 142 - user configuration merges by key and environment wins
+  ---
+  duration_ms: 2.787417
+  type: 'test'
+  ...
+# Subtest: an explicit Glow TUI rule is preserved
+ok 143 - an explicit Glow TUI rule is preserved
+  ---
+  duration_ms: 1.847333
+  type: 'test'
+  ...
+# Subtest: environment overrides do not mutate built-in defaults
+ok 144 - environment overrides do not mutate built-in defaults
+  ---
+  duration_ms: 0.913875
+  type: 'test'
+  ...
+# Subtest: editor integration is optional and EDITOR remains a fallback
+ok 145 - editor integration is optional and EDITOR remains a fallback
+  ---
+  duration_ms: 0.840834
+  type: 'test'
+  ...
+# Subtest: invalid environment overrides report errors without replacing valid defaults
+ok 146 - invalid environment overrides report errors without replacing valid defaults
+  ---
+  duration_ms: 1.169875
+  type: 'test'
+  ...
+# Subtest: out-of-range polling overrides preserve a user interval
+ok 147 - out-of-range polling overrides preserve a user interval
+  ---
+  duration_ms: 2.288917
+  type: 'test'
+  ...
+# Subtest: structured file diff removes Git plumbing and tracks both line numbers
+ok 148 - structured file diff removes Git plumbing and tracks both line numbers
+  ---
+  duration_ms: 1.798167
+  type: 'test'
+  ...
+# Subtest: structured file diff preserves meaningful file metadata
+ok 149 - structured file diff preserves meaningful file metadata
+  ---
+  duration_ms: 0.082166
+  type: 'test'
+  ...
+# Subtest: structured file diff parses combined conflict hunks
+ok 150 - structured file diff parses combined conflict hunks
+  ---
+  duration_ms: 0.194083
+  type: 'test'
+  ...
+# Subtest: diff rows neutralize repository-controlled terminal sequences
+ok 151 - diff rows neutralize repository-controlled terminal sequences
+  ---
+  duration_ms: 0.202458
+  type: 'test'
+  ...
+# Subtest: structured diff parsing strips Git color without losing hunk semantics
+ok 152 - structured diff parsing strips Git color without losing hunk semantics
+  ---
+  duration_ms: 0.079125
+  type: 'test'
+  ...
+# Subtest: clean Markdown opens its worktree path directly with the system application
+ok 153 - clean Markdown opens its worktree path directly with the system application
+  ---
+  duration_ms: 12.384958
+  type: 'test'
+  ...
+# Subtest: historical Markdown opens an exact read-only copy and schedules its cleanup
+ok 154 - historical Markdown opens an exact read-only copy and schedules its cleanup
+  ---
+  duration_ms: 113.354625
+  type: 'test'
+  ...
+# Subtest: a failed system open removes its temporary copy
+ok 155 - a failed system open removes its temporary copy
+  ---
+  duration_ms: 2.188958
+  type: 'test'
+  ...
+# Subtest: security policy directs reports to the repository's private reporting channel
+ok 156 - security policy directs reports to the repository's private reporting channel
+  ---
+  duration_ms: 3.309
+  type: 'test'
+  ...
+# Subtest: documentation states the eventual refresh and user-only configuration contracts
+ok 157 - documentation states the eventual refresh and user-only configuration contracts
+  ---
+  duration_ms: 0.94275
+  type: 'test'
+  ...
+# Subtest: public installation and release evidence instructions enforce the candidate gates
+ok 158 - public installation and release evidence instructions enforce the candidate gates
+  ---
+  duration_ms: 1.460084
+  type: 'test'
+  ...
+# Subtest: the default local check enforces coverage
+ok 159 - the default local check enforces coverage
+  ---
+  duration_ms: 0.384084
+  type: 'test'
+  ...
+# Subtest: cmux documentation and project Dock config describe the supported right-sidebar host
+ok 160 - cmux documentation and project Dock config describe the supported right-sidebar host
+  ---
+  duration_ms: 1.988209
+  type: 'test'
+  ...
+# Subtest: live release cleanup is isolated from the operator's Herdr installation
+ok 161 - live release cleanup is isolated from the operator's Herdr installation
+  ---
+  duration_ms: 0.380541
+  type: 'test'
+  ...
+# Subtest: sealed release logs are not hidden by the general log ignore
+ok 162 - sealed release logs are not hidden by the general log ignore
+  ---
+  duration_ms: 0.444666
+  type: 'test'
+  ...
+# Subtest: sealed evidence is excluded from later archives and preserves terminal bytes
+ok 163 - sealed evidence is excluded from later archives and preserves terminal bytes
+  ---
+  duration_ms: 0.413
+  type: 'test'
+  ...
+# Subtest: the Docker Linux worker pins a checksummed Herdr and is part of the release runbook
+ok 164 - the Docker Linux worker pins a checksummed Herdr and is part of the release runbook
+  ---
+  duration_ms: 0.806417
+  type: 'test'
+  ...
+# Subtest: search folder state uses one bounded scope and row signatures reflect content
+ok 165 - search folder state uses one bounded scope and row signatures reflect content
+  ---
+  duration_ms: 0.8875
+  type: 'test'
+  ...
+# Subtest: folder collapse keys cover every tree ancestor and grouped folder
+ok 166 - folder collapse keys cover every tree ancestor and grouped folder
+  ---
+  duration_ms: 0.850166
+  type: 'test'
+  ...
+# Subtest: folder expansion survives an ancestor collapse while newly discovered descendants start collapsed
+ok 167 - folder expansion survives an ancestor collapse while newly discovered descendants start collapsed
+  ---
+  duration_ms: 0.09625
+  type: 'test'
+  ...
+# Subtest: tree rows retain enough ancestry to distinguish siblings from nested children
+ok 168 - tree rows retain enough ancestry to distinguish siblings from nested children
+  ---
+  duration_ms: 6.76675
+  type: 'test'
+  ...
+# Subtest: 20k-path files model materializes only the viewport at supported widths
+ok 169 - 20k-path files model materializes only the viewport at supported widths
+  ---
+  duration_ms: 198.529708
+  type: 'test'
+  ...
+# Subtest: metadata filtering is dependency-specific and conservative when unhealthy
+ok 170 - metadata filtering is dependency-specific and conservative when unhealthy
+  ---
+  duration_ms: 0.984417
+  type: 'test'
+  ...
+# Subtest: ignored noise uses one NUL-safe batch and caches exact paths
+ok 171 - ignored noise uses one NUL-safe batch and caches exact paths
+  ---
+  duration_ms: 4.294125
+  type: 'test'
+  ...
+# Subtest: tracked paths, tracked directory renames, and submodule children bypass ignores
+ok 172 - tracked paths, tracked directory renames, and submodule children bypass ignores
+  ---
+  duration_ms: 0.441208
+  type: 'test'
+  ...
+# Subtest: own and sibling indexes are distinct for primary and linked worktrees
+ok 173 - own and sibling indexes are distinct for primary and linked worktrees
+  ---
+  duration_ms: 0.262708
+  type: 'test'
+  ...
+# Subtest: ignore/index/config changes invalidate classification without discarding tracked ignores
+ok 174 - ignore/index/config changes invalidate classification without discarding tracked ignores
+  ---
+  duration_ms: 0.987625
+  type: 'test'
+  ...
+# Subtest: unknown names, external paths, directory mode, and provider errors recover conservatively
+ok 175 - unknown names, external paths, directory mode, and provider errors recover conservatively
+  ---
+  duration_ms: 0.521917
+  type: 'test'
+  ...
+# Subtest: classification failure and a generation change during classification never drop work
+ok 176 - classification failure and a generation change during classification never drop work
+  ---
+  duration_ms: 0.761875
+  type: 'test'
+  ...
+# Subtest: close cancels pending work and drops in-flight classifier completions
+ok 177 - close cancels pending work and drops in-flight classifier completions
+  ---
+  duration_ms: 0.613709
+  type: 'test'
+  ...
+# Subtest: bounded ignore LRU promotes true and false hits and conservatively reclassifies evicted paths
+ok 178 - bounded ignore LRU promotes true and false hits and conservatively reclassifies evicted paths
+  ---
+  duration_ms: 0.805792
+  type: 'test'
+  ...
+# Subtest: ignore cache rejects invalid capacities and bounds a batch larger than its capacity
+ok 179 - ignore cache rejects invalid capacities and bounds a batch larger than its capacity
+  ---
+  duration_ms: 1.676041
+  type: 'test'
+  ...
+# Subtest: ls-files stage parser retains hidden worktree-presence flags
+ok 180 - ls-files stage parser retains hidden worktree-presence flags
+  ---
+  duration_ms: 1.62975
+  type: 'test'
+  ...
+# Subtest: commit machine formats preserve control characters and unambiguous paths
+ok 181 - commit machine formats preserve control characters and unambiguous paths
+  ---
+  duration_ms: 0.289083
+  type: 'test'
+  ...
+# Subtest: porcelain v2 parser preserves spaces, tabs, unicode, renames, and conflicts
+ok 182 - porcelain v2 parser preserves spaces, tabs, unicode, renames, and conflicts
+  ---
+  duration_ms: 0.147125
+  type: 'test'
+  ...
+# Subtest: combined raw and numstat output preserves metadata, stats, and unusual paths
+ok 183 - combined raw and numstat output preserves metadata, stats, and unusual paths
+  ---
+  duration_ms: 0.322625
+  type: 'test'
+  ...
+# Subtest: a silent handshake expires and close settles without an abandoned connection
+ok 184 - a silent handshake expires and close settles without an abandoned connection
+  ---
+  duration_ms: 53.204417
+  type: 'test'
+  ...
+# Subtest: initial connection sends exactly one repository subscription
+ok 185 - initial connection sends exactly one repository subscription
+  ---
+  duration_ms: 1.706709
+  type: 'test'
+  ...
+# Subtest: blocked client controls wait for drain and then flush in order
+ok 186 - blocked client controls wait for drain and then flush in order
+  ---
+  duration_ms: 8.017875
+  type: 'test'
+  ...
+# Subtest: blocked client controls enforce the count bound and release pending requests
+ok 187 - blocked client controls enforce the count bound and release pending requests
+  ---
+  duration_ms: 14.064584
+  type: 'test'
+  ...
+# Subtest: blocked client controls enforce the bytes bound and release pending requests
+ok 188 - blocked client controls enforce the bytes bound and release pending requests
+  ---
+  duration_ms: 16.781875
+  type: 'test'
+  ...
+# Subtest: disconnect retains stale state and retries beyond a failed connection window
+ok 189 - disconnect retains stale state and retries beyond a failed connection window
+  ---
+  duration_ms: 103.55625
+  type: 'test'
+  ...
+# Subtest: a coordinator that never drains is disconnected at the blocked-write deadline
+ok 190 - a coordinator that never drains is disconnected at the blocked-write deadline
+  ---
+  duration_ms: 22.604375
+  type: 'test'
+  ...
+# Subtest: unanswered requests time out and do not make unsubscribe or client close hang
+ok 191 - unanswered requests time out and do not make unsubscribe or client close hang
+  ---
+  duration_ms: 43.230125
+  type: 'test'
+  ...
+# Subtest: closing before connect finishes destroys the arriving socket and suppresses state
+ok 192 - closing before connect finishes destroys the arriving socket and suppresses state
+  ---
+  duration_ms: 0.4375
+  type: 'test'
+  ...
+# Subtest: an initial retry keeps a standalone process alive until ready settles
+ok 193 - an initial retry keeps a standalone process alive until ready settles
+  ---
+  duration_ms: 116.332042
+  type: 'test'
+  ...
+# Subtest: an independent Node client connects successfully after its initial refusal
+ok 194 - an independent Node client connects successfully after its initial refusal
+  ---
+  duration_ms: 103.328917
+  type: 'test'
+  ...
+# Subtest: coordinator transport drains controls in order and enforces blocked-write bounds
+ok 195 - coordinator transport drains controls in order and enforces blocked-write bounds
+  ---
+  duration_ms: 15.191625
+  type: 'test'
+  ...
+# Subtest: eight socket clients share one engine build and one edit build
+ok 196 - eight socket clients share one engine build and one edit build
+  ---
+  duration_ms: 40.159125
+  type: 'test'
+  ...
+# Subtest: a disconnected client resubscribes and maps a restarted engine to a fresh local generation
+ok 197 - a disconnected client resubscribes and maps a restarted engine to a fresh local generation
+  ---
+  duration_ms: 35.126375
+  type: 'test'
+  ...
+# Subtest: host refresh suppresses unchanged context and reconnect follows a moved rail terminal
+ok 198 - host refresh suppresses unchanged context and reconnect follows a moved rail terminal
+  ---
+  duration_ms: 47.123167
+  type: 'test'
+  ...
+# Subtest: a non-repository engine migrates to the Git identity when a late client joins
+ok 199 - a non-repository engine migrates to the Git identity when a late client joins
+  ---
+  duration_ms: 252.426792
+  type: 'test'
+  ...
+# Subtest: relocated Git metadata gets a distinct engine instead of relabeling an active context
+ok 200 - relocated Git metadata gets a distinct engine instead of relabeling an active context
+  ---
+  duration_ms: 636.916125
+  type: 'test'
+  ...
+# Subtest: an unencodable snapshot is typed and remains non-shareable for that engine key
+ok 201 - an unencodable snapshot is typed and remains non-shareable for that engine key
+  ---
+  duration_ms: 2.076292
+  type: 'test'
+  ...
+# Subtest: atomic launch claims allow one child and reclaim a dead owner
+ok 202 - atomic launch claims allow one child and reclaim a dead owner
+  ---
+  duration_ms: 44.283
+  type: 'test'
+  ...
+# Subtest: the thin launcher starts one real daemon and records its complete lifecycle
+ok 203 - the thin launcher starts one real daemon and records its complete lifecycle
+  ---
+  duration_ms: 3102.850792
+  type: 'test'
+  ...
+# Subtest: a client that disconnects while its repository identity resolves leaves the coordinator idle
+ok 204 - a client that disconnects while its repository identity resolves leaves the coordinator idle
+  ---
+  duration_ms: 12.939042
+  type: 'test'
+  ...
+# Subtest: effective Git environment is deterministic, conservative, and excludes resolved SideRail inputs
+ok 205 - effective Git environment is deterministic, conservative, and excludes resolved SideRail inputs
+  ---
+  duration_ms: 1.616291
+  type: 'test'
+  ...
+# Subtest: Git executable identity resolves PATH to canonical file identity
+ok 206 - Git executable identity resolves PATH to canonical file identity
+  ---
+  duration_ms: 16.3895
+  type: 'test'
+  ...
+# Subtest: code fingerprint covers canonical checkout path, runtime paths, and bytes
+ok 207 - code fingerprint covers canonical checkout path, runtime paths, and bytes
+  ---
+  duration_ms: 14.233417
+  type: 'test'
+  ...
+# Subtest: coordinator namespace separates user, host session, code, and Git-impact environment
+ok 208 - coordinator namespace separates user, host session, code, and Git-impact environment
+  ---
+  duration_ms: 2.26075
+  type: 'test'
+  ...
+# Subtest: effective runtime semantics include immutable environment overrides only
+ok 209 - effective runtime semantics include immutable environment overrides only
+  ---
+  duration_ms: 0.172042
+  type: 'test'
+  ...
+# Subtest: private runtime paths are mode 0700, short, stable, and do not claim the lease
+ok 210 - private runtime paths are mode 0700, short, stable, and do not claim the lease
+  ---
+  duration_ms: 2.502583
+  type: 'test'
+  ...
+# Subtest: unsafe configured runtime directories and symlinks are never used
+ok 211 - unsafe configured runtime directories and symlinks are never used
+  ---
+  duration_ms: 1.550708
+  type: 'test'
+  ...
+# Subtest: repository identity shares subdirectories and resolves a relative alternate index from worktree root
+ok 212 - repository identity shares subdirectories and resolves a relative alternate index from worktree root
+  ---
+  duration_ms: 140.841125
+  type: 'test'
+  ...
+# Subtest: linked worktrees have distinct per-worktree Git dirs and one common Git dir
+ok 213 - linked worktrees have distinct per-worktree Git dirs and one common Git dir
+  ---
+  duration_ms: 131.181834
+  type: 'test'
+  ...
+# Subtest: ordinary non-repositories use canonical filesystem identity
+ok 214 - ordinary non-repositories use canonical filesystem identity
+  ---
+  duration_ms: 28.276
+  type: 'test'
+  ...
+# Subtest: missing executables and ambiguous environment values fail explicitly
+ok 215 - missing executables and ambiguous environment values fail explicitly
+  ---
+  duration_ms: 0.398
+  type: 'test'
+  ...
+# Subtest: malformed namespace inputs cannot collapse incompatible coordinators
+ok 216 - malformed namespace inputs cannot collapse incompatible coordinators
+  ---
+  duration_ms: 0.368375
+  type: 'test'
+  ...
+# Subtest: runtime paths reject wrong ownership, inaccessible filesystems, and excessive socket lengths
+ok 217 - runtime paths reject wrong ownership, inaccessible filesystems, and excessive socket lengths
+  ---
+  duration_ms: 0.238083
+  type: 'test'
+  ...
+# Subtest: executable and code identity failures are typed instead of borrowing another context
+ok 218 - executable and code identity failures are typed instead of borrowing another context
+  ---
+  duration_ms: 0.251125
+  type: 'test'
+  ...
+# Subtest: ambiguous repository responses fail before a potentially incorrect shared snapshot
+ok 219 - ambiguous repository responses fail before a potentially incorrect shared snapshot
+  ---
+  duration_ms: 0.2825
+  type: 'test'
+  ...
+# Subtest: snapshot codec preserves only the schema-declared Map and own-property presence
+ok 220 - snapshot codec preserves only the schema-declared Map and own-property presence
+  ---
+  duration_ms: 2.055875
+  type: 'test'
+  ...
+# Subtest: snapshot codec preserves an empty commit path Map
+ok 221 - snapshot codec preserves an empty commit path Map
+  ---
+  duration_ms: 0.141417
+  type: 'test'
+  ...
+# Subtest: snapshot codec rejects arbitrary Maps, cycles, tags, and forged undefined paths
+ok 222 - snapshot codec rejects arbitrary Maps, cycles, tags, and forged undefined paths
+  ---
+  duration_ms: 0.3255
+  type: 'test'
+  ...
+# Subtest: four-byte framing handles split headers, split payloads, and multiple frames
+ok 223 - four-byte framing handles split headers, split payloads, and multiple frames
+  ---
+  duration_ms: 0.53975
+  type: 'test'
+  ...
+# Subtest: frame decoder rejects oversize, malformed, and truncated frames and can reset
+ok 224 - frame decoder rejects oversize, malformed, and truncated frames and can reset
+  ---
+  duration_ms: 0.160459
+  type: 'test'
+  ...
+# Subtest: frame encoder enforces the caller-selected bound
+ok 225 - frame encoder enforces the caller-selected bound
+  ---
+  duration_ms: 0.137916
+  type: 'test'
+  ...
+# Subtest: client validator accepts typed repository and host requests
+ok 226 - client validator accepts typed repository and host requests
+  ---
+  duration_ms: 0.267292
+  type: 'test'
+  ...
+# Subtest: validators reject unknown fields and command or environment injection
+ok 227 - validators reject unknown fields and command or environment injection
+  ---
+  duration_ms: 0.121625
+  type: 'test'
+  ...
+# Subtest: server validator accepts encoded repository and exact host deliveries
+ok 228 - server validator accepts encoded repository and exact host deliveries
+  ---
+  duration_ms: 0.235167
+  type: 'test'
+  ...
+# Subtest: typed wire messages reject malformed scalar fields and contradictory responses
+ok 229 - typed wire messages reject malformed scalar fields and contradictory responses
+  ---
+  duration_ms: 0.237458
+  type: 'test'
+  ...
+# Subtest: snapshot schema rejects forged Maps and restores nested undefined without prototype mutation
+ok 230 - snapshot schema rejects forged Maps and restores nested undefined without prototype mutation
+  ---
+  duration_ms: 0.344583
+  type: 'test'
+  ...
+# Subtest: framing rejects invalid limits, unserializable messages, and zero-length frames
+ok 231 - framing rejects invalid limits, unserializable messages, and zero-length frames
+  ---
+  duration_ms: 0.183
+  type: 'test'
+  ...
+# Subtest: runtime namespace follows immutable env overrides while config-file edits stay in one namespace
+ok 232 - runtime namespace follows immutable env overrides while config-file edits stay in one namespace
+  ---
+  duration_ms: 36.649292
+  type: 'test'
+  ...
+# Subtest: process start identity uses an absolute system command independent of PATH
+ok 233 - process start identity uses an absolute system command independent of PATH
+  ---
+  duration_ms: 0.887292
+  type: 'test'
+  ...
+# Subtest: runtime rejects mismatched identity and lost launch leases before binding
+ok 234 - runtime rejects mismatched identity and lost launch leases before binding
+  ---
+  duration_ms: 1.085292
+  type: 'test'
+  ...
+# Subtest: runtime owns signal, coordinator, socket, owner, and lease cleanup
+ok 235 - runtime owns signal, coordinator, socket, owner, and lease cleanup
+  ---
+  duration_ms: 5.934084
+  type: 'test'
+  ...
+# Subtest: process identity rejects unsupported and empty results
+ok 236 - process identity rejects unsupported and empty results
+  ---
+  duration_ms: 0.122292
+  type: 'test'
+  ...
+# Subtest: idle shutdown rechecks new clients, and listen failures release owned resources
+ok 237 - idle shutdown rechecks new clients, and listen failures release owned resources
+  ---
+  duration_ms: 7.735
+  type: 'test'
+  ...
+# Subtest: shutdown errors reject completion and a changed lease is never removed
+ok 238 - shutdown errors reject completion and a changed lease is never removed
+  ---
+  duration_ms: 7.8975
+  type: 'test'
+  ...
+# Subtest: cwd-dependent executable and config environments explicitly remain in process
+ok 239 - cwd-dependent executable and config environments explicitly remain in process
+  ---
+  duration_ms: 0.219584
+  type: 'test'
+  ...
+# Subtest: an asynchronous watcher error closes only that watcher and reaches recovery
+ok 240 - an asynchronous watcher error closes only that watcher and reaches recovery
+  ---
+  duration_ms: 0.778417
+  type: 'test'
+  ...
+# Subtest: the release witness can isolate the recovery poll from filesystem watchers
+ok 241 - the release witness can isolate the recovery poll from filesystem watchers
+  ---
+  duration_ms: 0.132208
+  type: 'test'
+  ...
+# Subtest: git watcher resolves and deduplicates per-worktree and common git directories
+ok 242 - git watcher resolves and deduplicates per-worktree and common git directories
+  ---
+  duration_ms: 2.738084
+  type: 'test'
+  ...
+# Subtest: git watcher never runs Git for an empty repository root
+ok 243 - git watcher never runs Git for an empty repository root
+  ---
+  duration_ms: 0.093292
+  type: 'test'
+  ...
+# Subtest: session snapshot uses one documented socket request
+ok 244 - session snapshot uses one documented socket request
+  ---
+  duration_ms: 1.494792
+  type: 'test'
+  ...
+# Subtest: one source shares its initial snapshot and publishes semantic changes only
+ok 245 - one source shares its initial snapshot and publishes semantic changes only
+  ---
+  duration_ms: 0.675625
+  type: 'test'
+  ...
+# Subtest: concurrent refresh requests queue one follow-up without overlapping snapshots
+ok 246 - concurrent refresh requests queue one follow-up without overlapping snapshots
+  ---
+  duration_ms: 2.464375
+  type: 'test'
+  ...
+# Subtest: fallback cadence is one snapshot per completed interval and stops without subscribers
+ok 247 - fallback cadence is one snapshot per completed interval and stops without subscribers
+  ---
+  duration_ms: 0.896625
+  type: 'test'
+  ...
+# Subtest: snapshot failure is explicit, retains no false context, and schedules retry
+ok 248 - snapshot failure is explicit, retains no false context, and schedules retry
+  ---
+  duration_ms: 0.237083
+  type: 'test'
+  ...
+# Subtest: a listener failure is isolated from other subscribers and future polling
+ok 249 - a listener failure is isolated from other subscribers and future polling
+  ---
+  duration_ms: 0.155042
+  type: 'test'
+  ...
+# Subtest: default host source uses the socket and its timer without launching a CLI
+ok 250 - default host source uses the socket and its timer without launching a CLI
+  ---
+  duration_ms: 55.154666
+  type: 'test'
+  ...
+# Subtest: host response validation fails explicitly and inactive queued refreshes settle
+ok 251 - host response validation fails explicitly and inactive queued refreshes settle
+  ---
+  duration_ms: 0.316875
+  type: 'test'
+  ...
+# Subtest: content selection follows each tab's focused pane and ignores SideRail panes
+ok 252 - content selection follows each tab's focused pane and ignores SideRail panes
+  ---
+  duration_ms: 0.888708
+  type: 'test'
+  ...
+# Subtest: live cwd resolution is scoped to the rail's own tab
+ok 253 - live cwd resolution is scoped to the rail's own tab
+  ---
+  duration_ms: 0.99325
+  type: 'test'
+  ...
+# Subtest: a focused SideRail Demo never becomes the main rail's content source
+ok 254 - a focused SideRail Demo never becomes the main rail's content source
+  ---
+  duration_ms: 0.071041
+  type: 'test'
+  ...
+# Subtest: a stored SideRail Demo source is discarded in favor of real tab content
+ok 255 - a stored SideRail Demo source is discarded in favor of real tab content
+  ---
+  duration_ms: 0.129167
+  type: 'test'
+  ...
+# Subtest: a moved rail resolves cwd from its current workspace instead of its launch workspace
+ok 256 - a moved rail resolves cwd from its current workspace instead of its launch workspace
+  ---
+  duration_ms: 0.158833
+  type: 'test'
+  ...
+# Subtest: snapshot context follows a moved rail by terminal identity and reports visibility
+ok 257 - snapshot context follows a moved rail by terminal identity and reports visibility
+  ---
+  duration_ms: 0.139333
+  type: 'test'
+  ...
+# Subtest: snapshot context distinguishes hidden and no-content rails
+ok 258 - snapshot context distinguishes hidden and no-content rails
+  ---
+  duration_ms: 0.089459
+  type: 'test'
+  ...
+# Subtest: configured sidebar width shrinks a new right split to exact columns
+ok 259 - configured sidebar width shrinks a new right split to exact columns
+  ---
+  duration_ms: 0.822916
+  type: 'test'
+  ...
+# Subtest: configured width never takes more than half a narrow split
+ok 260 - configured width never takes more than half a narrow split
+  ---
+  duration_ms: 0.131
+  type: 'test'
+  ...
+# Subtest: configured width respects Herdr's minimum split ratio
+ok 261 - configured width respects Herdr's minimum split ratio
+  ---
+  duration_ms: 0.054333
+  type: 'test'
+  ...
+# Subtest: sidebar resize uses Herdr layout and pane APIs without changing focus
+ok 262 - sidebar resize uses Herdr layout and pane APIs without changing focus
+  ---
+  duration_ms: 0.82825
+  type: 'test'
+  ...
+# Subtest: orphaned pane locks are recovered instead of suppressing auto-open
+ok 263 - orphaned pane locks are recovered instead of suppressing auto-open
+  ---
+  duration_ms: 9.997791
+  type: 'test'
+  ...
+# Subtest: a live lock cannot be age-evicted or released by an earlier owner
+ok 264 - a live lock cannot be age-evicted or released by an earlier owner
+  ---
+  duration_ms: 105.578209
+  type: 'test'
+  ...
+# Subtest: an orphaned reclaimer cannot permanently wedge a pane lock
+ok 265 - an orphaned reclaimer cannot permanently wedge a pane lock
+  ---
+  duration_ms: 3.83925
+  type: 'test'
+  ...
+# Subtest: current and older-spelling rails are adopted, deduplicated, and never reopened from themselves
+ok 266 - current and older-spelling rails are adopted, deduplicated, and never reopened from themselves
+  ---
+  duration_ms: 4.45325
+  type: 'test'
+  ...
+# Subtest: toggle closes only the verified SideRail rail and clears its tab state
+ok 267 - toggle closes only the verified SideRail rail and clears its tab state
+  ---
+  duration_ms: 2.093667
+  type: 'test'
+  ...
+# Subtest: toggle opens a rail when the current tab has none
+ok 268 - toggle opens a rail when the current tab has none
+  ---
+  duration_ms: 4.152458
+  type: 'test'
+  ...
+# Subtest: automatic ensure uses a safe outer-right split without layout staging
+ok 269 - automatic ensure uses a safe outer-right split without layout staging
+  ---
+  duration_ms: 10.5635
+  type: 'test'
+  ...
+# Subtest: legacy rails are replaced at the right edge using the tab-focused source cwd
+ok 270 - legacy rails are replaced at the right edge using the tab-focused source cwd
+  ---
+  duration_ms: 10.37975
+  type: 'test'
+  ...
+# Subtest: legacy migration open failure retains the verified legacy rail
+ok 271 - legacy migration open failure retains the verified legacy rail
+  ---
+  duration_ms: 1.769916
+  type: 'test'
+  ...
+# Subtest: automatic ensure adopts a middle rail without rearranging user panes
+ok 272 - automatic ensure adopts a middle rail without rearranging user panes
+  ---
+  duration_ms: 1.946083
+  type: 'test'
+  ...
+# Subtest: rightmost placement is independent of pane listing order
+ok 273 - rightmost placement is independent of pane listing order
+  ---
+  duration_ms: 0.081334
+  type: 'test'
+  ...
+# SideRail open skipped tab w1:t1 because an outer-right split is not safe
+# Subtest: automatic ensure skips an unsafe vertical layout without staging or opening
+ok 274 - automatic ensure skips an unsafe vertical layout without staging or opening
+  ---
+  duration_ms: 2.064583
+  type: 'test'
+  ...
+# SideRail open skipped tab w1:t1 because an outer-right split is not safe
+# Subtest: manual open also skips an unsafe vertical layout without rearranging user panes
+ok 275 - manual open also skips an unsafe vertical layout without rearranging user panes
+  ---
+  duration_ms: 1.57875
+  type: 'test'
+  ...
+# SideRail open skipped tab w1:t1 because an outer-right split is not safe
+# Subtest: manual open retains an existing verified rail when replacement is unsafe
+ok 276 - manual open retains an existing verified rail when replacement is unsafe
+  ---
+  duration_ms: 2.114333
+  type: 'test'
+  ...
+# Subtest: manual replace retargets an existing rail while ensure adopts it
+ok 277 - manual replace retargets an existing rail while ensure adopts it
+  ---
+  duration_ms: 2.290167
+  type: 'test'
+  ...
+# Subtest: replacement open failure retains the existing verified rail
+ok 278 - replacement open failure retains the existing verified rail
+  ---
+  duration_ms: 1.731292
+  type: 'test'
+  ...
+# Subtest: replace compensates the new pane when the owned rail cannot close
+ok 279 - replace compensates the new pane when the owned rail cannot close
+  ---
+  duration_ms: 1.714834
+  type: 'test'
+  ...
+# Subtest: zoomed tabs are unzoomed for replacement and restored afterward
+ok 280 - zoomed tabs are unzoomed for replacement and restored afterward
+  ---
+  duration_ms: 2.991542
+  type: 'test'
+  ...
+# Subtest: SideRail Demo panes use entrypoint-specific identity instead of accumulating
+ok 281 - SideRail Demo panes use entrypoint-specific identity instead of accumulating
+  ---
+  duration_ms: 2.252666
+  type: 'test'
+  ...
+# Subtest: a SideRail Demo pane cannot become the main rail's content source
+ok 282 - a SideRail Demo pane cannot become the main rail's content source
+  ---
+  duration_ms: 1.574584
+  type: 'test'
+  ...
+# Subtest: a user pane renamed like SideRail is never treated as plugin-owned
+ok 283 - a user pane renamed like SideRail is never treated as plugin-owned
+  ---
+  duration_ms: 2.601958
+  type: 'test'
+  ...
+# Subtest: ownership inspection failure aborts instead of opening a duplicate rail
+ok 284 - ownership inspection failure aborts instead of opening a duplicate rail
+  ---
+  duration_ms: 1.899583
+  type: 'test'
+  ...
+# Subtest: an invalid plugin-open pane id is never moved into the target tab
+ok 285 - an invalid plugin-open pane id is never moved into the target tab
+  ---
+  duration_ms: 1.597417
+  type: 'test'
+  ...
+# Subtest: closed-tab cleanup removes state and orphan locks only for that tab
+ok 286 - closed-tab cleanup removes state and orphan locks only for that tab
+  ---
+  duration_ms: 2.05825
+  type: 'test'
+  ...
+# Subtest: verified orphan plugin panes fall back to generic close only for plugin_pane_not_found
+ok 287 - verified orphan plugin panes fall back to generic close only for plugin_pane_not_found
+  ---
+  duration_ms: 1.664584
+  type: 'test'
+  ...
+# Subtest: other plugin close failures never broaden into generic pane closure
+ok 288 - other plugin close failures never broaden into generic pane closure
+  ---
+  duration_ms: 0.436917
+  type: 'test'
+  ...
+# Subtest: requestHerdr sends NDJSON and returns the matching result
+ok 289 - requestHerdr sends NDJSON and returns the matching result
+  ---
+  duration_ms: 6.438541
+  type: 'test'
+  ...
+# Subtest: subscribeHerdr preserves pushed event order after its acknowledgement
+ok 290 - subscribeHerdr preserves pushed event order after its acknowledgement
+  ---
+  duration_ms: 1.182166
+  type: 'test'
+  ...
+# Subtest: event names normalize from emitted snake_case to subscription dot notation
+ok 291 - event names normalize from emitted snake_case to subscription dot notation
+  ---
+  duration_ms: 0.0835
+  type: 'test'
+  ...
+# Subtest: requestHerdr surfaces structured server errors
+ok 292 - requestHerdr surfaces structured server errors
+  ---
+  duration_ms: 2.085167
+  type: 'test'
+  ...
+# Subtest: a timed-out event wait does not consume the next event
+ok 293 - a timed-out event wait does not consume the next event
+  ---
+  duration_ms: 12.513792
+  type: 'test'
+  ...
+# Subtest: invalid and oversized response lines reject without crashing the process
+    # Subtest: invalid JSON
+    ok 1 - invalid JSON
+      ---
+      duration_ms: 1.360375
+      type: 'test'
+      ...
+    # Subtest: oversized complete line
+    ok 2 - oversized complete line
+      ---
+      duration_ms: 0.971125
+      type: 'test'
+      ...
+    1..2
+ok 294 - invalid and oversized response lines reject without crashing the process
+  ---
+  duration_ms: 2.57125
+  type: 'test'
+  ...
+# Subtest: a cmux Dock never inherits Herdr workspace, pane, or tab identity
+ok 295 - a cmux Dock never inherits Herdr workspace, pane, or tab identity
+  ---
+  duration_ms: 1.468208
+  type: 'test'
+  ...
+# Subtest: a cmux Dock without a project cwd falls back to its own directory, never a Herdr one
+ok 296 - a cmux Dock without a project cwd falls back to its own directory, never a Herdr one
+  ---
+  duration_ms: 0.174875
+  type: 'test'
+  ...
+# Subtest: a Herdr pane never inherits cmux Dock identity
+ok 297 - a Herdr pane never inherits cmux Dock identity
+  ---
+  duration_ms: 0.099
+  type: 'test'
+  ...
+# Subtest: Herdr identity prefers explicit overrides, then plugin context, then ambient variables
+ok 298 - Herdr identity prefers explicit overrides, then plugin context, then ambient variables
+  ---
+  duration_ms: 0.088791
+  type: 'test'
+  ...
+# Subtest: an explicit repo root still overrides a cmux Dock project directory
+ok 299 - an explicit repo root still overrides a cmux Dock project directory
+  ---
+  duration_ms: 0.050334
+  type: 'test'
+  ...
+# Subtest: a malformed or non-object Herdr plugin context degrades to no context
+ok 300 - a malformed or non-object Herdr plugin context degrades to no context
+  ---
+  duration_ms: 0.07875
+  type: 'test'
+  ...
+# Subtest: blank and whitespace-only host variables are treated as absent
+ok 301 - blank and whitespace-only host variables are treated as absent
+  ---
+  duration_ms: 0.051625
+  type: 'test'
+  ...
+# Subtest: an unknown host is treated as Herdr rather than granting Dock identity
+ok 302 - an unknown host is treated as Herdr rather than granting Dock identity
+  ---
+  duration_ms: 0.051083
+  type: 'test'
+  ...
+# Subtest: package info comes from the install's own package.json
+ok 303 - package info comes from the install's own package.json
+  ---
+  duration_ms: 1.205667
+  type: 'test'
+  ...
+# Subtest: Herdr setup links once, is idempotent, and moves a stale local link
+ok 304 - Herdr setup links once, is idempotent, and moves a stale local link
+  ---
+  duration_ms: 1.050125
+  type: 'test'
+  ...
+# Subtest: Herdr setup refuses to replace a GitHub-managed install and rejects malformed listings
+ok 305 - Herdr setup refuses to replace a GitHub-managed install and rejects malformed listings
+  ---
+  duration_ms: 0.343333
+  type: 'test'
+  ...
+# Subtest: Herdr plugin lookup normalizes unexpected field types
+ok 306 - Herdr plugin lookup normalizes unexpected field types
+  ---
+  duration_ms: 0.092958
+  type: 'test'
+  ...
+# Subtest: Herdr ownership check only accepts a local link at this install
+ok 307 - Herdr ownership check only accepts a local link at this install
+  ---
+  duration_ms: 0.190083
+  type: 'test'
+  ...
+# Subtest: the Dock control quotes install paths for cmux's login shell
+ok 308 - the Dock control quotes install paths for cmux's login shell
+  ---
+  duration_ms: 0.236667
+  type: 'test'
+  ...
+# Subtest: the global Dock config lives under HOME
+ok 309 - the global Dock config lives under HOME
+  ---
+  duration_ms: 0.089583
+  type: 'test'
+  ...
+# Subtest: cmux setup creates, preserves, updates, and removes only its own control
+ok 310 - cmux setup creates, preserves, updates, and removes only its own control
+  ---
+  duration_ms: 4.390917
+  type: 'test'
+  ...
+# Subtest: cmux setup never overwrites an unrelated control or malformed config
+ok 311 - cmux setup never overwrites an unrelated control or malformed config
+  ---
+  duration_ms: 3.015375
+  type: 'test'
+  ...
+# Subtest: cmux config read errors other than a missing file surface
+ok 312 - cmux config read errors other than a missing file surface
+  ---
+  duration_ms: 1.238084
+  type: 'test'
+  ...
+# Subtest: only the exact generated command is recognized as a SideRail control
+ok 313 - only the exact generated command is recognized as a SideRail control
+  ---
+  duration_ms: 2.633708
+  type: 'test'
+  ...
+# Subtest: an install path containing a quote round-trips through setup and uninstall
+ok 314 - an install path containing a quote round-trips through setup and uninstall
+  ---
+  duration_ms: 1.98675
+  type: 'test'
+  ...
+# Subtest: a swapped install is reported only after its tree settles across two ticks
+ok 315 - a swapped install is reported only after its tree settles across two ticks
+  ---
+  duration_ms: 5.984458
+  type: 'test'
+  ...
+# Subtest: the cmux launch waits for its own bootstrap, not only the rail it imports
+ok 316 - the cmux launch waits for its own bootstrap, not only the rail it imports
+  ---
+  duration_ms: 3.338792
+  type: 'test'
+  ...
+# Subtest: an empty source tree or a directory in place of an entrypoint is not ready
+ok 317 - an empty source tree or a directory in place of an entrypoint is not ready
+  ---
+  duration_ms: 3.604833
+  type: 'test'
+  ...
+# Subtest: files changing inside a stable checkout never trigger a restart
+ok 318 - files changing inside a stable checkout never trigger a restart
+  ---
+  duration_ms: 1.713542
+  type: 'test'
+  ...
+# Subtest: a rail whose launcher died is reported orphaned instead of lingering
+ok 319 - a rail whose launcher died is reported orphaned instead of lingering
+  ---
+  duration_ms: 1.590125
+  type: 'test'
+  ...
+# Subtest: an explicit launch identity is the baseline, so an early swap is still detected
+ok 320 - an explicit launch identity is the baseline, so an early swap is still detected
+  ---
+  duration_ms: 2.079042
+  type: 'test'
+  ...
+# Subtest: launch entrypoints include the launched script inside the install and always the rail
+ok 321 - launch entrypoints include the launched script inside the install and always the rail
+  ---
+  duration_ms: 0.824625
+  type: 'test'
+  ...
+# Subtest: the launch context is captured from this package when the module loads
+ok 322 - the launch context is captured from this package when the module loads
+  ---
+  duration_ms: 0.1935
+  type: 'test'
+  ...
+# Subtest: the default timer is real and unreferenced
+ok 323 - the default timer is real and unreferenced
+  ---
+  duration_ms: 1.675334
+  type: 'test'
+  ...
+# Subtest: worktree presence validation checks only candidates and stops at its budget
+ok 324 - worktree presence validation checks only candidates and stops at its budget
+  ---
+  duration_ms: 2.047083
+  type: 'test'
+  ...
+# Subtest: fixture state is derived by the production provider
+ok 325 - fixture state is derived by the production provider
+  ---
+  duration_ms: 405.510541
+  type: 'test'
+  ...
+# Subtest: linked worktrees report the common repository name separately from the branch
+ok 326 - linked worktrees report the common repository name separately from the branch
+  ---
+  duration_ms: 280.4435
+  type: 'test'
+  ...
+# Subtest: provider resolves branch Git config after explicit bases and validates it as a commit
+ok 327 - provider resolves branch Git config after explicit bases and validates it as a commit
+  ---
+  duration_ms: 1586.436333
+  type: 'test'
+  ...
+# Subtest: live branch switches reload configured bases and keep stale local main clean
+ok 328 - live branch switches reload configured bases and keep stale local main clean
+  ---
+  duration_ms: 1391.0965
+  type: 'test'
+  ...
+# Subtest: Files projection follows real committed, staged, unstaged, untracked, and recreated paths
+ok 329 - Files projection follows real committed, staged, unstaged, untracked, and recreated paths
+  ---
+  duration_ms: 673.788333
+  type: 'test'
+  ...
+# Subtest: inspection leaves HEAD, refs, index, status, and worktree bytes unchanged
+ok 330 - inspection leaves HEAD, refs, index, status, and worktree bytes unchanged
+  ---
+  duration_ms: 474.877167
+  type: 'test'
+  ...
+# Subtest: refresh and commit details use one exact-copy diff scan per comparison
+ok 331 - refresh and commit details use one exact-copy diff scan per comparison
+  ---
+  duration_ms: 328.38775
+  type: 'test'
+  ...
+# Subtest: non-repository directories provide a bounded filesystem Files state
+ok 332 - non-repository directories provide a bounded filesystem Files state
+  ---
+  duration_ms: 68.209041
+  type: 'test'
+  ...
+# Subtest: configured bases must resolve to commits and never silently fall back
+ok 333 - configured bases must resolve to commits and never silently fall back
+  ---
+  duration_ms: 286.2265
+  type: 'test'
+  ...
+# Subtest: a configured base with unrelated history never masquerades as a merge base
+ok 334 - a configured base with unrelated history never masquerades as a merge base
+  ---
+  duration_ms: 228.930041
+  type: 'test'
+  ...
+# Subtest: invalid UTF-8 in display-only commit metadata does not hide repository state
+ok 335 - invalid UTF-8 in display-only commit metadata does not hide repository state
+  ---
+  duration_ms: 271.391958
+  type: 'test'
+  ...
+# Subtest: non-UTF-8 Git paths fail visibly instead of collapsing identities
+ok 336 - non-UTF-8 Git paths fail visibly instead of collapsing identities # SKIP
+  ---
+  duration_ms: 0.053167
+  type: 'test'
+  ...
+# Subtest: Against Raw uses the same merge base as its diff after branches diverge
+ok 337 - Against Raw uses the same merge base as its diff after branches diverge
+  ---
+  duration_ms: 362.138584
+  type: 'test'
+  ...
+# Subtest: staged copy identity and colon-prefixed index paths remain exact
+ok 338 - staged copy identity and colon-prefixed index paths remain exact
+  ---
+  duration_ms: 293.048708
+  type: 'test'
+  ...
+# Subtest: exact-revision materialization preserves bounded binary bytes for viewers
+ok 339 - exact-revision materialization preserves bounded binary bytes for viewers
+  ---
+  duration_ms: 67.772584
+  type: 'test'
+  ...
+# Subtest: staged, unstaged, against, commit, untracked, and clean descriptors are independent
+ok 340 - staged, unstaged, against, commit, untracked, and clean descriptors are independent
+  ---
+  duration_ms: 615.888792
+  type: 'test'
+  ...
+# Subtest: raw preview identifies revisions and rejects escaping symlinks
+ok 341 - raw preview identifies revisions and rejects escaping symlinks
+  ---
+  duration_ms: 249.341083
+  type: 'test'
+  ...
+# Subtest: missing worktree content never falls back unless the selected state is deleted
+ok 342 - missing worktree content never falls back unless the selected state is deleted
+  ---
+  duration_ms: 96.767334
+  type: 'test'
+  ...
+# Subtest: provider handles unborn and detached repositories plus unusual renamed paths
+ok 343 - provider handles unborn and detached repositories plus unusual renamed paths
+  ---
+  duration_ms: 783.350042
+  type: 'test'
+  ...
+# Subtest: rename pathspecs preserve identity in every diff scope
+ok 344 - rename pathspecs preserve identity in every diff scope
+  ---
+  duration_ms: 0.163292
+  type: 'test'
+  ...
+# Subtest: rename and copy previews retain Git identity across against, workspace, commit, and staged views
+ok 345 - rename and copy previews retain Git identity across against, workspace, commit, and staged views
+  ---
+  duration_ms: 449.711084
+  type: 'test'
+  ...
+# Subtest: commit history and file details use one explicit first-parent comparison
+ok 346 - commit history and file details use one explicit first-parent comparison
+  ---
+  duration_ms: 473.546583
+  type: 'test'
+  ...
+# Subtest: untracked text line counts match Git numstat semantics
+ok 347 - untracked text line counts match Git numstat semantics
+  ---
+  duration_ms: 252.190292
+  type: 'test'
+  ...
+# Subtest: untracked statistics stop at an aggregate inspection budget
+ok 348 - untracked statistics stop at an aggregate inspection budget
+  ---
+  duration_ms: 322.936375
+  type: 'test'
+  ...
+# Subtest: clean tracked files retain symlink and executable metadata
+ok 349 - clean tracked files retain symlink and executable metadata
+  ---
+  duration_ms: 266.407125
+  type: 'test'
+  ...
+# Subtest: unstaged type changes use worktree mode rather than index mode
+ok 350 - unstaged type changes use worktree mode rather than index mode
+  ---
+  duration_ms: 275.269042
+  type: 'test'
+  ...
+# Subtest: against-base model retains deletion, rename, copy, executable, and symlink metadata
+ok 351 - against-base model retains deletion, rename, copy, executable, and symlink metadata
+  ---
+  duration_ms: 320.4145
+  type: 'test'
+  ...
+# Subtest: unmerged porcelain state remains an explicit conflict in both scopes
+ok 352 - unmerged porcelain state remains an explicit conflict in both scopes
+  ---
+  duration_ms: 335.685625
+  type: 'test'
+  ...
+# Subtest: raw content limits fail safely before reading unbounded data
+ok 353 - raw content limits fail safely before reading unbounded data
+  ---
+  duration_ms: 134.7685
+  type: 'test'
+  ...
+# Subtest: historical and index blobs receive bounded binary and UTF-8 validation without fallback
+ok 354 - historical and index blobs receive bounded binary and UTF-8 validation without fallback
+  ---
+  duration_ms: 392.446667
+  type: 'test'
+  ...
+# Subtest: non-regular worktree entries are rejected without opening a blocking stream
+ok 355 - non-regular worktree entries are rejected without opening a blocking stream
+  ---
+  duration_ms: 23.026125
+  type: 'test'
+  ...
+# Subtest: commit history is bounded while retaining an exact total
+ok 356 - commit history is bounded while retaining an exact total
+  ---
+  duration_ms: 4591.508042
+  type: 'test'
+  ...
+# Subtest: submodule gitlinks remain first-class canonical metadata
+ok 357 - submodule gitlinks remain first-class canonical metadata
+  ---
+  duration_ms: 877.151042
+  type: 'test'
+  ...
+# Subtest: selection follows the same path when a refresh changes its descriptor
+ok 358 - selection follows the same path when a refresh changes its descriptor
+  ---
+  duration_ms: 0.766042
+  type: 'test'
+  ...
+# Subtest: Files view combines base-branch diffs with grey unchanged files
+ok 359 - Files view combines base-branch diffs with grey unchanged files
+  ---
+  duration_ms: 8.20975
+  type: 'test'
+  ...
+# Subtest: Files view omits deleted paths but keeps files recreated at the same path
+ok 360 - Files view omits deleted paths but keeps files recreated at the same path
+  ---
+  duration_ms: 0.178792
+  type: 'test'
+  ...
+# Subtest: Files view omits deleted paths when no base comparison is available
+ok 361 - Files view omits deleted paths when no base comparison is available
+  ---
+  duration_ms: 0.078458
+  type: 'test'
+  ...
+# Subtest: Files view omits an indexed addition deleted before its first commit
+ok 362 - Files view omits an indexed addition deleted before its first commit
+  ---
+  duration_ms: 0.067791
+  type: 'test'
+  ...
+# Subtest: canonical clean files preserve tracked mode metadata
+ok 363 - canonical clean files preserve tracked mode metadata
+  ---
+  duration_ms: 0.132666
+  type: 'test'
+  ...
+# Subtest: manifest routes every runtime entrypoint through an absolute shell and launcher
+ok 364 - manifest routes every runtime entrypoint through an absolute shell and launcher
+  ---
+  duration_ms: 3.059166
+  type: 'test'
+  ...
+# Subtest: launcher accepts an absolute Node executable whose path contains spaces
+ok 365 - launcher accepts an absolute Node executable whose path contains spaces
+  ---
+  duration_ms: 121.604708
+  type: 'test'
+  ...
+# Subtest: cmux bootstrap preserves an explicit Node executable through a restricted Dock PATH
+ok 366 - cmux bootstrap preserves an explicit Node executable through a restricted Dock PATH
+  ---
+  duration_ms: 137.887042
+  type: 'test'
+  ...
+# Subtest: direct cmux bootstrap enters a login shell after SideRail exits
+ok 367 - direct cmux bootstrap enters a login shell after SideRail exits
+  ---
+  duration_ms: 303.350083
+  type: 'test'
+  ...
+# Subtest: launcher rejects missing and unsupported Node before running the target
+ok 368 - launcher rejects missing and unsupported Node before running the target
+  ---
+  duration_ms: 158.755916
+  type: 'test'
+  ...
+# Subtest: in-process Node version guard rejects unsupported majors
+ok 369 - in-process Node version guard rejects unsupported majors
+  ---
+  duration_ms: 0.1495
+  type: 'test'
+  ...
+# Subtest: launcher reruns a rail from its launch directory after an install-swap restart
+ok 370 - launcher reruns a rail from its launch directory after an install-swap restart
+  ---
+  duration_ms: 198.052208
+  type: 'test'
+  ...
+# Subtest: a restart that fails while the new install settles is retried until it starts
+ok 371 - a restart that fails while the new install settles is retried until it starts
+  ---
+  duration_ms: 2337.197041
+  type: 'test'
+  ...
+# Subtest: a restart that keeps failing stops after five restarted launches with its own status
+ok 372 - a restart that keeps failing stops after five restarted launches with its own status
+  ---
+  duration_ms: 4463.101
+  type: 'test'
+  ...
+# Subtest: a first-run failure and a signal after a restart are never retried
+ok 373 - a first-run failure and a signal after a restart are never retried
+  ---
+  duration_ms: 316.063583
+  type: 'test'
+  ...
+# Subtest: launcher does not rerun non-rail entrypoints that exit with the restart status
+ok 374 - launcher does not rerun non-rail entrypoints that exit with the restart status
+  ---
+  duration_ms: 126.138875
+  type: 'test'
+  ...
+# Subtest: preview state is scoped by workspace, source tab, and entrypoint
+ok 375 - preview state is scoped by workspace, source tab, and entrypoint
+  ---
+  duration_ms: 3.9345
+  type: 'test'
+  ...
+# Subtest: opening a preview records it, renames its tab, and closes only a verified stale preview
+ok 376 - opening a preview records it, renames its tab, and closes only a verified stale preview
+  ---
+  duration_ms: 4.671833
+  type: 'test'
+  ...
+# Subtest: reused user pane id is never closed from stale preview state
+ok 377 - reused user pane id is never closed from stale preview state
+  ---
+  duration_ms: 2.215833
+  type: 'test'
+  ...
+# Subtest: wrong workspace is never closed from stale preview state
+ok 378 - wrong workspace is never closed from stale preview state
+  ---
+  duration_ms: 1.894833
+  type: 'test'
+  ...
+# Subtest: unrelated process is never closed from stale preview state
+ok 379 - unrelated process is never closed from stale preview state
+  ---
+  duration_ms: 2.396292
+  type: 'test'
+  ...
+# Subtest: same-named script from another checkout is never closed from stale preview state
+ok 380 - same-named script from another checkout is never closed from stale preview state
+  ---
+  duration_ms: 1.67975
+  type: 'test'
+  ...
+# Subtest: inspection failure leaves the old pane open without hiding the successful new preview
+ok 381 - inspection failure leaves the old pane open without hiding the successful new preview
+  ---
+  duration_ms: 1.817834
+  type: 'test'
+  ...
+# Subtest: malformed open response does not overwrite existing preview ownership
+ok 382 - malformed open response does not overwrite existing preview ownership
+  ---
+  duration_ms: 1.648833
+  type: 'test'
+  ...
+# Subtest: missing stale panes are discarded without a destructive close
+ok 383 - missing stale panes are discarded without a destructive close
+  ---
+  duration_ms: 1.772083
+  type: 'test'
+  ...
+# Subtest: open failure preserves stale ownership and rename failure is only a warning
+ok 384 - open failure preserves stale ownership and rename failure is only a warning
+  ---
+  duration_ms: 2.464542
+  type: 'test'
+  ...
+# Subtest: post-open state failure closes the new pane and preserves old ownership
+ok 385 - post-open state failure closes the new pane and preserves old ownership
+  ---
+  duration_ms: 2.397959
+  type: 'test'
+  ...
+# Subtest: post-open state failure never closes a foreign pane from a malformed open response
+ok 386 - post-open state failure never closes a foreign pane from a malformed open response
+  ---
+  duration_ms: 1.53125
+  type: 'test'
+  ...
+# Subtest: an unwritable preview state root fails inside the guarded lifecycle before opening a pane
+ok 387 - an unwritable preview state root fails inside the guarded lifecycle before opening a pane
+  ---
+  duration_ms: 0.807583
+  type: 'test'
+  ...
+# Subtest: preview search normalizes content once and narrows prior candidates
+ok 388 - preview search normalizes content once and narrows prior candidates
+  ---
+  duration_ms: 1.772334
+  type: 'test'
+  ...
+# Subtest: cached search results retain display columns without another position pass
+ok 389 - cached search results retain display columns without another position pass
+  ---
+  duration_ms: 0.31775
+  type: 'test'
+  ...
+# Subtest: preview search restores cached prefixes, handles Unicode, and resets by content
+ok 390 - preview search restores cached prefixes, handles Unicode, and resets by content
+  ---
+  duration_ms: 0.125042
+  type: 'test'
+  ...
+# Subtest: preview search bounds query and retained candidate memory
+ok 391 - preview search bounds query and retained candidate memory
+  ---
+  duration_ms: 1004.335959
+  type: 'test'
+  ...
+# Subtest: Git status never refreshes the index even when caller options enable optional locks
+ok 392 - Git status never refreshes the index even when caller options enable optional locks
+  ---
+  duration_ms: 90.821542
+  type: 'test'
+  ...
+# Subtest: concurrent Git process contexts keep config and index environments isolated
+ok 393 - concurrent Git process contexts keep config and index environments isolated
+  ---
+  duration_ms: 48.211459
+  type: 'test'
+  ...
+# Subtest: process stdout remains text by default and can preserve exact bytes
+ok 394 - process stdout remains text by default and can preserve exact bytes
+  ---
+  duration_ms: 120.303625
+  type: 'test'
+  ...
+# Subtest: strict process decoding rejects invalid UTF-8 instead of merging byte identities
+ok 395 - strict process decoding rejects invalid UTF-8 instead of merging byte identities
+  ---
+  duration_ms: 58.575166
+  type: 'test'
+  ...
+# Subtest: process input can be supplied as exact bytes
+ok 396 - process input can be supplied as exact bytes
+  ---
+  duration_ms: 60.935916
+  type: 'test'
+  ...
+# Subtest: timeouts settle without waiting for descendants that inherited output pipes
+ok 397 - timeouts settle without waiting for descendants that inherited output pipes
+  ---
+  duration_ms: 52.221583
+  type: 'test'
+  ...
+# Subtest: timeouts terminate descendants in the command process group
+ok 398 - timeouts terminate descendants in the command process group
+  ---
+  duration_ms: 553.673292
+  type: 'test'
+  ...
+# Subtest: abort signals terminate and await the command process group
+ok 399 - abort signals terminate and await the command process group
+  ---
+  duration_ms: 557.59075
+  type: 'test'
+  ...
+# Subtest: hidden rails retain new snapshots without redraw; showing uses cached state without Git
+ok 400 - hidden rails retain new snapshots without redraw; showing uses cached state without Git
+  ---
+  duration_ms: 1.059667
+  type: 'test'
+  ...
+# Subtest: context switches drop late results and no-content state releases the subscription
+ok 401 - context switches drop late results and no-content state releases the subscription
+  ---
+  duration_ms: 1.093916
+  type: 'test'
+  ...
+# Subtest: visible age timer is local only and hidden/closed rails cancel it
+ok 402 - visible age timer is local only and hidden/closed rails cancel it
+  ---
+  duration_ms: 0.189875
+  type: 'test'
+  ...
+# Subtest: startup failure is visible and closing a pending subscription discards completion
+ok 403 - startup failure is visible and closing a pending subscription discards completion
+  ---
+  duration_ms: 0.135916
+  type: 'test'
+  ...
+# Subtest: commit ages advance from absolute author times without another provider read
+ok 404 - commit ages advance from absolute author times without another provider read
+  ---
+  duration_ms: 0.213333
+  type: 'test'
+  ...
+# Subtest: optional UI hooks can be omitted without breaking the subscription lifecycle
+ok 405 - optional UI hooks can be omitted without breaking the subscription lifecycle
+  ---
+  duration_ms: 0.372958
+  type: 'test'
+  ...
+# Subtest: dirty bursts coalesce and retain the two-second start cadence
+ok 406 - dirty bursts coalesce and retain the two-second start cadence
+  ---
+  duration_ms: 2.400083
+  type: 'test'
+  ...
+# Subtest: a dirty event during a read queues exactly one throttled follow-up
+ok 407 - a dirty event during a read queues exactly one throttled follow-up
+  ---
+  duration_ms: 0.482042
+  type: 'test'
+  ...
+# Subtest: a manual request during a read receives one immediate follow-up
+ok 408 - a manual request during a read receives one immediate follow-up
+  ---
+  duration_ms: 0.213334
+  type: 'test'
+  ...
+# Subtest: a due reconciliation covers an already pending dirty event without another read
+ok 409 - a due reconciliation covers an already pending dirty event without another read
+  ---
+  duration_ms: 0.350291
+  type: 'test'
+  ...
+# Subtest: healthy reconciliation and degraded fallback honor maximum jitter bounds
+ok 410 - healthy reconciliation and degraded fallback honor maximum jitter bounds
+  ---
+  duration_ms: 0.35775
+  type: 'test'
+  ...
+# Subtest: runtime interval updates reschedule only when a value changes
+ok 411 - runtime interval updates reschedule only when a value changes
+  ---
+  duration_ms: 0.262625
+  type: 'test'
+  ...
+# Subtest: provider failure retains bounded retry and close aborts owned work
+ok 412 - provider failure retains bounded retry and close aborts owned work
+  ---
+  duration_ms: 0.621917
+  type: 'test'
+  ...
+# Subtest: a 200,000-event dirty burst retains one deferred, deadline, timer and status update
+ok 413 - a 200,000-event dirty burst retains one deferred, deadline, timer and status update
+  ---
+  duration_ms: 18.270875
+  type: 'test'
+  ...
+# Subtest: a large mid-read burst captures a newer generation and settles against the follow-up, never the active dirty read
+ok 414 - a large mid-read burst captures a newer generation and settles against the follow-up, never the active dirty read
+  ---
+  duration_ms: 12.450709
+  type: 'test'
+  ...
+# Subtest: coalesced dirty callers share rejection on provider failure and pending close
+ok 415 - coalesced dirty callers share rejection on provider failure and pending close
+  ---
+  duration_ms: 0.212833
+  type: 'test'
+  ...
+# Subtest: archive member verification rejects local-only and removed artifacts
+ok 416 - archive member verification rejects local-only and removed artifacts
+  ---
+  duration_ms: 1.055792
+  type: 'test'
+  ...
+# Subtest: release evidence binds nine hashed local logs to one candidate
+ok 417 - release evidence binds nine hashed local logs to one candidate
+  ---
+  duration_ms: 28.428792
+  type: 'test'
+  ...
+# Subtest: release evidence rejects failed, stale, mismatched, and malformed local records
+ok 418 - release evidence rejects failed, stale, mismatched, and malformed local records
+  ---
+  duration_ms: 11.685042
+  type: 'test'
+  ...
+# Subtest: repository client stamps immutable tokens and drops closed-context deliveries
+ok 419 - repository client stamps immutable tokens and drops closed-context deliveries
+  ---
+  duration_ms: 1.390375
+  type: 'test'
+  ...
+# Subtest: in-process subscription preserves one engine owner and closes it only when requested
+ok 420 - in-process subscription preserves one engine owner and closes it only when requested
+  ---
+  duration_ms: 1.936042
+  type: 'test'
+  ...
+# Subtest: client close invalidates a subscription whose ready result arrives later
+ok 421 - client close invalidates a subscription whose ready result arrives later
+  ---
+  duration_ms: 0.947167
+  type: 'test'
+  ...
+# Subtest: real ignored noise and a sibling index do not rebuild the primary worktree
+ok 422 - real ignored noise and a sibling index do not rebuild the primary worktree
+  ---
+  duration_ms: 2614.4235
+  type: 'test'
+  ...
+# Subtest: real worktree, index, ref, and configuration mutations match the full provider oracle
+ok 423 - real worktree, index, ref, and configuration mutations match the full provider oracle
+  ---
+  duration_ms: 16702.8885
+  type: 'test'
+  ...
+# Subtest: real merge, rebase, cherry-pick, revert, bisect, and sibling-ref transitions stay on the oracle
+ok 424 - real merge, rebase, cherry-pick, revert, bisect, and sibling-ref transitions stay on the oracle
+  ---
+  duration_ms: 9919.812417
+  type: 'test'
+  ...
+# Subtest: quiet reads preserve index bytes and reconciliation repairs failed or replaced watch roots
+ok 425 - quiet reads preserve index bytes and reconciliation repairs failed or replaced watch roots
+  ---
+  duration_ms: 512.356292
+  type: 'test'
+  ...
+# Subtest: an unborn repository becomes a committed repository through native invalidation
+ok 426 - an unborn repository becomes a committed repository through native invalidation
+  ---
+  duration_ms: 1319.566375
+  type: 'test'
+  ...
+# Subtest: a missing-object provider error retains state and bounded fallback recovers it
+ok 427 - a missing-object provider error retains state and bounded fallback recovers it
+  ---
+  duration_ms: 2090.417292
+  type: 'test'
+  ...
+# Subtest: reconciliation repairs a silently lost event and a replaced real watch root
+ok 428 - reconciliation repairs a silently lost event and a replaced real watch root
+  ---
+  duration_ms: 3099.749833
+  type: 'test'
+  ...
+# Subtest: an eligible native event meets the production 125 ms / 2 second latency contract
+ok 429 - an eligible native event meets the production 125 ms / 2 second latency contract
+  ---
+  duration_ms: 2770.082417
+  type: 'test'
+  ...
+# Subtest: repository engine owns startup, subscriptions, manual refresh, and watcher snapshots
+ok 430 - repository engine owns startup, subscriptions, manual refresh, and watcher snapshots
+  ---
+  duration_ms: 3.460791
+  type: 'test'
+  ...
+# Subtest: watcher-reported degraded health is preserved and reconciliation checks roots first
+ok 431 - watcher-reported degraded health is preserved and reconciliation checks roots first
+  ---
+  duration_ms: 0.806875
+  type: 'test'
+  ...
+# Subtest: refresh failure retains the last snapshot and later success clears the error
+ok 432 - refresh failure retains the last snapshot and later success clears the error
+  ---
+  duration_ms: 0.943166
+  type: 'test'
+  ...
+# Subtest: provider config changes update the engine reconciliation interval
+ok 433 - provider config changes update the engine reconciliation interval
+  ---
+  duration_ms: 0.400583
+  type: 'test'
+  ...
+# Subtest: watch invalidation refreshes once and a watcher update failure degrades the delivery
+ok 434 - watch invalidation refreshes once and a watcher update failure degrades the delivery
+  ---
+  duration_ms: 0.371666
+  type: 'test'
+  ...
+# Subtest: watch factory failure degrades state and an initial provider failure rejects ready
+ok 435 - watch factory failure degrades state and an initial provider failure rejects ready
+  ---
+  duration_ms: 0.339417
+  type: 'test'
+  ...
+# Subtest: late subscribers replay current state and close disposes a watcher still starting
+ok 436 - late subscribers replay current state and close disposes a watcher still starting
+  ---
+  duration_ms: 0.567417
+  type: 'test'
+  ...
+# Subtest: opt-in engine evidence counts provider builds without logging context paths
+ok 437 - opt-in engine evidence counts provider builds without logging context paths
+  ---
+  duration_ms: 6.797792
+  type: 'test'
+  ...
+# Subtest: real provider engines keep simultaneous alternate-index environments isolated
+ok 438 - real provider engines keep simultaneous alternate-index environments isolated
+  ---
+  duration_ms: 227.709875
+  type: 'test'
+  ...
+# Subtest: watcher bursts attach one rejection handler per dirty batch, including an active-read follow-up
+ok 439 - watcher bursts attach one rejection handler per dirty batch, including an active-read follow-up
+  ---
+  duration_ms: 119.035584
+  type: 'test'
+  ...
+# Subtest: release screenshots have the declared dimensions and resolvable source commits
+ok 440 - release screenshots have the declared dimensions and resolvable source commits
+  ---
+  duration_ms: 2.052209
+  type: 'test'
+  ...
+# Subtest: state mode is explicit and rejects unknown rollback values
+ok 441 - state mode is explicit and rejects unknown rollback values
+  ---
+  duration_ms: 1.003375
+  type: 'test'
+  ...
+# Subtest: only typed identity and snapshot-size failures select explicit fallback
+ok 442 - only typed identity and snapshot-size failures select explicit fallback
+  ---
+  duration_ms: 0.147459
+  type: 'test'
+  ...
+# Subtest: namespace semantics follow immutable environment overrides, not mutable config contents
+ok 443 - namespace semantics follow immutable environment overrides, not mutable config contents
+  ---
+  duration_ms: 0.551875
+  type: 'test'
+  ...
+# Subtest: delivery localization preserves provider errors and never mutates a shared snapshot
+ok 444 - delivery localization preserves provider errors and never mutates a shared snapshot
+  ---
+  duration_ms: 0.787584
+  type: 'test'
+  ...
+# Subtest: bootstrap stays dormant and exposes repository and host subscription seams
+ok 445 - bootstrap stays dormant and exposes repository and host subscription seams
+  ---
+  duration_ms: 1.31
+  type: 'test'
+  ...
+# Subtest: local config is reloaded for every shared delivery
+ok 446 - local config is reloaded for every shared delivery
+  ---
+  duration_ms: 0.37675
+  type: 'test'
+  ...
+# Subtest: different immutable semantics cannot borrow the first runtime
+ok 447 - different immutable semantics cannot borrow the first runtime
+  ---
+  duration_ms: 0.227041
+  type: 'test'
+  ...
+# Subtest: typed identity failure switches one subscription to explicit in-process fallback
+ok 448 - typed identity failure switches one subscription to explicit in-process fallback
+  ---
+  duration_ms: 0.540292
+  type: 'test'
+  ...
+# Subtest: post-initial oversize signal switches automatically and ignores the old epoch
+ok 449 - post-initial oversize signal switches automatically and ignores the old epoch
+  ---
+  duration_ms: 4.32925
+  type: 'test'
+  ...
+# Subtest: normal shared connection errors remain visible and do not silently fall back
+ok 450 - normal shared connection errors remain visible and do not silently fall back
+  ---
+  duration_ms: 0.370083
+  type: 'test'
+  ...
+# Subtest: close does not wait on a blocked ready or unbounded remote close
+ok 451 - close does not wait on a blocked ready or unbounded remote close
+  ---
+  duration_ms: 11.852125
+  type: 'test'
+  ...
+# Subtest: explicit in-process mode is selected before shared runtime construction
+ok 452 - explicit in-process mode is selected before shared runtime construction
+  ---
+  duration_ms: 0.159709
+  type: 'test'
+  ...
+# Subtest: real facade and daemon derive one namespace and deliver repository state
+ok 453 - real facade and daemon derive one namespace and deliver repository state
+  ---
+  duration_ms: 1528.2165
+  type: 'test'
+  ...
+# Subtest: real in-process fallback remains refreshable and closes its engine
+ok 454 - real in-process fallback remains refreshable and closes its engine
+  ---
+  duration_ms: 88.424459
+  type: 'test'
+  ...
+# Subtest: manual refresh switches on a typed size failure but preserves ordinary errors
+ok 455 - manual refresh switches on a typed size failure but preserves ordinary errors
+  ---
+  duration_ms: 0.761208
+  type: 'test'
+  ...
+# Subtest: facade rejects malformed identities and invalid subscription contracts
+ok 456 - facade rejects malformed identities and invalid subscription contracts
+  ---
+  duration_ms: 0.35
+  type: 'test'
+  ...
+# Subtest: a wide-ambiguous terminal keeps every row inside the rail width
+ok 457 - a wide-ambiguous terminal keeps every row inside the rail width
+  ---
+  duration_ms: 904.395459
+  type: 'test'
+  ...
+# Subtest: demo snapshot is coherent at 25 columns
+ok 458 - demo snapshot is coherent at 25 columns
+  ---
+  duration_ms: 423.101666
+  type: 'test'
+  ...
+# Subtest: demo snapshot is coherent at 36 columns
+ok 459 - demo snapshot is coherent at 36 columns
+  ---
+  duration_ms: 426.568666
+  type: 'test'
+  ...
+# Subtest: demo snapshot is coherent at 52 columns
+ok 460 - demo snapshot is coherent at 52 columns
+  ---
+  duration_ms: 451.231125
+  type: 'test'
+  ...
+# Subtest: demo snapshot is coherent at 100 columns
+ok 461 - demo snapshot is coherent at 100 columns
+  ---
+  duration_ms: 427.954791
+  type: 'test'
+  ...
+# Subtest: demo snapshot ignores ambient user configuration and SideRail overrides
+ok 462 - demo snapshot ignores ambient user configuration and SideRail overrides
+  ---
+  duration_ms: 435.903541
+  type: 'test'
+  ...
+# Subtest: Files view starts with folders collapsed at 25 columns
+ok 463 - Files view starts with folders collapsed at 25 columns
+  ---
+  duration_ms: 508.437209
+  type: 'test'
+  ...
+# Subtest: Files view starts with folders collapsed at 100 columns
+ok 464 - Files view starts with folders collapsed at 100 columns
+  ---
+  duration_ms: 450.082333
+  type: 'test'
+  ...
+# Subtest: production Files repaint materializes only the 20k-path viewport
+ok 465 - production Files repaint materializes only the 20k-path viewport
+  ---
+  duration_ms: 1478.682708
+  type: 'test'
+  ...
+# Subtest: Files search expands matching paths from collapsed folders for keyboard access
+ok 466 - Files search expands matching paths from collapsed folders for keyboard access
+  ---
+  duration_ms: 764.978291
+  type: 'test'
+  ...
+# Subtest: a selected folder row is legible instead of muted against the selection
+ok 467 - a selected folder row is legible instead of muted against the selection
+  ---
+  duration_ms: 698.039209
+  type: 'test'
+  ...
+# Subtest: keyboard navigation expands an initially collapsed Files folder
+ok 468 - keyboard navigation expands an initially collapsed Files folder
+  ---
+  duration_ms: 455.879958
+  type: 'test'
+  ...
+# Subtest: Changes search includes commit history summaries
+ok 469 - Changes search includes commit history summaries
+  ---
+  duration_ms: 451.855917
+  type: 'test'
+  ...
+# Subtest: commit-history search filters expanded commit children
+ok 470 - commit-history search filters expanded commit children
+  ---
+  duration_ms: 430.966916
+  type: 'test'
+  ...
+# Subtest: loaded commit search rows replace preview glyphs with real status and stats
+ok 471 - loaded commit search rows replace preview glyphs with real status and stats
+  ---
+  duration_ms: 433.860875
+  type: 'test'
+  ...
+# Subtest: Changes and Files default to Tree at narrow and wide widths
+ok 472 - Changes and Files default to Tree at narrow and wide widths
+  ---
+  duration_ms: 1734.51225
+  type: 'test'
+  ...
+# Subtest: Tree and Folders layouts render identical file status and stats
+ok 473 - Tree and Folders layouts render identical file status and stats
+  ---
+  duration_ms: 870.678125
+  type: 'test'
+  ...
+# Subtest: rendered status matrix includes Git glyphs, numeric stats, and binary labels
+ok 474 - rendered status matrix includes Git glyphs, numeric stats, and binary labels
+  ---
+  duration_ms: 606.621958
+  type: 'test'
+  ...
+# Subtest: conflicted files render their dedicated on-screen glyph
+ok 475 - conflicted files render their dedicated on-screen glyph
+  ---
+  duration_ms: 412.897166
+  type: 'test'
+  ...
+# Subtest: large repositories fully render Changes and Files without continuation controls
+ok 476 - large repositories fully render Changes and Files without continuation controls
+  ---
+  duration_ms: 703.013458
+  type: 'test'
+  ...
+# Subtest: Files render includes current untracked paths and excludes every deleted path
+ok 477 - Files render includes current untracked paths and excludes every deleted path
+  ---
+  duration_ms: 387.809167
+  type: 'test'
+  ...
+# Subtest: sidebar rows stay within terminal width for wide filenames
+ok 478 - sidebar rows stay within terminal width for wide filenames
+  ---
+  duration_ms: 303.97575
+  type: 'test'
+  ...
+# Subtest: clean Changes view states that the worktree is clean
+ok 479 - clean Changes view states that the worktree is clean
+  ---
+  duration_ms: 317.164709
+  type: 'test'
+  ...
+# Subtest: non-repository Files stays browsable with one neutral file icon
+ok 480 - non-repository Files stays browsable with one neutral file icon
+  ---
+  duration_ms: 313.11775
+  type: 'test'
+  ...
+# Subtest: keyboard can expand a commit-summary search result
+ok 481 - keyboard can expand a commit-summary search result
+  ---
+  duration_ms: 431.91675
+  type: 'test'
+  ...
+# Subtest: help overlay explains keys and icons, scrolls, and returns to a highlighted selection
+ok 482 - help overlay explains keys and icons, scrolls, and returns to a highlighted selection
+  ---
+  duration_ms: 657.849833
+  type: 'test'
+  ...
+# Subtest: Escape clears a keyboard selection before a second press closes the rail
+ok 483 - Escape clears a keyboard selection before a second press closes the rail
+  ---
+  duration_ms: 506.501375
+  type: 'test'
+  ...
+# Subtest: fatal rail errors restore terminal modes before exiting nonzero
+ok 484 - fatal rail errors restore terminal modes before exiting nonzero
+  ---
+  duration_ms: 442.725875
+  type: 'test'
+  ...
+# Subtest: selection survives edit, stage, and commit refreshes while Files drops a later deletion
+ok 485 - selection survives edit, stage, and commit refreshes while Files drops a later deletion
+  ---
+  duration_ms: 6347.987209
+  type: 'test'
+  ...
+# Subtest: the live rail clears main history when branches change
+ok 486 - the live rail clears main history when branches change
+  ---
+  duration_ms: 4495.383583
+  type: 'test'
+  ...
+# Subtest: terminal editor return and manual reload both re-read preview content
+ok 487 - terminal editor return and manual reload both re-read preview content
+  ---
+  duration_ms: 281.647083
+  type: 'test'
+  ...
+# Subtest: preview processes coalesced search input, advances matches, and exposes horizontal navigation
+ok 488 - preview processes coalesced search input, advances matches, and exposes horizontal navigation
+  ---
+  duration_ms: 239.58625
+  type: 'test'
+  ...
+# Subtest: embedded Markdown rendering stays inside the pageable preview viewport
+ok 489 - embedded Markdown rendering stays inside the pageable preview viewport
+  ---
+  duration_ms: 391.088791
+  type: 'test'
+  ...
+# Subtest: a hostile repository config cannot auto-launch a preview executable
+ok 490 - a hostile repository config cannot auto-launch a preview executable
+  ---
+  duration_ms: 113.202542
+  type: 'test'
+  ...
+# Subtest: embedded Glow renders the selected Markdown bytes through stdin
+ok 491 - embedded Glow renders the selected Markdown bytes through stdin
+  ---
+  duration_ms: 289.478042
+  type: 'test'
+  ...
+# Subtest: a configured Markdown action auto-opens embedded Glow and action 3 renders it again
+ok 492 - a configured Markdown action auto-opens embedded Glow and action 3 renders it again
+  ---
+  duration_ms: 317.031625
+  type: 'test'
+  ...
+# Subtest: preview reports repaint latency for a large allowed line count
+ok 493 - preview reports repaint latency for a large allowed line count
+  ---
+  duration_ms: 1910.326875
+  type: 'test'
+  ...
+# 75,000-line preview repaint: 19ms
+# Subtest: preview avoids wrapped-row amplification for a pathological single line
+ok 494 - preview avoids wrapped-row amplification for a pathological single line
+  ---
+  duration_ms: 191.815459
+  type: 'test'
+  ...
+# Subtest: preview rejects pathological line counts before rendered-memory amplification
+ok 495 - preview rejects pathological line counts before rendered-memory amplification
+  ---
+  duration_ms: 216.714416
+  type: 'test'
+  ...
+# Subtest: one shared worker retains then removes many owner-only preview directories
+ok 496 - one shared worker retains then removes many owner-only preview directories
+  ---
+  duration_ms: 1090.988625
+  type: 'test'
+  ...
+# Subtest: shared cleanup refuses arbitrary temporary directories
+ok 497 - shared cleanup refuses arbitrary temporary directories
+  ---
+  duration_ms: 2.348667
+  type: 'test'
+  ...
+# Subtest: cleanup-worker spawn errors are contained and reported
+ok 498 - cleanup-worker spawn errors are contained and reported
+  ---
+  duration_ms: 1.987916
+  type: 'test'
+  ...
+# Subtest: the shared worker directly expires markers and releases its ownership lock
+ok 499 - the shared worker directly expires markers and releases its ownership lock
+  ---
+  duration_ms: 26.383958
+  type: 'test'
+  ...
+# Subtest: Files notices disclose independent scan and presence truncation
+ok 500 - Files notices disclose independent scan and presence truncation
+  ---
+  duration_ms: 4.059417
+  type: 'test'
+  ...
+# Subtest: cmux file clicks open one native preview while Herdr keeps double-click open
+ok 501 - cmux file clicks open one native preview while Herdr keeps double-click open
+  ---
+  duration_ms: 0.222583
+  type: 'test'
+  ...
+# Subtest: selection reconciliation preserves errors and active transient status
+ok 502 - selection reconciliation preserves errors and active transient status
+  ---
+  duration_ms: 0.082083
+  type: 'test'
+  ...
+# Subtest: terminal text blocks OSC52 and every terminal control family
+ok 503 - terminal text blocks OSC52 and every terminal control family
+  ---
+  duration_ms: 0.269625
+  type: 'test'
+  ...
+# Subtest: clean Files metadata opens Raw even with a workspace descriptor
+ok 504 - clean Files metadata opens Raw even with a workspace descriptor
+  ---
+  duration_ms: 0.061625
+  type: 'test'
+  ...
+# Subtest: successful asynchronous actions restore the pre-busy status
+ok 505 - successful asynchronous actions restore the pre-busy status
+  ---
+  duration_ms: 0.050417
+  type: 'test'
+  ...
+# Subtest: commit preview context distinguishes first-parent and root comparisons
+ok 506 - commit preview context distinguishes first-parent and root comparisons
+  ---
+  duration_ms: 0.053417
+  type: 'test'
+  ...
+# Subtest: preview tab names use a safe capped basename
+ok 507 - preview tab names use a safe capped basename
+  ---
+  duration_ms: 0.539125
+  type: 'test'
+  ...
+# Subtest: ambiguous-width characters follow the configured terminal setting
+ok 508 - ambiguous-width characters follow the configured terminal setting
+  ---
+  duration_ms: 0.196458
+  type: 'test'
+  ...
+# Subtest: terminal layout helpers measure, truncate, pad, and compact by display columns
+ok 509 - terminal layout helpers measure, truncate, pad, and compact by display columns
+  ---
+  duration_ms: 0.366
+  type: 'test'
+  ...
+# Subtest: preview wrapping preserves gutters, ANSI styles, Unicode width, and source rows
+ok 510 - preview wrapping preserves gutters, ANSI styles, Unicode width, and source rows
+  ---
+  duration_ms: 0.5735
+  type: 'test'
+  ...
+# Subtest: embedded renderer output keeps only SGR styling
+ok 511 - embedded renderer output keeps only SGR styling
+  ---
+  duration_ms: 0.098208
+  type: 'test'
+  ...
+# Subtest: terminal input decoder preserves ordered coalesced keyboard, CSI, and mouse events
+ok 512 - terminal input decoder preserves ordered coalesced keyboard, CSI, and mouse events
+  ---
+  duration_ms: 11.095
+  type: 'test'
+  ...
+# Subtest: pointer clicks recognize a cmux-paced double click and reset after opening
+ok 513 - pointer clicks recognize a cmux-paced double click and reset after opening
+  ---
+  duration_ms: 0.139541
+  type: 'test'
+  ...
+# Subtest: an intervening non-file click cancels a pending file double click
+ok 514 - an intervening non-file click cancels a pending file double click
+  ---
+  duration_ms: 0.089125
+  type: 'test'
+  ...
+# Subtest: an intervening blank click cancels a pending file double click
+ok 515 - an intervening blank click cancels a pending file double click
+  ---
+  duration_ms: 0.062
+  type: 'test'
+  ...
+# Subtest: wheel and keyboard input cancel a pending file double click without treating mouse release as input
+ok 516 - wheel and keyboard input cancel a pending file double click without treating mouse release as input
+  ---
+  duration_ms: 0.079083
+  type: 'test'
+  ...
+# Subtest: summary-only commit matches can expand to meaningful file content
+ok 517 - summary-only commit matches can expand to meaningful file content
+  ---
+  duration_ms: 0.079083
+  type: 'test'
+  ...
+# Subtest: poll timers reject corrupted intervals independently of configuration
+ok 518 - poll timers reject corrupted intervals independently of configuration
+  ---
+  duration_ms: 0.086333
+  type: 'test'
+  ...
+# Subtest: filesystem invalidations coalesce and enforce a minimum refresh cadence
+ok 519 - filesystem invalidations coalesce and enforce a minimum refresh cadence
+  ---
+  duration_ms: 0.130208
+  type: 'test'
+  ...
+# Subtest: a successful refresh clears only refresh failures
+ok 520 - a successful refresh clears only refresh failures
+  ---
+  duration_ms: 0.062
+  type: 'test'
+  ...
+# Subtest: SGR mouse reports can be removed without leaking bytes into search text
+ok 521 - SGR mouse reports can be removed without leaking bytes into search text
+  ---
+  duration_ms: 0.115125
+  type: 'test'
+  ...
+# Subtest: startup provider failures become an actionable render state
+ok 522 - startup provider failures become an actionable render state
+  ---
+  duration_ms: 0.085334
+  type: 'test'
+  ...
+# Subtest: sidebar snapshots cannot emit OSC52 from repository and filename data
+ok 523 - sidebar snapshots cannot emit OSC52 from repository and filename data
+  ---
+  duration_ms: 347.250084
+  type: 'test'
+  ...
+# Subtest: preview requests serialize and skip superseded queued selections
+ok 524 - preview requests serialize and skip superseded queued selections
+  ---
+  duration_ms: 0.477334
+  type: 'test'
+  ...
+# Subtest: keyboard selection reveal uses rendered row position
+ok 525 - keyboard selection reveal uses rendered row position
+  ---
+  duration_ms: 0.075167
+  type: 'test'
+  ...
+# Subtest: the fallback palette is indexed so it inherits the terminal theme
+ok 526 - the fallback palette is indexed so it inherits the terminal theme
+  ---
+  duration_ms: 0.838458
+  type: 'test'
+  ...
+# Subtest: color values accept every documented Herdr spelling
+ok 527 - color values accept every documented Herdr spelling
+  ---
+  duration_ms: 0.256375
+  type: 'test'
+  ...
+# Subtest: token reading keeps hash colors and ignores unrelated sections
+ok 528 - token reading keeps hash colors and ignores unrelated sections
+  ---
+  duration_ms: 0.818041
+  type: 'test'
+  ...
+# Subtest: scalar reading handles bare, escaped, and unterminated values
+ok 529 - scalar reading handles bare, escaped, and unterminated values
+  ---
+  duration_ms: 0.073083
+  type: 'test'
+  ...
+# Subtest: [ui] accent applies only when [theme.custom] omits one
+ok 530 - [ui] accent applies only when [theme.custom] omits one
+  ---
+  duration_ms: 0.0615
+  type: 'test'
+  ...
+# Subtest: only the four documented tokens override the fallback palette
+ok 531 - only the four documented tokens override the fallback palette
+  ---
+  duration_ms: 0.158666
+  type: 'test'
+  ...
+# Subtest: the config path honours HERDR_CONFIG_PATH ahead of XDG and HOME
+ok 532 - the config path honours HERDR_CONFIG_PATH ahead of XDG and HOME
+  ---
+  duration_ms: 0.125125
+  type: 'test'
+  ...
+# Subtest: a missing, unreadable, or cmux-hosted config leaves the fallback palette
+ok 533 - a missing, unreadable, or cmux-hosted config leaves the fallback palette
+  ---
+  duration_ms: 2.321334
+  type: 'test'
+  ...
+# Subtest: compact commit ages preserve value and unit
+ok 534 - compact commit ages preserve value and unit
+  ---
+  duration_ms: 0.862375
+  type: 'test'
+  ...
+# Subtest: root files sort after every folder group
+ok 535 - root files sort after every folder group
+  ---
+  duration_ms: 7.339833
+  type: 'test'
+  ...
+# Subtest: uninstall closes only live pane instances owned by this checkout before unlinking
+ok 536 - uninstall closes only live pane instances owned by this checkout before unlinking
+  ---
+  duration_ms: 7.067958
+  type: 'test'
+  ...
+# Subtest: uninstall fails closed on a reused or spoofed SideRail pane
+ok 537 - uninstall fails closed on a reused or spoofed SideRail pane
+  ---
+  duration_ms: 2.551375
+  type: 'test'
+  ...
+1..537
+# tests 548
+# suites 0
+# pass 547
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 122718.506709
+# start of coverage report
+# --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# file                          | line % | branch % | funcs % | uncovered lines
+# --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# src                           |        |          |         | 
+#  cmux-context-watch.mjs       | 100.00 |    96.77 |  100.00 | 
+#  cmux-context.mjs             |  98.40 |    88.14 |   97.87 | 106-107 115-116 255-257 308-309
+#  cmux-preview-lifecycle.mjs   |  98.07 |    86.98 |  100.00 | 172-174 215-217 381-382
+#  cmux-resume.mjs              | 100.00 |    90.00 |  100.00 | 
+#  config.mjs                   |  97.24 |    92.86 |   96.67 | 65-66 69-70 144-145 159-160
+#  debug-log.mjs                |  86.67 |    83.33 |  100.00 | 13-14
+#  diff-view.mjs                |  86.67 |    82.35 |  100.00 | 45-48 67-72
+#  direct-file-open.mjs         | 100.00 |    73.33 |  100.00 | 
+#  files-view-model.mjs         |  98.36 |    91.76 |   95.65 | 145-147
+#  fixture.mjs                  | 100.00 |   100.00 |  100.00 | 
+#  git-invalidation.mjs         |  98.63 |    88.84 |   97.87 | 337-341
+#  git-parsers.mjs              | 100.00 |    95.06 |  100.00 | 
+#  git-provider.mjs             |  98.23 |    91.08 |  100.00 | 82-83 156-157 224-226 324-325 452-453
+#  git-state-client.mjs         |  92.26 |    80.90 |   92.21 | 57-60 96-97 107-108 154-157 184-186 246-250 263-269 342-343 405-409 428-431 468 528-533 617-620 662-665 689-690 698-699
+#  git-state-coordinator.mjs    |  91.81 |    77.03 |   90.38 | 90-92 104-106 156-157 215-217 277-279 285-288 302-304 316-317 326-327 329-332 356-357 359-362 395-397
+#  git-state-identity.mjs       | 100.00 |    94.44 |  100.00 | 
+#  git-state-protocol.mjs       | 100.00 |    97.69 |  100.00 | 
+#  git-state-runtime.mjs        |  97.97 |    92.50 |   90.48 | 176-180
+#  git-watch.mjs                | 100.00 |    92.31 |  100.00 | 
+#  herdr-context-watch.mjs      | 100.00 |    92.31 |   96.00 | 
+#  herdr-context.mjs            |  89.26 |    68.52 |  100.00 | 35-45 119-120
+#  herdr-layout.mjs             | 100.00 |    71.43 |   83.33 | 
+#  herdr-pane-state.mjs         |  90.27 |    71.70 |   95.00 | 72-73 81-82 113 115 168-174 180-184
+#  herdr-plugin-pane.mjs        | 100.00 |   100.00 |  100.00 | 
+#  herdr-socket.mjs             |  94.15 |    85.11 |   92.31 | 37-41 115-116 150-152
+#  host-identity.mjs            | 100.00 |   100.00 |  100.00 | 
+#  host-setup.mjs               | 100.00 |    99.15 |  100.00 | 
+#  install-watch.mjs            | 100.00 |    92.50 |   90.91 | 
+#  model.mjs                    |  84.44 |    90.48 |   82.35 | 64-74 85-87
+#  node-version.mjs             | 100.00 |   100.00 |  100.00 | 
+#  preview-pane-lifecycle.mjs   |  89.82 |    76.56 |  100.00 | 86-97 123-127
+#  preview-provider.mjs         |  98.31 |    85.81 |  100.00 | 62 94 160 223
+#  preview-search.mjs           | 100.00 |    87.50 |  100.00 | 
+#  process.mjs                  |  92.31 |    87.88 |   85.00 | 32-34 81 91-94 119-120 156 184-185 187-188
+#  rail-state-client.mjs        | 100.00 |   100.00 |   88.89 | 
+#  refresh-scheduler.mjs        |  98.98 |    86.73 |   93.94 | 234-235 264
+#  repository-client.mjs        |  94.02 |    61.11 |   93.75 | 58-59 84-88
+#  repository-engine.mjs        | 100.00 |    84.25 |  100.00 | 
+#  shared-rail-runtime.mjs      |  97.94 |    86.55 |   86.67 | 198-200 223-225 254-255
+#  temporary-copy-retention.mjs |  94.81 |    75.44 |  100.00 | 65-66 68-69 72 151-153
+#  terminal-ui.mjs              |  98.54 |    90.84 |   94.34 | 194-196 247-249 362-363
+#  theme.mjs                    | 100.00 |    97.14 |  100.00 | 
+#  tui-format.mjs               | 100.00 |    77.78 |  100.00 | 
+# --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# all files                     |  97.02 |    88.31 |   95.32 | 
+# --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# end of coverage report
+
+> siderail@0.1.1 snapshot
+> node scripts/siderail.mjs --demo --snapshot --width 52 --height 46
+
+ [1msiderail-fixture[0m                                   
+  [38;5;7m↱ feature/sidebar[0m                                 
+[38;5;8m────────────────────────────────────────────────────[0m
+[48;5;8m[38;5;3m[1m CHANGES                  [0m[2m FILES                    [0m
+[48;5;8m[2m ⌕ Search changes & commits…                        [0m
+ [38;5;3m≡ Tree[0m   [38;5;7m↻ Refresh[0m                                 
+[38;5;8m────────────────────────────────────────────────────[0m
+[38;5;3m▏[0m› Against main  [2m2[0m                                  
+ › Commits  [2m1[0m                                       
+ ⌄ Staged  [2m1[0m                                        
+ [38;5;8m[0m[38;5;7m› src/[0m                                             
+ ⌄ Unstaged  [2m1[0m                                      
+ [38;5;8m[0m[38;5;7m› src/[0m                                             
+ ⌄ Untracked  [2m2[0m                                     
+ [38;5;8m[0m[38;5;7m› assets/[0m                                          
+ [38;5;8m[0m[38;5;7m› notes/[0m                                           
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+[38;5;8m────────────────────────────────────────────────────[0m
+[2mj/k select · Enter open · ? help · / search · q[0m     
+
+> siderail@0.1.1 artifact:verify
+> node scripts/verify-artifact.mjs
+
+Verified 5 manifest runtime files and 58 archive runtime dependencies, all in the npm files allowlist
+v22.23.2

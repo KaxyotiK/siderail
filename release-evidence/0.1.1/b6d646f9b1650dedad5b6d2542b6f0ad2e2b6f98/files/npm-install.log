@@ -1,0 +1,197 @@
+
+== pack b6d646f9b1650dedad5b6d2542b6f0ad2e2b6f98 and a patch-bumped upgrade
+npm notice
+npm notice 📦  siderail@0.1.1
+npm notice Tarball Contents
+npm notice 3.0kB CHANGELOG.md
+npm notice 1.1kB LICENSE
+npm notice 19.4kB README.md
+npm notice 15.5kB docs/CMUX.md
+npm notice 8.3kB docs/INSTALLATION.md
+npm notice 4.6kB docs/THEMING.md
+npm notice 9.4kB docs/TROUBLESHOOTING.md
+npm notice 1.9kB herdr-plugin.toml
+npm notice 2.8kB package.json
+npm notice 9.5kB scripts/auto-open-herdr-tabs.mjs
+npm notice 8.5kB scripts/cli.mjs
+npm notice 1.1kB scripts/cmux-node-launcher.sh
+npm notice 841B scripts/cmux-siderail.mjs
+npm notice 28.2kB scripts/file-preview.mjs
+npm notice 553B scripts/git-state-coordinator.mjs
+npm notice 2.0kB scripts/node-launcher.sh
+npm notice 22.5kB scripts/open-herdr-panel.mjs
+npm notice 238B scripts/open-herdr-panel.sh
+npm notice 903B scripts/resize-herdr-sidebar.mjs
+npm notice 59.9kB scripts/siderail.mjs
+npm notice 407B scripts/temporary-copy-cleaner.mjs
+npm notice 4.5kB scripts/uninstall-herdr-plugin.mjs
+npm notice 969B siderail.config.example.json
+npm notice 2.3kB src/cmux-context-watch.mjs
+npm notice 21.9kB src/cmux-context.mjs
+npm notice 15.8kB src/cmux-preview-lifecycle.mjs
+npm notice 2.8kB src/cmux-resume.mjs
+npm notice 13.9kB src/config.mjs
+npm notice 716B src/debug-log.mjs
+npm notice 3.3kB src/diff-view.mjs
+npm notice 2.1kB src/direct-file-open.mjs
+npm notice 6.0kB src/files-view-model.mjs
+npm notice 2.6kB src/fixture.mjs
+npm notice 17.3kB src/git-invalidation.mjs
+npm notice 6.8kB src/git-parsers.mjs
+npm notice 23.7kB src/git-provider.mjs
+npm notice 27.1kB src/git-state-client.mjs
+npm notice 17.8kB src/git-state-coordinator.mjs
+npm notice 18.9kB src/git-state-identity.mjs
+npm notice 22.4kB src/git-state-protocol.mjs
+npm notice 9.2kB src/git-state-runtime.mjs
+npm notice 1.4kB src/git-watch.mjs
+npm notice 6.7kB src/herdr-context-watch.mjs
+npm notice 4.1kB src/herdr-context.mjs
+npm notice 2.0kB src/herdr-layout.mjs
+npm notice 6.5kB src/herdr-pane-state.mjs
+npm notice 642B src/herdr-plugin-pane.mjs
+npm notice 5.7kB src/herdr-socket.mjs
+npm notice 2.0kB src/host-identity.mjs
+npm notice 7.6kB src/host-setup.mjs
+npm notice 4.7kB src/install-watch.mjs
+npm notice 3.9kB src/model.mjs
+npm notice 372B src/node-version.mjs
+npm notice 5.8kB src/preview-pane-lifecycle.mjs
+npm notice 12.1kB src/preview-provider.mjs
+npm notice 2.4kB src/preview-search.mjs
+npm notice 7.2kB src/process.mjs
+npm notice 3.4kB src/rail-state-client.mjs
+npm notice 9.4kB src/refresh-scheduler.mjs
+npm notice 4.3kB src/repository-client.mjs
+npm notice 10.1kB src/repository-engine.mjs
+npm notice 14.0kB src/shared-rail-runtime.mjs
+npm notice 6.3kB src/temporary-copy-retention.mjs
+npm notice 21.3kB src/terminal-ui.mjs
+npm notice 4.8kB src/theme.mjs
+npm notice 1.1kB src/tui-format.mjs
+npm notice Tarball Details
+npm notice name: siderail
+npm notice version: 0.1.1
+npm notice filename: siderail-0.1.1.tgz
+npm notice package size: 147.5 kB
+npm notice unpacked size: 568.7 kB
+npm notice shasum: b280037d71b98334f0ac7d878f5257d4b372bfd6
+npm notice integrity: sha512-vygDV7tfclRT9[...]xtpSobtNyRoKg==
+npm notice total files: 66
+npm notice
+npm notice
+npm notice 📦  siderail@0.1.2
+npm notice Tarball Contents
+npm notice 3.0kB CHANGELOG.md
+npm notice 1.1kB LICENSE
+npm notice 19.4kB README.md
+npm notice 15.5kB docs/CMUX.md
+npm notice 8.3kB docs/INSTALLATION.md
+npm notice 4.6kB docs/THEMING.md
+npm notice 9.4kB docs/TROUBLESHOOTING.md
+npm notice 1.9kB herdr-plugin.toml
+npm notice 2.8kB package.json
+npm notice 9.5kB scripts/auto-open-herdr-tabs.mjs
+npm notice 8.5kB scripts/cli.mjs
+npm notice 1.1kB scripts/cmux-node-launcher.sh
+npm notice 841B scripts/cmux-siderail.mjs
+npm notice 28.2kB scripts/file-preview.mjs
+npm notice 553B scripts/git-state-coordinator.mjs
+npm notice 2.0kB scripts/node-launcher.sh
+npm notice 22.5kB scripts/open-herdr-panel.mjs
+npm notice 238B scripts/open-herdr-panel.sh
+npm notice 903B scripts/resize-herdr-sidebar.mjs
+npm notice 59.9kB scripts/siderail.mjs
+npm notice 407B scripts/temporary-copy-cleaner.mjs
+npm notice 4.5kB scripts/uninstall-herdr-plugin.mjs
+npm notice 969B siderail.config.example.json
+npm notice 2.3kB src/cmux-context-watch.mjs
+npm notice 21.9kB src/cmux-context.mjs
+npm notice 15.8kB src/cmux-preview-lifecycle.mjs
+npm notice 2.8kB src/cmux-resume.mjs
+npm notice 13.9kB src/config.mjs
+npm notice 716B src/debug-log.mjs
+npm notice 3.3kB src/diff-view.mjs
+npm notice 2.1kB src/direct-file-open.mjs
+npm notice 6.0kB src/files-view-model.mjs
+npm notice 2.6kB src/fixture.mjs
+npm notice 17.3kB src/git-invalidation.mjs
+npm notice 6.8kB src/git-parsers.mjs
+npm notice 23.7kB src/git-provider.mjs
+npm notice 27.1kB src/git-state-client.mjs
+npm notice 17.8kB src/git-state-coordinator.mjs
+npm notice 18.9kB src/git-state-identity.mjs
+npm notice 22.4kB src/git-state-protocol.mjs
+npm notice 9.2kB src/git-state-runtime.mjs
+npm notice 1.4kB src/git-watch.mjs
+npm notice 6.7kB src/herdr-context-watch.mjs
+npm notice 4.1kB src/herdr-context.mjs
+npm notice 2.0kB src/herdr-layout.mjs
+npm notice 6.5kB src/herdr-pane-state.mjs
+npm notice 642B src/herdr-plugin-pane.mjs
+npm notice 5.7kB src/herdr-socket.mjs
+npm notice 2.0kB src/host-identity.mjs
+npm notice 7.6kB src/host-setup.mjs
+npm notice 4.7kB src/install-watch.mjs
+npm notice 3.9kB src/model.mjs
+npm notice 372B src/node-version.mjs
+npm notice 5.8kB src/preview-pane-lifecycle.mjs
+npm notice 12.1kB src/preview-provider.mjs
+npm notice 2.4kB src/preview-search.mjs
+npm notice 7.2kB src/process.mjs
+npm notice 3.4kB src/rail-state-client.mjs
+npm notice 9.4kB src/refresh-scheduler.mjs
+npm notice 4.3kB src/repository-client.mjs
+npm notice 10.1kB src/repository-engine.mjs
+npm notice 14.0kB src/shared-rail-runtime.mjs
+npm notice 6.3kB src/temporary-copy-retention.mjs
+npm notice 21.3kB src/terminal-ui.mjs
+npm notice 4.8kB src/theme.mjs
+npm notice 1.1kB src/tui-format.mjs
+npm notice Tarball Details
+npm notice name: siderail
+npm notice version: 0.1.2
+npm notice filename: siderail-0.1.2.tgz
+npm notice package size: 147.5 kB
+npm notice unpacked size: 568.7 kB
+npm notice shasum: 65ba0d2c79f7f5b900de1359c993bacd3b8f2e4b
+npm notice integrity: sha512-yJWxbu0Lef2eZ[...]PDQlQ7u6sCxyA==
+npm notice total files: 66
+npm notice
+siderail-0.1.1.tgz: 66 files, sha256 eb28245063ee98bfd3d16a030c7333277d8486da92202f6b4266b3db3282aa88
+
+== install 0.1.1 globally into a private prefix
+
+== start a private Herdr server
+
+== siderail setup registers both hosts and keeps other Dock controls
+Herdr: linked plugin siderail
+  Open it with: herdr plugin action invoke siderail.open-siderail
+  Bind a toggle key with command "siderail.toggle-siderail" (see the README)
+cmux: added the SideRail Dock control in /private/tmp/srn.byvSXK/home/.config/cmux/dock.json
+  New Docks pick it up automatically; use cmux's Dock config reload for an open Dock.
+  A project's own .cmux/dock.json takes precedence over this global control.
+repeated setup changed nothing
+
+== the Dock launchers run the installed rail
+installed demo rendered through the cmux launcher
+
+== a rail auto-opens in a Git workspace from the npm install
+rail w1:p2 runs from /private/tmp/srn.byvSXK/prefix/lib/node_modules/siderail
+
+== upgrade to 0.1.2 in place while the rail is open
+rail w1:p2 restarted in place on 0.1.2
+
+== toggle closes the upgraded rail and opens a new one
+rail reopened as w1:p3
+
+== a rail whose launcher alone is killed exits instead of lingering
+rail 63442 exited after its launcher 62788 was killed
+
+== siderail uninstall removes only this install's registrations
+Herdr: unlinked siderail; closed 1 verified SideRail pane(s)
+cmux: removed the SideRail Dock control from /private/tmp/srn.byvSXK/home/.config/cmux/dock.json
+no process from the install remains
+kept /tmp/siderail-state/siderail/releases/0.1.1/b6d646f9b1650dedad5b6d2542b6f0ad2e2b6f98/package/siderail-0.1.1.tgz
+
+npm install lifecycle passed for b6d646f9b1650dedad5b6d2542b6f0ad2e2b6f98 with herdr 0.8.2, v24.19.0, npm 11.17.0

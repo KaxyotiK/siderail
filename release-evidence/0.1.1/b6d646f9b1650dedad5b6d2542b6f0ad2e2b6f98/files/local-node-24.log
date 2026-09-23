@@ -1,0 +1,689 @@
+
+added 91 packages, and audited 92 packages in 764ms
+
+29 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+> siderail@0.1.1 check
+> npm run lint && npm run test:coverage
+
+
+> siderail@0.1.1 lint
+> node scripts/lint.mjs && eslint . && knip --include exports
+
+
+> siderail@0.1.1 test:coverage
+> node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='src/**/*.mjs' --test-coverage-lines=95 --test-coverage-branches=86 --test-coverage-functions=95 test/*.test.mjs
+
+✔ tab creation uses the event tab instead of the globally focused tab (0.963541ms)
+✔ startup reconciliation chooses one non-SideRail pane per tab (0.31425ms)
+✔ event reconciliation filters to the created tab (0.074459ms)
+✔ legacy layout-staging tabs never trigger auto-open (0.05ms)
+✔ bounded sweep caps workers and preserves mixed partial results (0.877334ms)
+✔ bounded sweep does not dequeue work after its global deadline (0.104ms)
+✔ bounded sweep cancels every target when the deadline has already expired (0.098333ms)
+✔ bounded sweep reports both active and queued jobs as deadline-cancelled (0.142166ms)
+✔ auto-open target gives its process group the remaining deadline and recovery grace (1.951334ms)
+✔ the global auto-open deadline starts before Herdr discovery (3.928625ms)
+✔ only user configuration can disable automatic Herdr opening (1.664583ms)
+✔ non-Git legacy labels never authorize closing a user pane (187.952458ms)
+✔ Herdr launch keeps plugin code rooted while passing the selected repository explicitly (285.794834ms)
+✔ help and version need no host (6.432542ms)
+✔ unknown commands and hosts fail with usage (1.740292ms)
+✔ setup with no host registers every detected host (3.457125ms)
+✔ setup skips missing hosts, and fails when none is found (3.589875ms)
+✔ cmux is detected from PATH or the macOS application (3.523667ms)
+✔ setup reports a moved Herdr link and an updated Dock control (1.660375ms)
+✔ status reports each host, including stale and missing registrations (5.808584ms)
+✔ uninstall removes only registrations that belong to this install (4.085333ms)
+✔ explicit cmux uninstall removes a control from another install (2.044ms)
+✔ Herdr failures other than a missing executable propagate (0.831458ms)
+✔ the installed bin runs through a symlink and reports errors on stderr (106.936959ms)
+✔ the bin exits cleanly when its reader closes the pipe early (208.594791ms)
+✔ uninstall unlinks only the plugin id it verified, whatever HERDR_PLUGIN_ID says (1.3125ms)
+✔ default uninstall recognizes this install's control at a quoted path and leaves a quoted foreign one (3.408875ms)
+✔ cmux context events are scoped to the Dock owner window (0.558ms)
+✔ cmux context watcher decodes chunked events and closes its child (1.377875ms)
+✔ cmux context watcher tolerates an unavailable stream without an error observer (0.3635ms)
+✔ an unscoped watcher accepts every window while events without a window are never dropped (0.05775ms)
+✔ an event payload window overrides nothing when the frame already names another window (0.044709ms)
+✔ closing a cmux context watcher twice kills its child exactly once (0.285583ms)
+✔ a clean cmux event stream exit is not an error but still reports the lost stream (0.682375ms)
+✔ an unrequested cmux event stream failure reports both the error and the lost stream (0.270375ms)
+✔ closing a cmux context watcher deliberately reports neither an error nor a lost stream (0.258459ms)
+✔ a cmux context watcher without a close observer still tolerates an exit (0.227291ms)
+✔ cmux executable selection prefers an explicit override and then the bundled CLI (0.703417ms)
+✔ cmux Dock control ownership is keyed by its own surface, not the workspace it follows (8.780125ms)
+✔ cmux Dock control registration rejects incomplete, missing, malformed, and mismatched ownership (5.65225ms)
+✔ cmux Dock control registration follows a live surface across workspace changes (1.594083ms)
+✔ cmux Dock registration liveness requires the recorded process (0.179709ms)
+✔ a reused process id cannot revive a version 3 registration (0.1105ms)
+✔ a markerless version 3 record is invalid rather than silently process-id only (1.525791ms)
+✔ registration fails rather than writing a version 3 record without a start marker (0.852333ms)
+✔ the process start marker is read in a fixed locale and zone (0.22825ms)
+✔ the process start marker rejects a row that belongs to another process (0.359875ms)
+✔ main workspace selection never treats the SideRail Dock surface as its source surface (0.08175ms)
+✔ cmux context resolves live main-area cwd while preserving every Dock identity (0.825708ms)
+✔ cmux context falls back to the configured project cwd when discovery fails (0.175834ms)
+✔ cmux context can resolve an older caller-scoped workspace without a window id (0.265917ms)
+✔ cmux context remains anchored to its owner window when global focus moves (0.695834ms)
+✔ cmux context recovers the selected project from the focused surface when workspace cwd is stale (0.382375ms)
+✔ cmux context pins a valid main-surface launch folder when Dock activity contaminates workspace cwd (0.389792ms)
+✔ cmux context never substitutes the SideRail Dock cwd for a missing selected project (0.2985ms)
+✔ Dock owner window is discovered from the Dock's own surface when cmux reports no caller (0.154459ms)
+✔ Dock owner window discovery is skipped without a surface of its own (0.041875ms)
+✔ Dock owner window falls back to a live window hint before the global-Dock workspace convention (0.105459ms)
+✔ cmux context resolves the Dock-owning window when identify has no caller and focus is elsewhere (0.695917ms)
+✔ cmux context never resolves the focused window's project for a Dock owned by another window (0.362375ms)
+✔ cmux context reuses a cached owner window without repeating Dock discovery (0.331042ms)
+✔ cmux context still resolves a project when Dock owner discovery fails outright (0.308625ms)
+✔ a checked-out candidate outranks an existing but unversioned directory (0.145166ms)
+✔ no checked-out candidate keeps the first existing directory rather than an unusable path (0.118958ms)
+✔ repository detection accepts a linked worktree whose .git is a file (2.347208ms)
+✔ cmux Dock control state paths cannot escape the SideRail cache directory (1.564792ms)
+✔ cmux Dock control lookup ignores another control's record for the same surface (1.947333ms)
+✔ cmux Dock control lookup prefers the current workspace and then the newest record (2.764709ms)
+✔ a main surface launched from home does not outrank the workspace's checked-out project (0.224ms)
+✔ a legacy record is migrated forward and its duplicates for the same surface are removed (4.120417ms)
+✔ a version 3 record is preferred without ever scanning legacy records (1.931833ms)
+✔ a failed migration still returns the legacy record rather than losing the control (1.359625ms)
+✔ legacy selection prefers the current workspace and then the newest record (10.169334ms)
+✔ a dead process never causes a record to be pruned, so relaunch can still find its Dock (1.390583ms)
+✔ a registration landing mid-migration is never clobbered by the legacy record (2.653375ms)
+✔ concurrent migrations of one legacy record agree on a single canonical winner (6.83375ms)
+✔ manual launch creates one unfocused Dock terminal and reveals Dock without stealing focus (2.804958ms)
+✔ manual launch adopts an existing SideRail Dock surface instead of duplicating it (0.87875ms)
+✔ manual launch recognizes its configured Dock caller identity even with cmux's startup wrapper (0.39825ms)
+✔ manual launch can coexist with an unrelated configured Dock control (0.329125ms)
+✔ manual launch adopts a registered configured SideRail control (0.37875ms)
+✔ manual launch finds an active configured control after the main workspace changes (0.284208ms)
+✔ manual launch reuses a registered post-q login shell (0.358ms)
+✔ manual launch waits for a starting configured control to register (0.297958ms)
+✔ manual launch adopts a Dock surface with an exposed SideRail control id (0.285292ms)
+✔ manual launch fails closed without a selected main workspace or Dock response (0.595583ms)
+✔ Dock relaunch command restates variables and quotes shell metacharacters (0.100625ms)
+✔ relaunching an existing Dock surface restores the owner window and project directory (0.965292ms)
+✔ a relaunched Dock surface receives exactly the environment a created one does (0.424458ms)
+✔ a Dock launch without a resolvable owner window omits the window variable rather than guessing (0.26325ms)
+✔ a relaunch decision awaits an asynchronous liveness verdict (0.24575ms)
+✔ an active registration is still adopted rather than relaunched (0.24125ms)
+✔ clean rows open an exact read-only materialization in cmux's native file viewer (7.711959ms)
+✔ changed rows open their exact selected revision in cmux's native file viewer (2.114209ms)
+✔ missing main surface falls back within the explicit workspace without inheriting the Dock surface (2.043541ms)
+✔ Dock surface is never closed from stale cmux native-preview state (1.98875ms)
+✔ foreign type is never closed from stale cmux native-preview state (1.904417ms)
+✔ foreign id is never closed from stale cmux native-preview state (2.229084ms)
+✔ a missing stale surface releases its retained native-file materialization (2.450791ms)
+✔ each open adds a new native tab and stable ownership survives Dock surface rotation (2.945875ms)
+✔ stable control ownership migrates legacy surface-keyed preview state (2.113041ms)
+✔ replacement-era ownership migrates without closing its native tabs (1.858458ms)
+✔ unreadable legacy ownership is reported without blocking a new preview (1.894084ms)
+▶ native identity names the actual bytes for clean and deletion fallbacks
+  ✔ clean Files row (1.701666ms)
+  ✔ staged deletion (1.6045ms)
+  ✔ commit deletion (1.535791ms)
+  ✔ unstaged worktree (1.801333ms)
+  ✔ untracked worktree (1.391167ms)
+  ✔ against-base revision (1.365875ms)
+  ✔ against-base worktree fallback (1.523958ms)
+  ✔ selected commit revision (1.298042ms)
+  ✔ filesystem worktree (1.293417ms)
+✔ native identity names the actual bytes for clean and deletion fallbacks (14.101458ms)
+✔ transient discovery failures retain open tabs and later prune only closed tabs (4.662833ms)
+✔ malformed ownership is ignored while an unreadable ownership path fails before cmux mutation (2.223791ms)
+✔ ownership write failure closes the new native surface and removes its materialization (1.318875ms)
+✔ ownership failure reports failed compensation without hiding either error (1.257459ms)
+✔ malformed native open responses fail and remove prepared files (1.434875ms)
+✔ partial native open reports failed close compensation (1.166833ms)
+✔ a failed native file-open command removes the prepared materialization (1.128875ms)
+✔ direct file-open payloads and fallback filenames remain supported (2.148708ms)
+✔ stale preview inspection failures are warnings and retain the old materialization (1.867709ms)
+✔ a cleanup-state rewrite failure remains a warning after verified cleanup (1.308417ms)
+✔ stale state can never remove a materialization outside SideRail's cache (1.926042ms)
+✔ cmux preview requires a resolved main workspace (0.25225ms)
+✔ surface ownership requires exact id, native panel type, and main-area scope (0.166792ms)
+✔ a native open that returns no surface identity removes its materialization and fails (1.507375ms)
+✔ an unreadable materialization target is cleaned up rather than left half written (0.679875ms)
+✔ preview ownership survives a cache directory that does not exist yet (1.596375ms)
+✔ a preview state path is confined to the SideRail cache for hostile identities (0.366375ms)
+✔ cmux Dock restart command preserves absolute paths with shell metacharacters (0.496833ms)
+✔ cmux Dock restart command restates the host environment a resume binding cannot store (0.0915ms)
+✔ cmux Dock resume registration is scoped to its window and surface (0.64025ms)
+✔ cmux Dock resume registration ignores foreign and incomplete controls (0.0785ms)
+✔ cmux Dock resume registration survives a restore that dropped the owner window id (0.1505ms)
+✔ cmux Dock resume registration reports a retained manual approval (0.083083ms)
+✔ live pane owns the single product title (3.043416ms)
+✔ Herdr opens SideRail for restored and newly created tabs (0.500916ms)
+✔ Herdr exposes a current-tab SideRail toggle action (0.312792ms)
+✔ file previews open in a dedicated Herdr tab (0.588167ms)
+✔ cmux previews use native file tabs without changing the Herdr preview (0.614875ms)
+✔ preview scrolling repaints in place without clearing the screen (0.515708ms)
+✔ manual refresh confirmation is transient (0.378541ms)
+✔ configuration validates version, launch mode, and refresh bounds (0.768542ms)
+✔ the shipped example is governed by runtime validation alone (0.430916ms)
+✔ configuration requires a version and rejects nested unknown keys (0.235792ms)
+✔ viewer actions resolve conditionally by selected filename (0.47225ms)
+✔ viewer executable preflight detects commands without invoking them (2.210125ms)
+✔ installed Markdown rules bypass the generic preview only when system open is directly usable (0.870708ms)
+✔ configuration rejects mistyped structured values (0.07375ms)
+✔ user configuration merges by key and environment wins (1.613333ms)
+✔ an explicit Glow TUI rule is preserved (1.328791ms)
+✔ environment overrides do not mutate built-in defaults (0.869708ms)
+✔ editor integration is optional and EDITOR remains a fallback (0.79275ms)
+✔ invalid environment overrides report errors without replacing valid defaults (0.76825ms)
+✔ out-of-range polling overrides preserve a user interval (1.530917ms)
+✔ structured file diff removes Git plumbing and tracks both line numbers (1.356875ms)
+✔ structured file diff preserves meaningful file metadata (0.09275ms)
+✔ structured file diff parses combined conflict hunks (0.213083ms)
+✔ diff rows neutralize repository-controlled terminal sequences (0.23925ms)
+✔ structured diff parsing strips Git color without losing hunk semantics (0.078958ms)
+✔ clean Markdown opens its worktree path directly with the system application (3.574709ms)
+✔ historical Markdown opens an exact read-only copy and schedules its cleanup (102.61025ms)
+✔ a failed system open removes its temporary copy (2.233292ms)
+✔ security policy directs reports to the repository's private reporting channel (2.965625ms)
+✔ documentation states the eventual refresh and user-only configuration contracts (1.229917ms)
+✔ public installation and release evidence instructions enforce the candidate gates (0.758875ms)
+✔ the default local check enforces coverage (0.309417ms)
+✔ cmux documentation and project Dock config describe the supported right-sidebar host (1.468958ms)
+✔ live release cleanup is isolated from the operator's Herdr installation (0.256541ms)
+✔ sealed release logs are not hidden by the general log ignore (0.246708ms)
+✔ sealed evidence is excluded from later archives and preserves terminal bytes (0.255166ms)
+✔ the Docker Linux worker pins a checksummed Herdr and is part of the release runbook (0.52625ms)
+✔ search folder state uses one bounded scope and row signatures reflect content (0.931708ms)
+✔ folder collapse keys cover every tree ancestor and grouped folder (0.517958ms)
+✔ folder expansion survives an ancestor collapse while newly discovered descendants start collapsed (0.098125ms)
+✔ tree rows retain enough ancestry to distinguish siblings from nested children (7.414041ms)
+✔ 20k-path files model materializes only the viewport at supported widths (166.855125ms)
+✔ metadata filtering is dependency-specific and conservative when unhealthy (0.706291ms)
+✔ ignored noise uses one NUL-safe batch and caches exact paths (3.76825ms)
+✔ tracked paths, tracked directory renames, and submodule children bypass ignores (0.401792ms)
+✔ own and sibling indexes are distinct for primary and linked worktrees (0.261791ms)
+✔ ignore/index/config changes invalidate classification without discarding tracked ignores (0.733ms)
+✔ unknown names, external paths, directory mode, and provider errors recover conservatively (0.332666ms)
+✔ classification failure and a generation change during classification never drop work (0.359084ms)
+✔ close cancels pending work and drops in-flight classifier completions (0.436958ms)
+✔ bounded ignore LRU promotes true and false hits and conservatively reclassifies evicted paths (0.525666ms)
+✔ ignore cache rejects invalid capacities and bounds a batch larger than its capacity (0.952042ms)
+✔ ls-files stage parser retains hidden worktree-presence flags (1.529792ms)
+✔ commit machine formats preserve control characters and unambiguous paths (0.340208ms)
+✔ porcelain v2 parser preserves spaces, tabs, unicode, renames, and conflicts (0.163041ms)
+✔ combined raw and numstat output preserves metadata, stats, and unusual paths (0.248167ms)
+✔ a silent handshake expires and close settles without an abandoned connection (51.382125ms)
+✔ initial connection sends exactly one repository subscription (1.563084ms)
+✔ blocked client controls wait for drain and then flush in order (7.561792ms)
+✔ blocked client controls enforce the count bound and release pending requests (13.100875ms)
+✔ blocked client controls enforce the bytes bound and release pending requests (13.807917ms)
+✔ disconnect retains stale state and retries beyond a failed connection window (102.771292ms)
+✔ a coordinator that never drains is disconnected at the blocked-write deadline (22.222042ms)
+✔ unanswered requests time out and do not make unsubscribe or client close hang (42.876958ms)
+✔ closing before connect finishes destroys the arriving socket and suppresses state (0.334458ms)
+✔ an initial retry keeps a standalone process alive until ready settles (86.962417ms)
+✔ an independent Node client connects successfully after its initial refusal (74.147ms)
+✔ coordinator transport drains controls in order and enforces blocked-write bounds (7.161542ms)
+✔ eight socket clients share one engine build and one edit build (30.746583ms)
+✔ a disconnected client resubscribes and maps a restarted engine to a fresh local generation (35.702959ms)
+✔ host refresh suppresses unchanged context and reconnect follows a moved rail terminal (46.374834ms)
+✔ a non-repository engine migrates to the Git identity when a late client joins (229.704666ms)
+✔ relocated Git metadata gets a distinct engine instead of relabeling an active context (529.583042ms)
+✔ an unencodable snapshot is typed and remains non-shareable for that engine key (2.045208ms)
+✔ atomic launch claims allow one child and reclaim a dead owner (33.737583ms)
+✔ the thin launcher starts one real daemon and records its complete lifecycle (2898.81425ms)
+✔ a client that disconnects while its repository identity resolves leaves the coordinator idle (11.543458ms)
+✔ effective Git environment is deterministic, conservative, and excludes resolved SideRail inputs (1.018834ms)
+✔ Git executable identity resolves PATH to canonical file identity (4.134875ms)
+✔ code fingerprint covers canonical checkout path, runtime paths, and bytes (10.589042ms)
+✔ coordinator namespace separates user, host session, code, and Git-impact environment (1.439208ms)
+✔ effective runtime semantics include immutable environment overrides only (0.192583ms)
+✔ private runtime paths are mode 0700, short, stable, and do not claim the lease (2.200125ms)
+✔ unsafe configured runtime directories and symlinks are never used (1.209542ms)
+✔ repository identity shares subdirectories and resolves a relative alternate index from worktree root (135.484458ms)
+✔ linked worktrees have distinct per-worktree Git dirs and one common Git dir (137.139542ms)
+✔ ordinary non-repositories use canonical filesystem identity (25.936083ms)
+✔ missing executables and ambiguous environment values fail explicitly (0.313083ms)
+✔ malformed namespace inputs cannot collapse incompatible coordinators (0.357583ms)
+✔ runtime paths reject wrong ownership, inaccessible filesystems, and excessive socket lengths (0.213208ms)
+✔ executable and code identity failures are typed instead of borrowing another context (0.269583ms)
+✔ ambiguous repository responses fail before a potentially incorrect shared snapshot (0.263166ms)
+✔ snapshot codec preserves only the schema-declared Map and own-property presence (1.683542ms)
+✔ snapshot codec preserves an empty commit path Map (0.104125ms)
+✔ snapshot codec rejects arbitrary Maps, cycles, tags, and forged undefined paths (0.387042ms)
+✔ four-byte framing handles split headers, split payloads, and multiple frames (0.304542ms)
+✔ frame decoder rejects oversize, malformed, and truncated frames and can reset (0.146083ms)
+✔ frame encoder enforces the caller-selected bound (0.085791ms)
+✔ client validator accepts typed repository and host requests (0.26925ms)
+✔ validators reject unknown fields and command or environment injection (0.117708ms)
+✔ server validator accepts encoded repository and exact host deliveries (0.262334ms)
+✔ typed wire messages reject malformed scalar fields and contradictory responses (0.814ms)
+✔ snapshot schema rejects forged Maps and restores nested undefined without prototype mutation (0.6005ms)
+✔ framing rejects invalid limits, unserializable messages, and zero-length frames (0.316916ms)
+✔ runtime namespace follows immutable env overrides while config-file edits stay in one namespace (27.815209ms)
+✔ process start identity uses an absolute system command independent of PATH (0.739083ms)
+✔ runtime rejects mismatched identity and lost launch leases before binding (1.013334ms)
+✔ runtime owns signal, coordinator, socket, owner, and lease cleanup (6.699917ms)
+✔ process identity rejects unsupported and empty results (0.158583ms)
+✔ idle shutdown rechecks new clients, and listen failures release owned resources (8.233375ms)
+✔ shutdown errors reject completion and a changed lease is never removed (7.891292ms)
+✔ cwd-dependent executable and config environments explicitly remain in process (0.25175ms)
+✔ an asynchronous watcher error closes only that watcher and reaches recovery (0.5145ms)
+✔ the release witness can isolate the recovery poll from filesystem watchers (0.083917ms)
+✔ git watcher resolves and deduplicates per-worktree and common git directories (2.179708ms)
+✔ git watcher never runs Git for an empty repository root (0.103916ms)
+✔ session snapshot uses one documented socket request (0.978958ms)
+✔ one source shares its initial snapshot and publishes semantic changes only (0.633584ms)
+✔ concurrent refresh requests queue one follow-up without overlapping snapshots (2.16575ms)
+✔ fallback cadence is one snapshot per completed interval and stops without subscribers (0.387459ms)
+✔ snapshot failure is explicit, retains no false context, and schedules retry (0.1855ms)
+✔ a listener failure is isolated from other subscribers and future polling (0.141958ms)
+✔ default host source uses the socket and its timer without launching a CLI (54.477208ms)
+✔ host response validation fails explicitly and inactive queued refreshes settle (0.318625ms)
+✔ content selection follows each tab's focused pane and ignores SideRail panes (0.973791ms)
+✔ live cwd resolution is scoped to the rail's own tab (0.667167ms)
+✔ a focused SideRail Demo never becomes the main rail's content source (0.066625ms)
+✔ a stored SideRail Demo source is discarded in favor of real tab content (0.112917ms)
+✔ a moved rail resolves cwd from its current workspace instead of its launch workspace (0.156709ms)
+✔ snapshot context follows a moved rail by terminal identity and reports visibility (0.164917ms)
+✔ snapshot context distinguishes hidden and no-content rails (0.111458ms)
+✔ configured sidebar width shrinks a new right split to exact columns (0.5635ms)
+✔ configured width never takes more than half a narrow split (0.078625ms)
+✔ configured width respects Herdr's minimum split ratio (0.046542ms)
+✔ sidebar resize uses Herdr layout and pane APIs without changing focus (0.538375ms)
+✔ orphaned pane locks are recovered instead of suppressing auto-open (6.686041ms)
+✔ a live lock cannot be age-evicted or released by an earlier owner (105.083834ms)
+✔ an orphaned reclaimer cannot permanently wedge a pane lock (4.039458ms)
+✔ current and older-spelling rails are adopted, deduplicated, and never reopened from themselves (3.93375ms)
+✔ toggle closes only the verified SideRail rail and clears its tab state (1.776042ms)
+✔ toggle opens a rail when the current tab has none (1.909208ms)
+✔ automatic ensure uses a safe outer-right split without layout staging (2.17675ms)
+✔ legacy rails are replaced at the right edge using the tab-focused source cwd (1.837ms)
+✔ legacy migration open failure retains the verified legacy rail (1.5515ms)
+✔ automatic ensure adopts a middle rail without rearranging user panes (2.074375ms)
+✔ rightmost placement is independent of pane listing order (0.07525ms)
+SideRail open skipped tab w1:t1 because an outer-right split is not safe
+✔ automatic ensure skips an unsafe vertical layout without staging or opening (1.73125ms)
+SideRail open skipped tab w1:t1 because an outer-right split is not safe
+✔ manual open also skips an unsafe vertical layout without rearranging user panes (1.366708ms)
+SideRail open skipped tab w1:t1 because an outer-right split is not safe
+✔ manual open retains an existing verified rail when replacement is unsafe (1.530458ms)
+✔ manual replace retargets an existing rail while ensure adopts it (2.10425ms)
+✔ replacement open failure retains the existing verified rail (1.442375ms)
+✔ replace compensates the new pane when the owned rail cannot close (1.654834ms)
+✔ zoomed tabs are unzoomed for replacement and restored afterward (2.222167ms)
+✔ SideRail Demo panes use entrypoint-specific identity instead of accumulating (1.6935ms)
+✔ a SideRail Demo pane cannot become the main rail's content source (1.302125ms)
+✔ a user pane renamed like SideRail is never treated as plugin-owned (2.028958ms)
+✔ ownership inspection failure aborts instead of opening a duplicate rail (1.282958ms)
+✔ an invalid plugin-open pane id is never moved into the target tab (1.313333ms)
+✔ closed-tab cleanup removes state and orphan locks only for that tab (1.690084ms)
+✔ verified orphan plugin panes fall back to generic close only for plugin_pane_not_found (1.033ms)
+✔ other plugin close failures never broaden into generic pane closure (0.683042ms)
+✔ requestHerdr sends NDJSON and returns the matching result (4.616625ms)
+✔ subscribeHerdr preserves pushed event order after its acknowledgement (1.602125ms)
+✔ event names normalize from emitted snake_case to subscription dot notation (0.09525ms)
+✔ requestHerdr surfaces structured server errors (1.079167ms)
+✔ a timed-out event wait does not consume the next event (11.535834ms)
+▶ invalid and oversized response lines reject without crashing the process
+  ✔ invalid JSON (1.234584ms)
+  ✔ oversized complete line (0.711416ms)
+✔ invalid and oversized response lines reject without crashing the process (2.227083ms)
+✔ a cmux Dock never inherits Herdr workspace, pane, or tab identity (1.351208ms)
+✔ a cmux Dock without a project cwd falls back to its own directory, never a Herdr one (0.088708ms)
+✔ a Herdr pane never inherits cmux Dock identity (0.10175ms)
+✔ Herdr identity prefers explicit overrides, then plugin context, then ambient variables (0.07875ms)
+✔ an explicit repo root still overrides a cmux Dock project directory (0.046417ms)
+✔ a malformed or non-object Herdr plugin context degrades to no context (0.083166ms)
+✔ blank and whitespace-only host variables are treated as absent (0.058625ms)
+✔ an unknown host is treated as Herdr rather than granting Dock identity (0.048042ms)
+✔ package info comes from the install's own package.json (0.703333ms)
+✔ Herdr setup links once, is idempotent, and moves a stale local link (0.707958ms)
+✔ Herdr setup refuses to replace a GitHub-managed install and rejects malformed listings (0.348084ms)
+✔ Herdr plugin lookup normalizes unexpected field types (0.091917ms)
+✔ Herdr ownership check only accepts a local link at this install (0.161625ms)
+✔ the Dock control quotes install paths for cmux's login shell (0.20475ms)
+✔ the global Dock config lives under HOME (0.484125ms)
+✔ cmux setup creates, preserves, updates, and removes only its own control (3.416167ms)
+✔ cmux setup never overwrites an unrelated control or malformed config (2.401583ms)
+✔ cmux config read errors other than a missing file surface (1.226ms)
+✔ only the exact generated command is recognized as a SideRail control (2.063ms)
+✔ an install path containing a quote round-trips through setup and uninstall (1.953542ms)
+✔ a swapped install is reported only after its tree settles across two ticks (4.587375ms)
+✔ the cmux launch waits for its own bootstrap, not only the rail it imports (3.127792ms)
+✔ an empty source tree or a directory in place of an entrypoint is not ready (3.131167ms)
+✔ files changing inside a stable checkout never trigger a restart (1.616292ms)
+✔ a rail whose launcher died is reported orphaned instead of lingering (1.645791ms)
+✔ an explicit launch identity is the baseline, so an early swap is still detected (1.643875ms)
+✔ launch entrypoints include the launched script inside the install and always the rail (0.552917ms)
+✔ the launch context is captured from this package when the module loads (0.113833ms)
+✔ the default timer is real and unreferenced (1.788917ms)
+✔ worktree presence validation checks only candidates and stops at its budget (1.404542ms)
+✔ fixture state is derived by the production provider (354.29775ms)
+✔ linked worktrees report the common repository name separately from the branch (267.062417ms)
+✔ provider resolves branch Git config after explicit bases and validates it as a commit (1563.400417ms)
+✔ live branch switches reload configured bases and keep stale local main clean (1380.967209ms)
+✔ Files projection follows real committed, staged, unstaged, untracked, and recreated paths (589.383708ms)
+✔ inspection leaves HEAD, refs, index, status, and worktree bytes unchanged (438.084875ms)
+✔ refresh and commit details use one exact-copy diff scan per comparison (356.206042ms)
+✔ non-repository directories provide a bounded filesystem Files state (72.844125ms)
+✔ configured bases must resolve to commits and never silently fall back (312.031834ms)
+✔ a configured base with unrelated history never masquerades as a merge base (247.137958ms)
+✔ invalid UTF-8 in display-only commit metadata does not hide repository state (295.272542ms)
+﹣ non-UTF-8 Git paths fail visibly instead of collapsing identities (0.078708ms) # SKIP
+✔ Against Raw uses the same merge base as its diff after branches diverge (386.835084ms)
+✔ staged copy identity and colon-prefixed index paths remain exact (262.4115ms)
+✔ exact-revision materialization preserves bounded binary bytes for viewers (63.814417ms)
+✔ staged, unstaged, against, commit, untracked, and clean descriptors are independent (413.886083ms)
+✔ raw preview identifies revisions and rejects escaping symlinks (136.746042ms)
+✔ missing worktree content never falls back unless the selected state is deleted (74.431416ms)
+✔ provider handles unborn and detached repositories plus unusual renamed paths (805.816459ms)
+✔ rename pathspecs preserve identity in every diff scope (0.208292ms)
+✔ rename and copy previews retain Git identity across against, workspace, commit, and staged views (429.261792ms)
+✔ commit history and file details use one explicit first-parent comparison (485.764583ms)
+✔ untracked text line counts match Git numstat semantics (288.816958ms)
+✔ untracked statistics stop at an aggregate inspection budget (289.875084ms)
+✔ clean tracked files retain symlink and executable metadata (248.951ms)
+✔ unstaged type changes use worktree mode rather than index mode (236.890459ms)
+✔ against-base model retains deletion, rename, copy, executable, and symlink metadata (319.369541ms)
+✔ unmerged porcelain state remains an explicit conflict in both scopes (334.311417ms)
+✔ raw content limits fail safely before reading unbounded data (135.523542ms)
+✔ historical and index blobs receive bounded binary and UTF-8 validation without fallback (422.365917ms)
+✔ non-regular worktree entries are rejected without opening a blocking stream (29.880291ms)
+✔ commit history is bounded while retaining an exact total (4693.747708ms)
+✔ submodule gitlinks remain first-class canonical metadata (820.277333ms)
+✔ selection follows the same path when a refresh changes its descriptor (0.871708ms)
+✔ Files view combines base-branch diffs with grey unchanged files (6.991208ms)
+✔ Files view omits deleted paths but keeps files recreated at the same path (0.129958ms)
+✔ Files view omits deleted paths when no base comparison is available (0.06825ms)
+✔ Files view omits an indexed addition deleted before its first commit (0.059833ms)
+✔ canonical clean files preserve tracked mode metadata (0.105041ms)
+✔ manifest routes every runtime entrypoint through an absolute shell and launcher (2.74ms)
+✔ launcher accepts an absolute Node executable whose path contains spaces (82.026208ms)
+✔ cmux bootstrap preserves an explicit Node executable through a restricted Dock PATH (86.315458ms)
+✔ direct cmux bootstrap enters a login shell after SideRail exits (267.507875ms)
+✔ launcher rejects missing and unsupported Node before running the target (163.068583ms)
+✔ in-process Node version guard rejects unsupported majors (0.2395ms)
+✔ launcher reruns a rail from its launch directory after an install-swap restart (128.056959ms)
+✔ a restart that fails while the new install settles is retried until it starts (2209.252167ms)
+✔ a restart that keeps failing stops after five restarted launches with its own status (4302.652916ms)
+✔ a first-run failure and a signal after a restart are never retried (225.0015ms)
+✔ launcher does not rerun non-rail entrypoints that exit with the restart status (77.995208ms)
+✔ preview state is scoped by workspace, source tab, and entrypoint (2.8395ms)
+✔ opening a preview records it, renames its tab, and closes only a verified stale preview (3.914ms)
+✔ reused user pane id is never closed from stale preview state (1.7255ms)
+✔ wrong workspace is never closed from stale preview state (1.473875ms)
+✔ unrelated process is never closed from stale preview state (1.519833ms)
+✔ same-named script from another checkout is never closed from stale preview state (1.915584ms)
+✔ inspection failure leaves the old pane open without hiding the successful new preview (1.656833ms)
+✔ malformed open response does not overwrite existing preview ownership (1.630375ms)
+✔ missing stale panes are discarded without a destructive close (1.542125ms)
+✔ open failure preserves stale ownership and rename failure is only a warning (1.683084ms)
+✔ post-open state failure closes the new pane and preserves old ownership (1.409ms)
+✔ post-open state failure never closes a foreign pane from a malformed open response (1.35925ms)
+✔ an unwritable preview state root fails inside the guarded lifecycle before opening a pane (0.740292ms)
+✔ preview search normalizes content once and narrows prior candidates (1.314208ms)
+✔ cached search results retain display columns without another position pass (0.311125ms)
+✔ preview search restores cached prefixes, handles Unicode, and resets by content (0.1305ms)
+✔ preview search bounds query and retained candidate memory (979.168334ms)
+✔ Git status never refreshes the index even when caller options enable optional locks (64.203833ms)
+✔ concurrent Git process contexts keep config and index environments isolated (43.932708ms)
+✔ process stdout remains text by default and can preserve exact bytes (66.728791ms)
+✔ strict process decoding rejects invalid UTF-8 instead of merging byte identities (32.917834ms)
+✔ process input can be supplied as exact bytes (34.207875ms)
+✔ timeouts settle without waiting for descendants that inherited output pipes (51.478667ms)
+✔ timeouts terminate descendants in the command process group (554.556625ms)
+✔ abort signals terminate and await the command process group (554.242583ms)
+✔ hidden rails retain new snapshots without redraw; showing uses cached state without Git (1.341917ms)
+✔ context switches drop late results and no-content state releases the subscription (0.672875ms)
+✔ visible age timer is local only and hidden/closed rails cancel it (0.164292ms)
+✔ startup failure is visible and closing a pending subscription discards completion (0.128917ms)
+✔ commit ages advance from absolute author times without another provider read (0.23175ms)
+✔ optional UI hooks can be omitted without breaking the subscription lifecycle (0.215542ms)
+✔ dirty bursts coalesce and retain the two-second start cadence (1.976959ms)
+✔ a dirty event during a read queues exactly one throttled follow-up (0.3ms)
+✔ a manual request during a read receives one immediate follow-up (0.183667ms)
+✔ a due reconciliation covers an already pending dirty event without another read (0.769708ms)
+✔ healthy reconciliation and degraded fallback honor maximum jitter bounds (0.279833ms)
+✔ runtime interval updates reschedule only when a value changes (0.184542ms)
+✔ provider failure retains bounded retry and close aborts owned work (0.48275ms)
+✔ a 200,000-event dirty burst retains one deferred, deadline, timer and status update (21.123292ms)
+✔ a large mid-read burst captures a newer generation and settles against the follow-up, never the active dirty read (19.941458ms)
+✔ coalesced dirty callers share rejection on provider failure and pending close (0.157416ms)
+✔ archive member verification rejects local-only and removed artifacts (1.121ms)
+✔ release evidence binds nine hashed local logs to one candidate (10.718166ms)
+✔ release evidence rejects failed, stale, mismatched, and malformed local records (8.38225ms)
+✔ repository client stamps immutable tokens and drops closed-context deliveries (1.024959ms)
+✔ in-process subscription preserves one engine owner and closes it only when requested (1.576458ms)
+✔ client close invalidates a subscription whose ready result arrives later (0.643833ms)
+✔ real ignored noise and a sibling index do not rebuild the primary worktree (2527.666833ms)
+✔ real worktree, index, ref, and configuration mutations match the full provider oracle (16368.458584ms)
+✔ real merge, rebase, cherry-pick, revert, bisect, and sibling-ref transitions stay on the oracle (9954.470292ms)
+✔ quiet reads preserve index bytes and reconciliation repairs failed or replaced watch roots (461.3985ms)
+✔ an unborn repository becomes a committed repository through native invalidation (1253.040791ms)
+✔ a missing-object provider error retains state and bounded fallback recovers it (2023.080166ms)
+✔ reconciliation repairs a silently lost event and a replaced real watch root (2694.763417ms)
+✔ an eligible native event meets the production 125 ms / 2 second latency contract (2810.592083ms)
+✔ repository engine owns startup, subscriptions, manual refresh, and watcher snapshots (3.362166ms)
+✔ watcher-reported degraded health is preserved and reconciliation checks roots first (0.672541ms)
+✔ refresh failure retains the last snapshot and later success clears the error (0.670792ms)
+✔ provider config changes update the engine reconciliation interval (0.31675ms)
+✔ watch invalidation refreshes once and a watcher update failure degrades the delivery (0.276667ms)
+✔ watch factory failure degrades state and an initial provider failure rejects ready (0.298458ms)
+✔ late subscribers replay current state and close disposes a watcher still starting (0.642375ms)
+✔ opt-in engine evidence counts provider builds without logging context paths (12.303792ms)
+✔ real provider engines keep simultaneous alternate-index environments isolated (273.079792ms)
+✔ watcher bursts attach one rejection handler per dirty batch, including an active-read follow-up (133.560459ms)
+✔ release screenshots have the declared dimensions and resolvable source commits (1.6175ms)
+✔ state mode is explicit and rejects unknown rollback values (0.871333ms)
+✔ only typed identity and snapshot-size failures select explicit fallback (0.082667ms)
+✔ namespace semantics follow immutable environment overrides, not mutable config contents (0.650708ms)
+✔ delivery localization preserves provider errors and never mutates a shared snapshot (0.601666ms)
+✔ bootstrap stays dormant and exposes repository and host subscription seams (1.447708ms)
+✔ local config is reloaded for every shared delivery (0.365334ms)
+✔ different immutable semantics cannot borrow the first runtime (0.212834ms)
+✔ typed identity failure switches one subscription to explicit in-process fallback (0.451875ms)
+✔ post-initial oversize signal switches automatically and ignores the old epoch (3.203084ms)
+✔ normal shared connection errors remain visible and do not silently fall back (0.372625ms)
+✔ close does not wait on a blocked ready or unbounded remote close (10.558ms)
+✔ explicit in-process mode is selected before shared runtime construction (0.248459ms)
+✔ real facade and daemon derive one namespace and deliver repository state (1428.831167ms)
+✔ real in-process fallback remains refreshable and closes its engine (96.042708ms)
+✔ manual refresh switches on a typed size failure but preserves ordinary errors (0.654625ms)
+✔ facade rejects malformed identities and invalid subscription contracts (0.308792ms)
+✔ a wide-ambiguous terminal keeps every row inside the rail width (894.548209ms)
+✔ demo snapshot is coherent at 25 columns (497.561417ms)
+✔ demo snapshot is coherent at 36 columns (433.023083ms)
+✔ demo snapshot is coherent at 52 columns (454.951292ms)
+✔ demo snapshot is coherent at 100 columns (436.195334ms)
+✔ demo snapshot ignores ambient user configuration and SideRail overrides (492.643541ms)
+✔ Files view starts with folders collapsed at 25 columns (441.083458ms)
+✔ Files view starts with folders collapsed at 100 columns (465.694292ms)
+✔ production Files repaint materializes only the 20k-path viewport (1618.687875ms)
+✔ Files search expands matching paths from collapsed folders for keyboard access (541.456833ms)
+✔ a selected folder row is legible instead of muted against the selection (432.789209ms)
+✔ keyboard navigation expands an initially collapsed Files folder (455.384625ms)
+✔ Changes search includes commit history summaries (460.635917ms)
+✔ commit-history search filters expanded commit children (432.666ms)
+✔ loaded commit search rows replace preview glyphs with real status and stats (454.45925ms)
+✔ Changes and Files default to Tree at narrow and wide widths (1771.859125ms)
+✔ Tree and Folders layouts render identical file status and stats (958.666208ms)
+✔ rendered status matrix includes Git glyphs, numeric stats, and binary labels (653.108666ms)
+✔ conflicted files render their dedicated on-screen glyph (519.68175ms)
+✔ large repositories fully render Changes and Files without continuation controls (798.911541ms)
+✔ Files render includes current untracked paths and excludes every deleted path (429.691958ms)
+✔ sidebar rows stay within terminal width for wide filenames (362.785791ms)
+✔ clean Changes view states that the worktree is clean (369.212292ms)
+✔ non-repository Files stays browsable with one neutral file icon (292.037166ms)
+✔ keyboard can expand a commit-summary search result (492.70725ms)
+✔ help overlay explains keys and icons, scrolls, and returns to a highlighted selection (697.599708ms)
+✔ Escape clears a keyboard selection before a second press closes the rail (589.367708ms)
+✔ fatal rail errors restore terminal modes before exiting nonzero (434.48625ms)
+✔ selection survives edit, stage, and commit refreshes while Files drops a later deletion (6303.280459ms)
+✔ the live rail clears main history when branches change (4501.079792ms)
+✔ terminal editor return and manual reload both re-read preview content (271.388ms)
+✔ preview processes coalesced search input, advances matches, and exposes horizontal navigation (213.769084ms)
+✔ embedded Markdown rendering stays inside the pageable preview viewport (387.150792ms)
+✔ a hostile repository config cannot auto-launch a preview executable (86.034583ms)
+✔ embedded Glow renders the selected Markdown bytes through stdin (290.531583ms)
+✔ a configured Markdown action auto-opens embedded Glow and action 3 renders it again (312.491542ms)
+✔ preview reports repaint latency for a large allowed line count (1720.070458ms)
+ℹ 75,000-line preview repaint: 20ms
+✔ preview avoids wrapped-row amplification for a pathological single line (138.226417ms)
+✔ preview rejects pathological line counts before rendered-memory amplification (198.095541ms)
+✔ one shared worker retains then removes many owner-only preview directories (1058.188458ms)
+✔ shared cleanup refuses arbitrary temporary directories (2.340833ms)
+✔ cleanup-worker spawn errors are contained and reported (2.134583ms)
+✔ the shared worker directly expires markers and releases its ownership lock (38.894ms)
+✔ Files notices disclose independent scan and presence truncation (4.743208ms)
+✔ cmux file clicks open one native preview while Herdr keeps double-click open (0.213291ms)
+✔ selection reconciliation preserves errors and active transient status (0.102666ms)
+✔ terminal text blocks OSC52 and every terminal control family (0.276167ms)
+✔ clean Files metadata opens Raw even with a workspace descriptor (0.066959ms)
+✔ successful asynchronous actions restore the pre-busy status (0.053208ms)
+✔ commit preview context distinguishes first-parent and root comparisons (0.052125ms)
+✔ preview tab names use a safe capped basename (0.648625ms)
+✔ ambiguous-width characters follow the configured terminal setting (0.141959ms)
+✔ terminal layout helpers measure, truncate, pad, and compact by display columns (0.410375ms)
+✔ preview wrapping preserves gutters, ANSI styles, Unicode width, and source rows (0.531042ms)
+✔ embedded renderer output keeps only SGR styling (0.11325ms)
+✔ terminal input decoder preserves ordered coalesced keyboard, CSI, and mouse events (11.257459ms)
+✔ pointer clicks recognize a cmux-paced double click and reset after opening (0.16925ms)
+✔ an intervening non-file click cancels a pending file double click (0.097708ms)
+✔ an intervening blank click cancels a pending file double click (0.089583ms)
+✔ wheel and keyboard input cancel a pending file double click without treating mouse release as input (0.07275ms)
+✔ summary-only commit matches can expand to meaningful file content (0.095375ms)
+✔ poll timers reject corrupted intervals independently of configuration (0.09775ms)
+✔ filesystem invalidations coalesce and enforce a minimum refresh cadence (0.11625ms)
+✔ a successful refresh clears only refresh failures (0.045208ms)
+✔ SGR mouse reports can be removed without leaking bytes into search text (0.104959ms)
+✔ startup provider failures become an actionable render state (0.09725ms)
+✔ sidebar snapshots cannot emit OSC52 from repository and filename data (340.247292ms)
+✔ preview requests serialize and skip superseded queued selections (0.446ms)
+✔ keyboard selection reveal uses rendered row position (0.120167ms)
+✔ the fallback palette is indexed so it inherits the terminal theme (0.666083ms)
+✔ color values accept every documented Herdr spelling (0.319083ms)
+✔ token reading keeps hash colors and ignores unrelated sections (0.670291ms)
+✔ scalar reading handles bare, escaped, and unterminated values (0.072042ms)
+✔ [ui] accent applies only when [theme.custom] omits one (0.058458ms)
+✔ only the four documented tokens override the fallback palette (0.126917ms)
+✔ the config path honours HERDR_CONFIG_PATH ahead of XDG and HOME (0.099ms)
+✔ a missing, unreadable, or cmux-hosted config leaves the fallback palette (2.014917ms)
+✔ compact commit ages preserve value and unit (0.713375ms)
+✔ root files sort after every folder group (7.398125ms)
+✔ uninstall closes only live pane instances owned by this checkout before unlinking (1.328417ms)
+✔ uninstall fails closed on a reused or spoofed SideRail pane (0.488583ms)
+ℹ tests 548
+ℹ suites 0
+ℹ pass 547
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 118150.905333
+ℹ start of coverage report
+ℹ --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ file                          | line % | branch % | funcs % | uncovered lines
+ℹ --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ src                           |        |          |         | 
+ℹ  cmux-context-watch.mjs       | 100.00 |    96.77 |  100.00 | 
+ℹ  cmux-context.mjs             |  98.40 |    88.14 |   97.87 | 106-107 115-116 255-257 308-309
+ℹ  cmux-preview-lifecycle.mjs   |  98.07 |    86.98 |  100.00 | 172-174 215-217 381-382
+ℹ  cmux-resume.mjs              | 100.00 |    90.00 |  100.00 | 
+ℹ  config.mjs                   |  97.24 |    92.86 |   96.67 | 65-66 69-70 144-145 159-160
+ℹ  debug-log.mjs                |  86.67 |    83.33 |  100.00 | 13-14
+ℹ  diff-view.mjs                |  86.67 |    82.35 |  100.00 | 45-48 67-72
+ℹ  direct-file-open.mjs         | 100.00 |    73.33 |  100.00 | 
+ℹ  files-view-model.mjs         |  98.36 |    91.76 |   95.65 | 145-147
+ℹ  fixture.mjs                  | 100.00 |   100.00 |  100.00 | 
+ℹ  git-invalidation.mjs         |  98.63 |    89.25 |   97.87 | 337-341
+ℹ  git-parsers.mjs              | 100.00 |    95.06 |  100.00 | 
+ℹ  git-provider.mjs             |  98.23 |    91.08 |  100.00 | 82-83 156-157 224-226 324-325 452-453
+ℹ  git-state-client.mjs         |  92.26 |    80.97 |   92.21 | 57-60 96-97 107-108 154-157 184-186 246-250 263-269 342-343 405-409 428-431 468 528-533 617-620 662-665 689-690 698-699
+ℹ  git-state-coordinator.mjs    |  91.81 |    77.03 |   90.38 | 90-92 104-106 156-157 215-217 277-279 285-288 302-304 316-317 326-327 329-332 356-357 359-362 395-397
+ℹ  git-state-identity.mjs       | 100.00 |    94.44 |  100.00 | 
+ℹ  git-state-protocol.mjs       | 100.00 |    97.69 |  100.00 | 
+ℹ  git-state-runtime.mjs        |  97.97 |    93.67 |   90.48 | 176-180
+ℹ  git-watch.mjs                | 100.00 |    92.31 |  100.00 | 
+ℹ  herdr-context-watch.mjs      | 100.00 |    92.31 |   96.00 | 
+ℹ  herdr-context.mjs            |  89.26 |    68.52 |  100.00 | 35-45 119-120
+ℹ  herdr-layout.mjs             | 100.00 |    71.43 |   83.33 | 
+ℹ  herdr-pane-state.mjs         |  89.19 |    70.37 |   95.00 | 47-48 72-73 81-82 113 115 168-174 180-184
+ℹ  herdr-plugin-pane.mjs        | 100.00 |   100.00 |  100.00 | 
+ℹ  herdr-socket.mjs             |  94.15 |    85.11 |   92.31 | 37-41 115-116 150-152
+ℹ  host-identity.mjs            | 100.00 |   100.00 |  100.00 | 
+ℹ  host-setup.mjs               | 100.00 |    99.15 |  100.00 | 
+ℹ  install-watch.mjs            | 100.00 |    92.50 |   90.91 | 
+ℹ  model.mjs                    |  84.44 |    90.48 |   82.35 | 64-74 85-87
+ℹ  node-version.mjs             | 100.00 |   100.00 |  100.00 | 
+ℹ  preview-pane-lifecycle.mjs   |  89.82 |    76.56 |  100.00 | 86-97 123-127
+ℹ  preview-provider.mjs         |  98.31 |    85.81 |  100.00 | 62 94 160 223
+ℹ  preview-search.mjs           | 100.00 |    87.50 |  100.00 | 
+ℹ  process.mjs                  |  92.31 |    87.88 |   85.00 | 32-34 81 91-94 119-120 156 184-185 187-188
+ℹ  rail-state-client.mjs        | 100.00 |   100.00 |   88.89 | 
+ℹ  refresh-scheduler.mjs        |  98.98 |    86.73 |   93.94 | 234-235 264
+ℹ  repository-client.mjs        |  94.02 |    61.11 |   93.75 | 58-59 84-88
+ℹ  repository-engine.mjs        | 100.00 |    84.25 |  100.00 | 
+ℹ  shared-rail-runtime.mjs      |  97.94 |    86.55 |   86.67 | 198-200 223-225 254-255
+ℹ  temporary-copy-retention.mjs |  94.81 |    75.44 |  100.00 | 65-66 68-69 72 151-153
+ℹ  terminal-ui.mjs              |  98.54 |    90.84 |   94.34 | 194-196 247-249 362-363
+ℹ  theme.mjs                    | 100.00 |    97.14 |  100.00 | 
+ℹ  tui-format.mjs               | 100.00 |    77.78 |  100.00 | 
+ℹ --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ all files                     |  97.00 |    88.34 |   95.32 | 
+ℹ --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ℹ end of coverage report
+
+> siderail@0.1.1 snapshot
+> node scripts/siderail.mjs --demo --snapshot --width 52 --height 46
+
+ [1msiderail-fixture[0m                                   
+  [38;5;7m↱ feature/sidebar[0m                                 
+[38;5;8m────────────────────────────────────────────────────[0m
+[48;5;8m[38;5;3m[1m CHANGES                  [0m[2m FILES                    [0m
+[48;5;8m[2m ⌕ Search changes & commits…                        [0m
+ [38;5;3m≡ Tree[0m   [38;5;7m↻ Refresh[0m                                 
+[38;5;8m────────────────────────────────────────────────────[0m
+[38;5;3m▏[0m› Against main  [2m2[0m                                  
+ › Commits  [2m1[0m                                       
+ ⌄ Staged  [2m1[0m                                        
+ [38;5;8m[0m[38;5;7m› src/[0m                                             
+ ⌄ Unstaged  [2m1[0m                                      
+ [38;5;8m[0m[38;5;7m› src/[0m                                             
+ ⌄ Untracked  [2m2[0m                                     
+ [38;5;8m[0m[38;5;7m› assets/[0m                                          
+ [38;5;8m[0m[38;5;7m› notes/[0m                                           
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+                                                    
+[38;5;8m────────────────────────────────────────────────────[0m
+[2mj/k select · Enter open · ? help · / search · q[0m     
+
+> siderail@0.1.1 artifact:verify
+> node scripts/verify-artifact.mjs
+
+Verified 5 manifest runtime files and 58 archive runtime dependencies, all in the npm files allowlist
+v24.19.0

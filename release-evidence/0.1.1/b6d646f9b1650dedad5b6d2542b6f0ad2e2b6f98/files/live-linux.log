@@ -1,0 +1,81 @@
+
+added 91 packages, and audited 92 packages in 2s
+
+29 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+
+> siderail@0.1.1 live:release:smoke
+> /bin/bash scripts/run-isolated-live-smoke.sh
+
+herdr server running; you can use any herdr CLI command in another terminal.
+api socket: /tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr.sock
+client socket: /tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr-client.sock
+logs: /tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr-server.log
+did you mean to open the Herdr TUI? run `herdr`; you do not need `herdr server`.
+{"id":"cli:plugin","result":{"plugin":{"actions":[{"command":["/bin/bash","scripts/open-herdr-panel.sh","git-tui"],"contexts":["workspace"],"id":"open-siderail","title":"Open SideRail"},{"command":["/bin/bash","scripts/open-herdr-panel.sh","git-mockup"],"contexts":["workspace"],"id":"open-siderail-mockup","title":"Open SideRail Demo"},{"command":["/bin/bash","scripts/open-herdr-panel.sh","git-tui","toggle"],"contexts":["workspace"],"id":"toggle-siderail","title":"Toggle SideRail"}],"description":"A trustworthy, read-only Files and Git sidebar for each Herdr tab","enabled":true,"events":[{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"tab.closed"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"tab.created"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"workspace.closed"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"workspace.created"}],"manifest_path":"/home/node/candidate/herdr-plugin.toml","min_herdr_version":"0.8.0","name":"SideRail","panes":[{"command":["/bin/bash","scripts/node-launcher.sh","scripts/file-preview.mjs"],"description":"Exact descriptor-aware diff and file preview","id":"file-preview","placement":"tab","title":"SideRail Preview"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/siderail.mjs","--demo"],"description":"Deterministic SideRail demo derived from a real fixture repository","id":"git-mockup","placement":"overlay","title":"SideRail Demo"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/siderail.mjs"],"description":"Read-only Files and Git inspection for the focused directory","id":"git-tui","placement":"overlay","title":"SIDERAIL"}],"platforms":["macos","linux"],"plugin_id":"siderail","plugin_root":"/home/node/candidate","source":{"kind":"local"},"startup":[{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"]}],"version":"0.1.1"},"type":"plugin_linked"}}
+{
+  "type": "live_herdr_smoke",
+  "platform": "linux",
+  "node": "v24.19.0",
+  "herdr": "herdr 0.8.2",
+  "watchMode": "watch-only",
+  "observations": [
+    "auto-open and Staged/Unstaged/Untracked separation",
+    "non-Git auto-open exclusion",
+    "manual Toggle and automatic/manual unsafe-layout skips without pane reconstruction",
+    "Diff/Raw preview controls and preview-tab exclusion",
+    "per-source-tab preview replacement",
+    "inspection preserved HEAD, refs, status, index bytes/mtime, and worktree bytes",
+    "manual refresh, watch-only convergence, and failure-state preservation",
+    "real demo pane and checked-in 36/52/100 capture artifacts"
+  ]
+}
+Unlinked siderail; closed 5 verified SideRail pane(s).
+Verified cleanup of 1 candidate coordinator(s)
+{"session":{"default":false,"name":"grw42","running":false,"session_dir":"/tmp/grl.y4m49A/w/c/herdr/sessions/grw42","socket_path":"/tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr.sock"},"stopped":true}
+herdr server running; you can use any herdr CLI command in another terminal.
+api socket: /tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr.sock
+client socket: /tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr-client.sock
+logs: /tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr-server.log
+did you mean to open the Herdr TUI? run `herdr`; you do not need `herdr server`.
+{"session":{"default":false,"name":"grw42","running":false,"session_dir":"/tmp/grl.y4m49A/w/c/herdr/sessions/grw42","socket_path":"/tmp/grl.y4m49A/w/c/herdr/sessions/grw42/herdr.sock"},"stopped":true}
+herdr server running; you can use any herdr CLI command in another terminal.
+api socket: /tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr.sock
+client socket: /tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr-client.sock
+logs: /tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr-server.log
+did you mean to open the Herdr TUI? run `herdr`; you do not need `herdr server`.
+{"id":"cli:plugin","result":{"plugin":{"actions":[{"command":["/bin/bash","scripts/open-herdr-panel.sh","git-tui"],"contexts":["workspace"],"id":"open-siderail","title":"Open SideRail"},{"command":["/bin/bash","scripts/open-herdr-panel.sh","git-mockup"],"contexts":["workspace"],"id":"open-siderail-mockup","title":"Open SideRail Demo"},{"command":["/bin/bash","scripts/open-herdr-panel.sh","git-tui","toggle"],"contexts":["workspace"],"id":"toggle-siderail","title":"Toggle SideRail"}],"description":"A trustworthy, read-only Files and Git sidebar for each Herdr tab","enabled":true,"events":[{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"tab.closed"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"tab.created"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"workspace.closed"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"],"on":"workspace.created"}],"manifest_path":"/home/node/candidate/herdr-plugin.toml","min_herdr_version":"0.8.0","name":"SideRail","panes":[{"command":["/bin/bash","scripts/node-launcher.sh","scripts/file-preview.mjs"],"description":"Exact descriptor-aware diff and file preview","id":"file-preview","placement":"tab","title":"SideRail Preview"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/siderail.mjs","--demo"],"description":"Deterministic SideRail demo derived from a real fixture repository","id":"git-mockup","placement":"overlay","title":"SideRail Demo"},{"command":["/bin/bash","scripts/node-launcher.sh","scripts/siderail.mjs"],"description":"Read-only Files and Git inspection for the focused directory","id":"git-tui","placement":"overlay","title":"SIDERAIL"}],"platforms":["macos","linux"],"plugin_id":"siderail","plugin_root":"/home/node/candidate","source":{"kind":"local"},"startup":[{"command":["/bin/bash","scripts/node-launcher.sh","scripts/auto-open-herdr-tabs.mjs"]}],"version":"0.1.1"},"type":"plugin_linked"}}
+{
+  "type": "live_herdr_smoke",
+  "platform": "linux",
+  "node": "v24.19.0",
+  "herdr": "herdr 0.8.2",
+  "watchMode": "poll-only",
+  "observations": [
+    "auto-open and Staged/Unstaged/Untracked separation",
+    "non-Git auto-open exclusion",
+    "manual Toggle and automatic/manual unsafe-layout skips without pane reconstruction",
+    "Diff/Raw preview controls and preview-tab exclusion",
+    "per-source-tab preview replacement",
+    "inspection preserved HEAD, refs, status, index bytes/mtime, and worktree bytes",
+    "manual refresh, poll-only convergence, and failure-state preservation",
+    "real demo pane and checked-in 36/52/100 capture artifacts"
+  ]
+}
+Unlinked siderail; closed 5 verified SideRail pane(s).
+Verified cleanup of 1 candidate coordinator(s)
+{"session":{"default":false,"name":"grp42","running":false,"session_dir":"/tmp/grl.y4m49A/p/c/herdr/sessions/grp42","socket_path":"/tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr.sock"},"stopped":true}
+herdr server running; you can use any herdr CLI command in another terminal.
+api socket: /tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr.sock
+client socket: /tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr-client.sock
+logs: /tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr-server.log
+did you mean to open the Herdr TUI? run `herdr`; you do not need `herdr server`.
+{"session":{"default":false,"name":"grp42","running":false,"session_dir":"/tmp/grl.y4m49A/p/c/herdr/sessions/grp42","socket_path":"/tmp/grl.y4m49A/p/c/herdr/sessions/grp42/herdr.sock"},"stopped":true}
+isolated live smoke passed with herdr 0.8.2 and v24.19.0
