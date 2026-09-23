@@ -262,14 +262,14 @@ test("late subscribers replay current state and close disposes a watcher still s
 });
 
 test("opt-in engine evidence counts provider builds without logging context paths", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-engine-log-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-engine-log-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const log = path.join(root, "debug.ndjson");
-  const previous = process.env.GIT_RAIL_DEBUG_LOG;
-  process.env.GIT_RAIL_DEBUG_LOG = log;
+  const previous = process.env.SIDERAIL_DEBUG_LOG;
+  process.env.SIDERAIL_DEBUG_LOG = log;
   t.after(() => {
-    if (previous === undefined) delete process.env.GIT_RAIL_DEBUG_LOG;
-    else process.env.GIT_RAIL_DEBUG_LOG = previous;
+    if (previous === undefined) delete process.env.SIDERAIL_DEBUG_LOG;
+    else process.env.SIDERAIL_DEBUG_LOG = previous;
   });
   const engine = createRepositoryEngine({
     context: { engineKey: "private/path/repository", cwd: "/fixture" },
@@ -294,7 +294,7 @@ test("opt-in engine evidence counts provider builds without logging context path
 });
 
 test("real provider engines keep simultaneous alternate-index environments isolated", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-engine-index-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-engine-index-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = {
     GIT_AUTHOR_NAME: "Fixture",

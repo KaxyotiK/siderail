@@ -12,21 +12,21 @@ Legend: `[ ]` open · `[x]` done · **(Dn)** blocked on a decision below.
 
 | # | Decision | Status | Recommendation |
 | --- | --- | --- | --- |
-| D1 | Does GitRail support repository-level configuration? | accepted | No tracked configuration file. Remove `.git-rail.json` discovery and merging entirely. The comparison base alone may also come from uncommitted local or worktree Git config. |
-| D2 | May GitRail add development-only verification dependencies while retaining zero runtime dependencies? | accepted | Yes. Pin development tooling in `package-lock.json`; runtime entrypoints must not import it. The exact linter and rules are an engineering choice. |
+| D1 | Does SideRail support repository-level configuration? | accepted | No tracked configuration file. Remove `.siderail.json` discovery and merging entirely. The comparison base alone may also come from uncommitted local or worktree Git config. |
+| D2 | May SideRail add development-only verification dependencies while retaining zero runtime dependencies? | accepted | Yes. Pin development tooling in `package-lock.json`; runtime entrypoints must not import it. The exact linter and rules are an engineering choice. |
 | D3 | Add an Untracked section, or correct the docs? | accepted | Add a distinct, expanded-by-default Untracked section immediately after Unstaged. Use `?` as its section and row glyph, matching Git's status notation. |
-| D4 | Does GitRail ship JSON Schema/editor integration for configuration? | accepted | No. Remove `$schema` from the example and runtime contract, delete the standalone schema and schema-specific tests/docs, and keep `validateConfig` as the single configuration authority. |
-| D5 | May GitRail reconstruct a user's pane layout to force an outer-right rail? | accepted | No. Automatic and explicit opening may create only a directly safe outer-right split; otherwise they leave the tab unchanged and report the skip. Existing full-height rails may be swapped to the right edge without reconstructing split topology. |
+| D4 | Does SideRail ship JSON Schema/editor integration for configuration? | accepted | No. Remove `$schema` from the example and runtime contract, delete the standalone schema and schema-specific tests/docs, and keep `validateConfig` as the single configuration authority. |
+| D5 | May SideRail reconstruct a user's pane layout to force an outer-right rail? | accepted | No. Automatic and explicit opening may create only a directly safe outer-right split; otherwise they leave the tab unchanged and report the skip. Existing full-height rails may be swapped to the right edge without reconstructing split topology. |
 | D6 | Tag `v0.1.0` now, or after Phase 1? | accepted | Tag only after all three phases, automated release gates, the real-Herdr walkthrough, and release documentation are complete. Phase 1 is necessary but not sufficient for the first release tag. |
 | D7 | What consistency does one Git refresh promise? | accepted | Eventual consistency. A refresh may briefly combine adjacent repository states while Git is changing; filesystem invalidation and the recovery poll converge on the next state. Do not add extra Git work or claim atomicity. |
-| D8 | Does GitRail use GitHub Actions? | accepted | No. Remove every workflow and hosted-evidence contract. Validation is local, candidate-bound, fail-closed, and retained as hashed file evidence. |
+| D8 | Does SideRail use GitHub Actions? | accepted | No. Remove every workflow and hosted-evidence contract. Validation is local, candidate-bound, fail-closed, and retained as hashed file evidence. |
 
 ## Outcome and constraints
 
 The target is a production-ready private `v0.1.0` candidate for Herdr users on
 macOS and Linux, with Node 22 or 24 and Herdr 0.8.x. A user
-must be able to install GitRail, inspect Git and filesystem state, open exact
-Raw/Diff/Rendered previews, and remove the plugin without GitRail mutating Git,
+must be able to install SideRail, inspect Git and filesystem state, open exact
+Raw/Diff/Rendered previews, and remove the plugin without SideRail mutating Git,
 closing panes it cannot prove it owns, or reconstructing user pane layouts.
 
 The release candidate must remain responsive at the documented repository and
@@ -48,34 +48,34 @@ authorized operations.
 
 ## Phase 1 — blockers
 
-- [x] **B1** Remove repository-level `.git-rail.json` discovery and merging from every runtime path **(D1 accepted)**
+- [x] **B1** Remove repository-level `.siderail.json` discovery and merging from every runtime path **(D1 accepted)**
 - [x] **B1a** Remove tracked repository-configuration precedence, examples, opt-outs, schema guidance, and tests; document user/environment configuration and the local/worktree branch-base exception
-- [x] **B1b** Rewrite the `SECURITY.md` trust boundary to state that repository contents never control GitRail configuration
-- [x] **B1c** Regression test: hostile `.git-rail.json` + file preview must not spawn the executable
-- [x] **B2** Shared test helper that spawns with a scrubbed environment (`HOME`/`XDG_*` → temp; delete all `HERDR_*` and `GIT_RAIL_*`)
+- [x] **B1b** Rewrite the `SECURITY.md` trust boundary to state that repository contents never control SideRail configuration
+- [x] **B1c** Regression test: hostile `.siderail.json` + file preview must not spawn the executable
+- [x] **B2** Shared test helper that spawns with a scrubbed environment (`HOME`/`XDG_*` → temp; delete all `HERDR_*` and `SIDERAIL_*`)
 - [x] **B2a** Move `snapshot.test.mjs`, `terminal-ui.test.mjs`, `config.test.mjs`, `integration.test.mjs` onto it
 - [x] **B2b** Local release gate running the suite with `HERDR_PANE_ID` and `HERDR_BIN_PATH` poisoned, so the leak cannot return **(D8 accepted)**
-- [x] **B3** Virtualize the Files viewport — flatten rows once per state change, slice the window per frame (`scripts/git-rail.mjs:440`)
+- [x] **B3** Virtualize the Files viewport — flatten rows once per state change, slice the window per frame (`scripts/siderail.mjs:440`)
 - [x] **B3a** Structural 20k-path test proving each frame styles/materializes only the viewport; keep timing as a reported benchmark, not a wall-clock gate
-- [x] **B4** Verify pane ownership (`pane get` + label + `process-info` argv) before closing the stale preview pane; use `plugin pane close` (`scripts/git-rail.mjs:623`)
+- [x] **B4** Verify pane ownership (`pane get` + label + `process-info` argv) before closing the stale preview pane; use `plugin pane close` (`scripts/siderail.mjs:623`)
 - [x] **B4a** Tests for `openPreview` — currently 0% covered (lines 564–633)
-- [x] **H1** Render `state.error` distinctly from "not a Git repository" (`scripts/git-rail.mjs:444`)
+- [x] **H1** Render `state.error` distinctly from "not a Git repository" (`scripts/siderail.mjs:444`)
 - [x] **H2** Remove explicit and automatic pane-layout rebuilding; open only through a directly safe outer-right split **(D5 accepted)**
 - [x] **H2a** Delete layout staging, transaction journals, startup recovery, and signal-time recovery machinery
 - [x] **H2b** Regression-test that automatic and manual opening skip unsafe layouts without moving, swapping, or opening panes
-- [x] **H3** `exit` / `uncaughtException` / `unhandledRejection` handlers in `scripts/git-rail.mjs` that restore the terminal and remove the fixture
+- [x] **H3** `exit` / `uncaughtException` / `unhandledRejection` handlers in `scripts/siderail.mjs` that restore the terminal and remove the fixture
 - [x] **H3a** Keep all post-M2 preview state-path computation and state-store I/O inside the guarded preview lifecycle
 
 ## Phase 2 — correctness and fit
 
-- [x] **H4** Recursive `fs.watch` on Linux; resolve the real gitdir via `git rev-parse --git-dir` (worktree-safe); never `path.join("", ".git")` (`scripts/git-rail.mjs:702`)
+- [x] **H4** Recursive `fs.watch` on Linux; resolve the real gitdir via `git rev-parse --git-dir` (worktree-safe); never `path.join("", ".git")` (`scripts/siderail.mjs:702`)
 - [x] **H4a** Document the poll fallback and its interval in `README.md`
 - [x] **M1** Add an expanded Untracked section after Unstaged with the `?` glyph and legend entry **(D3 accepted)**
 - [x] **M2** Unify preview ownership on `src/herdr-pane-state.mjs`, keyed by workspace + source tab + entrypoint; delete the ad-hoc `<workspace>.preview` scheme
 - [x] **M3** Remove the unneeded JSON Schema/editor-integration feature: delete `$schema` support and the standalone schema artifact **(D4 accepted)**
-- [x] **M3a** Replace schema-specific coverage with a test that validates `git-rail.config.example.json` through `validateConfig` alone
+- [x] **M3a** Replace schema-specific coverage with a test that validates `siderail.config.example.json` through `validateConfig` alone
 - [x] **M4** Reject glob-shaped viewer patterns such as `*.md` with an explicit error; document the `client: "none"` removal idiom
-- [x] **M5** Route every manifest Node entrypoint through one launcher that resolves and validates an absolute Node executable before any GitRail script starts
+- [x] **M5** Route every manifest Node entrypoint through one launcher that resolves and validates an absolute Node executable before any SideRail script starts
 - [x] **M6** Document the accepted eventual-consistency model for multi-command Git refreshes **(D7 accepted)**
 - [x] **M7** Cap the auto-open sweep at four concurrent tabs and 35 seconds globally, with process-group cancellation and explicit partial-result reporting
 - [x] **M8** Cache normalized preview content, candidates, and display-column positions; incrementally filter matches as a search query grows without repeating position work on cache hits
@@ -105,10 +105,10 @@ and the stated acceptance evidence still passes.
 
 **B1/B1a — remove repository-level configuration** *(D1 accepted)*
 
-- Stop constructing or reading `<repository>/.git-rail.json` in `loadConfig`;
-  merge only built-in defaults, `~/.config/git-rail/config.json`, and explicit
+- Stop constructing or reading `<repository>/.siderail.json` in `loadConfig`;
+  merge only built-in defaults, `~/.config/siderail/config.json`, and explicit
   environment overrides. The Git provider may additionally read only
-  `branch.<checked-out-branch>.gitrail-base` from local or worktree Git config.
+  `branch.<checked-out-branch>.siderail-base` from local or worktree Git config.
 - Remove the repository-root parameter from config loading where it is no
   longer needed, and update the provider, preview, auto-open, and resize callers
   so none can reintroduce repository discovery indirectly.
@@ -125,7 +125,7 @@ and the stated acceptance evidence still passes.
 
 **B1b — document the enforced trust boundary**
 
-- State that repository contents never control GitRail configuration or select
+- State that repository contents never control SideRail configuration or select
   an executable.
 - State that general configuration inputs are built-in defaults, the user config
   file, and explicit process environment overrides, with the comparison base as
@@ -136,7 +136,7 @@ and the stated acceptance evidence still passes.
 **B1c — hostile repository regression**
 
 - Create a temporary repository and isolated home containing a committed
-  `.git-rail.json` whose auto-open viewer would write a marker file.
+  `.siderail.json` whose auto-open viewer would write a marker file.
 - Start `file-preview.mjs`, wait through initial Raw/Diff loading, and assert
   that the marker was never created, no repository value appears in resolved
   configuration, and user/default viewer behavior remains active.
@@ -151,9 +151,9 @@ and the stated acceptance evidence still passes.
 - Add `test/helpers/environment.mjs` with a helper that copies only the parent
   variables required by Node, Git, locale, and executable discovery; points
   `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and `XDG_STATE_HOME` at a
-  per-test temporary root; and deletes every `HERDR_*` and `GIT_RAIL_*` key.
+  per-test temporary root; and deletes every `HERDR_*` and `SIDERAIL_*` key.
 - Accept explicit overrides after scrubbing so a test must opt in to each Herdr
-  or GitRail variable it exercises.
+  or SideRail variable it exercises.
 - Return the environment plus a registered cleanup function, and use it for
   every spawned rail, preview, shell wrapper, and Git fixture in
   `snapshot.test.mjs`, `terminal-ui.test.mjs`, `config.test.mjs`, and
@@ -198,10 +198,10 @@ and the stated acceptance evidence still passes.
 
 **B4 — verify stale preview ownership before closing**
 
-- Extract preview-pane lifecycle work from `git-rail.mjs` into a testable module
+- Extract preview-pane lifecycle work from `siderail.mjs` into a testable module
   that accepts the Herdr runner and pane-state store as dependencies.
 - For a cached stale id, call `pane get`, require the recorded `terminal_id`,
-  `GitRail Preview` label, and expected workspace, then call `pane process-info`.
+  `SideRail Preview` label, and expected workspace, then call `pane process-info`.
   Resolve its script argument against the reported process cwd and require the
   exact `scripts/file-preview.mjs` path under the active plugin checkout; a
   same-named script in another checkout is not ownership proof.
@@ -281,7 +281,7 @@ and the stated acceptance evidence still passes.
 - Document that filesystem events are an optimization and the recovery poll is
   authoritative when recursive watching is unavailable.
 - State the 10-second default, accepted 1–300 second range, ±10% jitter, and
-  `GIT_RAIL_POLL_INTERVAL_MS`/`refresh.pollIntervalMs` overrides.
+  `SIDERAIL_POLL_INTERVAL_MS`/`refresh.pollIntervalMs` overrides.
 
 **M1 — distinct Untracked section** *(D3 accepted)*
 
@@ -306,7 +306,7 @@ and the stated acceptance evidence still passes.
   source tab's previously verified preview.
 - Use `paneStatePath` and the atomic state helpers in
   `src/herdr-pane-state.mjs`; remove `paneStateFile()` and every
-  `<workspace>.preview` read/write path from `git-rail.mjs`.
+  `<workspace>.preview` read/write path from `siderail.mjs`.
 - Cover two source tabs in one workspace, two workspaces, focus changing to a
   preview tab, rail restart, stale state, and tab/workspace cleanup. Assert that
   one source tab can never close or overwrite another source tab's preview.
@@ -326,14 +326,14 @@ and the stated acceptance evidence still passes.
 
 - Add one generic `scripts/node-launcher.sh`. Every Node script named by a
   startup hook, event hook, pane, or action-helper path in `herdr-plugin.toml`
-  must reach Node through it; no manifest command or GitRail shell helper may
+  must reach Node through it; no manifest command or SideRail shell helper may
   invoke bare `node`. On the supported platforms, manifest shell commands use
   absolute `/bin/bash` so a poisoned `PATH` cannot select a different shell.
-- If `GIT_RAIL_NODE_PATH` names an absolute executable, use it. Otherwise
+- If `SIDERAIL_NODE_PATH` names an absolute executable, use it. Otherwise
   resolve `command -v node` once, canonicalize it to an absolute executable
   path, and fail with one actionable message if resolution fails. Node callers
-  that launch another GitRail shell helper pass `process.execPath` through
-  `GIT_RAIL_NODE_PATH`; `open-herdr-panel.sh` delegates to the same launcher.
+  that launch another SideRail shell helper pass `process.execPath` through
+  `SIDERAIL_NODE_PATH`; `open-herdr-panel.sh` delegates to the same launcher.
 - Before executing the requested script, have the launcher query the resolved
   executable's major version and reject versions below 22. Keep the in-process
   guard at the start of each directly invokable Node entrypoint as defense in
@@ -341,7 +341,7 @@ and the stated acceptance evidence still passes.
 - Add manifest-level smoke tests covering every declared command with a valid
   absolute Node path containing spaces, a missing Node, a poisoned `PATH` with
   an unintended/unsupported Node, and an unsupported major version. Assert the
-  failure occurs before any GitRail script or Herdr layout command runs; retain
+  failure occurs before any SideRail script or Herdr layout command runs; retain
   unit coverage of path and version parsing.
 
 **M6 — document eventual Git consistency** *(D7 accepted)*
@@ -368,7 +368,7 @@ and the stated acceptance evidence still passes.
   survivor. Configure this grace only for auto-open children instead of changing
   every command timeout. The 35-second deadline stops work; total shutdown may
   therefore take at most 40 seconds. H2 ensures cancellation cannot interrupt a
-  pane-layout reconstruction because GitRail performs no such reconstruction.
+  pane-layout reconstruction because SideRail performs no such reconstruction.
 - Preserve rails that completed successfully; do not roll them back because a
   later tab failed. Return a structured summary of opened, skipped, failed, and
   deadline-cancelled tab ids and emit one actionable aggregate error/debug
@@ -403,9 +403,9 @@ and the stated acceptance evidence still passes.
 
 **M3/M3a — remove JSON Schema/editor integration** *(D4 accepted)*
 
-- Delete `schema/v1/git-rail.schema.json` and remove the empty `schema/`
+- Delete `schema/v1/siderail.schema.json` and remove the empty `schema/`
   directories after confirming no other artifacts use them.
-- Remove `$schema` from `git-rail.config.example.json`, from `validateConfig`'s
+- Remove `$schema` from `siderail.config.example.json`, from `validateConfig`'s
   accepted top-level keys, and from documentation describing configuration.
 - Delete schema-shape, schema-url, `$id`, and schema/runtime-parity assertions;
   do not add a JSON Schema validator dependency.
@@ -426,9 +426,9 @@ and the stated acceptance evidence still passes.
 
 - Add a minimal `.gitignore` for `node_modules/`, coverage output, test reports,
   debug logs, `.DS_Store`, and editor-local files.
-- Do not ignore `.git-rail.json`, fixtures, screenshots, or other release inputs
+- Do not ignore `.siderail.json`, fixtures, screenshots, or other release inputs
   that may intentionally belong to a repository. The hostile-config regression
-  creates `.git-rail.json` inside its temporary Git fixture and proves GitRail
+  creates `.siderail.json` inside its temporary Git fixture and proves SideRail
   ignores it even when Git tracks it.
 
 **L2/L2a/L2b/L2c — release notes, release contract, gates, and first tag** *(D6 accepted)*
@@ -606,23 +606,23 @@ are preserved as historical evidence and do not describe the current checkout.
 
 ### B1 — repository config executes arbitrary code
 
-A committed `.git-rail.json` naming any executable runs it when any file in that
+A committed `.siderail.json` naming any executable runs it when any file in that
 repository is previewed. No prompt, no confirmation.
 
 ```json
 { "version": 1, "viewers": { "*": {
-    "client": "sh", "args": ["-c", "id > /tmp/GITRAIL_PWNED.txt"],
+    "client": "sh", "args": ["-c", "id > /tmp/SIDERAIL_PWNED.txt"],
     "mode": "embedded", "key": "9", "autoOpen": true } } }
 ```
 
 ```
-$ cat /tmp/GITRAIL_PWNED.txt
+$ cat /tmp/SIDERAIL_PWNED.txt
 uid=501(user) gid=20(staff) groups=20(staff),12(everyone),...
 ```
 
 Path: `src/config.mjs` merges project config unconditionally →
 `scripts/file-preview.mjs:558` honours `autoOpen` → `:368` → `runCommand`.
-GitRail auto-opens in every Git tab, so the only user action required after a
+SideRail auto-opens in every Git tab, so the only user action required after a
 clone is opening one file.
 
 ### B2 — `npm run check` fails in its own runtime environment
@@ -630,14 +630,14 @@ clone is opening one file.
 Two independent hermeticity leaks:
 
 - **`HERDR_*` leaks in.** Running `npm test` from inside a Herdr pane produces
-  2 failures: the snapshot tests spawn `git-rail.mjs` with `cwd` set to a temp
+  2 failures: the snapshot tests spawn `siderail.mjs` with `cwd` set to a temp
   fixture but inherit `HERDR_PANE_ID`/`HERDR_BIN_PATH`, so `liveProviderCwd()`
   asks the live `herdr` binary for the focused pane and renders the developer's
   actual repository. With those variables removed: `140 pass / 0 fail`.
   `test/snapshot.test.mjs` already works around this in one test by pointing
   `HERDR_BIN_PATH` at a missing file; the workaround was never generalised.
 - **Real `$HOME` leaks in.** `loadConfig` reads
-  `~/.config/git-rail/config.json`; only `snapshot.test.mjs` overrides `HOME`.
+  `~/.config/siderail/config.json`; only `snapshot.test.mjs` overrides `HOME`.
   With an ordinary user config present, `test/config.test.mjs` goes to
   **4 failures / 15 pass**.
 
@@ -645,7 +645,7 @@ Verification gate 1 in `PRODUCTION-READINESS.md` therefore does not hold.
 
 ### B3 — Files tab re-renders the whole repository every frame
 
-`scripts/git-rail.mjs:440` passes `paginate = false`, so `renderFilesList`
+`scripts/siderail.mjs:440` passes `paginate = false`, so `renderFilesList`
 materialises a styled row for every path on every frame. Measured over 20
 `renderFrame()` calls against real repositories:
 
@@ -661,8 +661,8 @@ which removed pagination from the Files list only.
 
 ### B4 — unverified destructive pane close
 
-`scripts/git-rail.mjs:623` reads a pane id from
-`~/.cache/herdr-gitrail/panes/<workspace>.preview` and closes it with no
+`scripts/siderail.mjs:623` reads a pane id from
+`~/.cache/siderail/panes/<workspace>.preview` and closes it with no
 ownership check, while `scripts/open-herdr-panel.mjs` verifies rails via
 `pane process-info` before `plugin pane close`. A stale cache entry plus a
 reused pane id closes a user pane. The whole function is untested.
@@ -672,7 +672,7 @@ reused pane id closes a user pane. The whole function is untested.
 With `git` removed from `PATH` inside a real repository:
 
 ```
- GitRail unavailable
+ SideRail unavailable
   ⑂ —
 ────────────────────────────────────────────
  CHANGES                       FILES
@@ -690,7 +690,7 @@ not in a repository.
 In a tab with a top/bottom split, `rightmostPaneId` selects the bottom pane,
 whose `rect.height` is half the area, so `canSplitAtOuterRight` is false and
 `rebuildWithOuterRail` runs: it moves both content panes into a
-`GitRail Layout Staging` tab, opens the rail, then moves them back — four
+`SideRail Layout Staging` tab, opens the rail, then moves them back — four
 `herdr pane move` round-trips on live panes, unprompted, at tab creation.
 `scripts/auto-open-herdr-tabs.mjs:99` kills the process group after 35 s and
 `open-herdr-panel.mjs` installs no SIGTERM handler, so a slow Herdr leaves the
@@ -702,7 +702,7 @@ paths were deleted. Unsafe automatic and manual opens now return a tested skip.
 
 ### H3 — no crash safety in the rail
 
-`scripts/git-rail.mjs` registers only SIGTERM and SIGINT — no `exit`,
+`scripts/siderail.mjs` registers only SIGTERM and SIGINT — no `exit`,
 `uncaughtException`, or `unhandledRejection` (`file-preview.mjs` has `exit`).
 `paneStateFile()`'s `mkdirSync` sits outside the `try` at `:598` and is reached
 through `void requestPreview(file)` (`:262`, `:268`), so an `EACCES` on
@@ -739,11 +739,11 @@ state.
 ### M3 — unused schema/editor-integration artifact is broken
 
 ```
-https://raw.githubusercontent.com/KaxyotiK/git-railgun/main/schema/v1/git-rail.schema.json
+https://raw.githubusercontent.com/KaxyotiK/siderail/main/schema/v1/siderail.schema.json
 → 404
 ```
 
-Both the schema `$id` and the `$schema` in `git-rail.config.example.json` point
+Both the schema `$id` and the `$schema` in `siderail.config.example.json` point
 there, so editors flag the file shipped as the starting point.
 `docs/INSTALLATION.md` also opens with a `git clone` of the same private URL.
 The example config is never validated against the schema or `validateConfig` by

@@ -20,36 +20,36 @@ test("manifest routes every runtime entrypoint through an absolute shell and lau
 });
 
 test("launcher accepts an absolute Node executable whose path contains spaces", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail node path "));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail node path "));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const linkedNode = path.join(root, "node executable");
   await fs.symlink(process.execPath, linkedNode);
   const result = await execFileAsync("/bin/bash", [launcher, "-e", "process.stdout.write('ok')"], {
-    env: { GIT_RAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
+    env: { SIDERAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
   });
   assert.equal(result.stdout, "ok");
 });
 
 test("cmux bootstrap preserves an explicit Node executable through a restricted Dock PATH", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail cmux node path "));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail cmux node path "));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const linkedNode = path.join(root, "node executable");
   await fs.symlink(process.execPath, linkedNode);
-  const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write(process.env.GIT_RAIL_NODE_PATH)"], {
-    env: { GIT_RAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
+  const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write(process.env.SIDERAIL_NODE_PATH)"], {
+    env: { SIDERAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
   });
   assert.equal(result.stdout, linkedNode);
 });
 
-test("direct cmux bootstrap enters a login shell after GitRail exits", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail cmux shell "));
+test("direct cmux bootstrap enters a login shell after SideRail exits", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail cmux shell "));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const fakeShell = path.join(root, "login shell");
   await fs.writeFile(fakeShell, "#!/bin/bash\nprintf '|shell:%s' \"$1\"\n", { mode: 0o700 });
   const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write('tui')"], {
     env: {
-      GIT_RAIL_NODE_PATH: process.execPath,
-      GIT_RAIL_STAY_OPEN: "1",
+      SIDERAIL_NODE_PATH: process.execPath,
+      SIDERAIL_STAY_OPEN: "1",
       SHELL: fakeShell,
       PATH: "/untrusted",
     },
@@ -58,23 +58,96 @@ test("direct cmux bootstrap enters a login shell after GitRail exits", async (t)
 });
 
 test("launcher rejects missing and unsupported Node before running the target", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-launcher-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-launcher-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const fake = path.join(root, "node");
   const marker = path.join(root, "ran");
   await fs.writeFile(fake, "#!/bin/bash\nif [[ \"$1\" == \"-p\" ]]; then echo 21; else touch \"$MARKER\"; fi\n", { mode: 0o700 });
   await assert.rejects(
-    () => execFileAsync("/bin/bash", [launcher, "target.mjs"], { env: { GIT_RAIL_NODE_PATH: fake, MARKER: marker } }),
+    () => execFileAsync("/bin/bash", [launcher, "target.mjs"], { env: { SIDERAIL_NODE_PATH: fake, MARKER: marker } }),
     (error) => /requires Node\.js 22/.test(error.stderr),
   );
   await assert.rejects(() => fs.access(marker), (error) => error.code === "ENOENT");
   await assert.rejects(
     () => execFileAsync("/bin/bash", [launcher, "target.mjs"], { env: { PATH: "/missing" } }),
-    (error) => /install Node or set GIT_RAIL_NODE_PATH/.test(error.stderr),
+    (error) => /install Node or set SIDERAIL_NODE_PATH/.test(error.stderr),
   );
 });
 
 test("in-process Node version guard rejects unsupported majors", () => {
   assert.throws(() => assertSupportedNode("21.9.0"), /requires Node\.js 22/);
   assert.equal(assertSupportedNode("24.1.0"), 24);
+});
+
+async function restartFixture(t, scriptName, exits) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-restart-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, "scripts"));
+  // Exits with the next status in the sequence on each run; 75 is the status a
+  // rail uses after its install is swapped, and "TERM" dies from a signal.
+  await fs.writeFile(path.join(root, "scripts", scriptName), [
+    "const fs = await import('node:fs');",
+    "const runs = Number(fs.existsSync('runs') ? fs.readFileSync('runs', 'utf8') : 0) + 1;",
+    "fs.writeFileSync('runs', String(runs));",
+    "process.stdout.write(`run ${runs} in ${process.cwd()}\\n`);",
+    `const exits = ${JSON.stringify(exits)};`,
+    "const next = exits[Math.min(runs, exits.length) - 1];",
+    "if (next === 'TERM') process.kill(process.pid, 'SIGTERM');",
+    "else process.exit(next);",
+    "",
+  ].join("\n"));
+  return root;
+}
+
+async function launch(root, script) {
+  try {
+    const result = await execFileAsync("/bin/bash", [launcher, script], {
+      cwd: root,
+      env: { SIDERAIL_NODE_PATH: process.execPath, PATH: "/untrusted" },
+    });
+    return { code: 0, ...result };
+  } catch (error) {
+    return error;
+  }
+}
+
+test("launcher reruns a rail from its launch directory after an install-swap restart", async (t) => {
+  const root = await restartFixture(t, "siderail.mjs", [75, 0]);
+  const realRoot = await fs.realpath(root);
+  const result = await launch(root, "scripts/siderail.mjs");
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout, `run 1 in ${realRoot}\nrun 2 in ${realRoot}\n`);
+});
+
+test("a restart that fails while the new install settles is retried until it starts", async (t) => {
+  const root = await restartFixture(t, "cmux-siderail.mjs", [75, 1, 1, 0]);
+  const result = await launch(root, "scripts/cmux-siderail.mjs");
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout.trim().split("\n").length, 4);
+  assert.match(result.stderr, /starting attempt 3 of 5/);
+});
+
+test("a restart that keeps failing stops after five restarted launches with its own status", async (t) => {
+  const root = await restartFixture(t, "siderail.mjs", [75, 4]);
+  const result = await launch(root, "scripts/siderail.mjs");
+  assert.equal(result.code, 4);
+  assert.equal(result.stdout.trim().split("\n").length, 6, "the original rail plus five restarted launches");
+  assert.match(result.stderr, /starting attempt 5 of 5/);
+  assert.doesNotMatch(result.stderr, /attempt 6/);
+});
+
+test("a first-run failure and a signal after a restart are never retried", async (t) => {
+  const fatal = await launch(await restartFixture(t, "siderail.mjs", [1]), "scripts/siderail.mjs");
+  assert.equal(fatal.code, 1);
+  assert.equal(fatal.stdout.trim().split("\n").length, 1);
+  const signalled = await launch(await restartFixture(t, "siderail.mjs", [75, "TERM"]), "scripts/siderail.mjs");
+  assert.equal(signalled.code, 143);
+  assert.equal(signalled.stdout.trim().split("\n").length, 2);
+});
+
+test("launcher does not rerun non-rail entrypoints that exit with the restart status", async (t) => {
+  const root = await restartFixture(t, "file-preview.mjs", [75, 0]);
+  const result = await launch(root, "scripts/file-preview.mjs");
+  assert.equal(result.code, 75);
+  assert.equal(result.stdout.trim().split("\n").length, 1);
 });

@@ -1,14 +1,12 @@
-# GitRail
+# SideRail
 
-*Why Railgun? `gitrail` was taken—and because Quake. It's a sidebar.*
-
-GitRail is a compact, read-only sidebar for a Herdr tab's current
+SideRail is a compact, read-only sidebar for a Herdr tab's current
 directory. Inside a worktree, every row retains its exact Git scope, so
 Against-base, Commit, Staged, Unstaged, Untracked, and clean-file previews
 cannot be confused. Outside Git, Files remains a bounded filesystem browser
 while Changes clearly reports that Git state is unavailable.
 
-GitRail also ships a separate host for cmux's **right sidebar Dock**. The cmux
+SideRail also ships a separate host for cmux's **right sidebar Dock**. The cmux
 host reuses the same provider, models, TUI, and exact-revision semantics while
 opening selections as tabs in cmux's native file viewer. It does not use
 cmux's left/custom-sidebar interpreter or ExtensionKit. See
@@ -18,7 +16,7 @@ cmux's left/custom-sidebar interpreter or ExtensionKit. See
 
 - Node.js 22 or newer
 - Git 2.35 or newer
-- Herdr 0.8.x
+- Herdr 0.8.x, cmux, or both
 - macOS or Linux
 
 The Herdr host requires Herdr 0.8.x. The cmux host instead requires a cmux
@@ -29,52 +27,53 @@ The launcher rejects Node versions older than 22. Release validation runs on
 Node 22 and 24 and covers Herdr 0.8.x; other supported Node releases and newer
 Herdr versions are outside the 0.1.0 validation target.
 
-No editor is required. GitRail uses `$EDITOR` when it is set, or an explicit
+No editor is required. SideRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. In Herdr, the installed defaults open
 `.md`, `.mdx`, and `.markdown` files directly in the operating system's default
 application, bypassing the generic Diff/Raw preview entirely.
 
 ## Install and launch
 
-GitRail is currently an unreleased development checkout. No tagged release is
-available yet; see [production readiness](PRODUCTION-READINESS.md) for the
-current release status.
-
-Clone the repository and install its development dependencies:
+Install the package globally, then register it with your hosts:
 
 ```bash
-git clone https://github.com/KaxyotiK/git-railgun.git
-cd git-railgun
-npm ci --ignore-scripts
-npm run check
+npm install -g siderail
+siderail setup
 ```
+
+`siderail setup` configures every host it finds: it links the install as
+Herdr's `siderail` plugin and adds a SideRail control to cmux's global Dock
+configuration. Run `siderail setup herdr` or `siderail setup cmux` to configure
+one host. Setup is safe to repeat; it changes nothing when the registrations
+already point at this install. `siderail status` shows the installed version and
+each host's registration.
 
 ### Herdr
 
-Link the checkout and open the sidebar:
+Open the sidebar in the current tab:
 
 ```bash
-herdr plugin link .
-herdr plugin action invoke local.git-rail.open-git-rail
+herdr plugin action invoke siderail.open-siderail
 ```
 
-GitRail also declares `local.git-rail.toggle-git-rail`, which opens or closes
+After setup, SideRail also opens without taking focus in Git-backed tabs created
+later. SideRail also declares `siderail.toggle-siderail`, which opens or closes
 the verified plugin-owned sidebar in the current tab. Key bindings belong to
-Herdr rather than GitRail configuration. For example:
+Herdr rather than SideRail configuration. For example:
 
 ```toml
 [[keys.command]]
 key = "ctrl+g"
 type = "plugin_action"
-command = "local.git-rail.toggle-git-rail"
-description = "toggle GitRail sidebar"
+command = "siderail.toggle-siderail"
+description = "toggle SideRail sidebar"
 ```
 
 Open the deterministic demo, which assembles a temporary real Git repository
 and runs the production provider against it:
 
 ```bash
-herdr plugin action invoke local.git-rail.open-git-rail-mockup
+herdr plugin action invoke siderail.open-siderail-mockup
 ```
 
 The demo contains committed, Against-base, partially staged, unstaged,
@@ -85,30 +84,64 @@ minutes and are then removed automatically; all other copies are removed when
 the preview exits normally or receives a handled signal.
 
 Rendered screenshots of that demo are available at
-[36 columns](docs/screenshots/gitrail-36.png),
-[52 columns](docs/screenshots/gitrail-52.png), and
-[100 columns](docs/screenshots/gitrail-100.png). They render deterministic
+[36 columns](docs/screenshots/siderail-36.png),
+[52 columns](docs/screenshots/siderail-52.png), and
+[100 columns](docs/screenshots/siderail-100.png). They render deterministic
 terminal output using a reference dark palette; see
 [screenshot generation](docs/screenshots/README.md).
 
 ### cmux Dock
 
-This checkout includes `.cmux/dock.json`. After running the install and check
-commands above, review the Dock control and accept cmux's project trust prompt.
-A direct development launch is also available from a cmux terminal in this
-checkout:
+`siderail setup` adds a `siderail` control to `~/.config/cmux/dock.json`,
+cmux's personal Dock configuration, and leaves any other controls in place.
+cmux seeds new Docks from that file; use cmux's Dock config reload for a Dock
+that is already open. A project with its own `.cmux/dock.json` uses that file
+instead. See the [cmux guide](docs/CMUX.md).
+
+### Update
 
 ```bash
-npm run cmux:launch
+npm install -g siderail@latest
 ```
 
-See the [cmux guide](docs/CMUX.md) to use GitRail with another project.
+Open sidebars notice the replaced install and restart on the new version in
+place within a few seconds. If you switch Node versions with a version manager
+such as nvm, fnm, or Volta, the global install moves; `siderail status` reports
+the stale registration and `siderail setup` repoints it.
+
+### Uninstall
+
+```bash
+siderail uninstall
+npm uninstall -g siderail
+```
+
+`siderail uninstall` removes only registrations that point at this install. In
+Herdr it first closes the sidebars it can prove it owns, so Herdr must be
+running. Configuration in `~/.config/siderail/` is left in place.
+
+### From a checkout
+
+To develop SideRail, clone the repository, install its development
+dependencies, and link the checkout instead of the npm package:
+
+```bash
+git clone https://github.com/KaxyotiK/siderail.git
+cd siderail
+npm ci --ignore-scripts
+npm run check
+herdr plugin link .
+```
+
+The checkout's `.cmux/dock.json` offers the same Dock control as a project
+config; review it and accept cmux's project trust prompt, or run
+`npm run cmux:launch` from a cmux terminal in the checkout.
 
 ## Interaction
 
 - `Tab` switches Changes and Files.
 - `/` searches the active view; Changes search includes commit metadata and the
-  paths changed by each loaded commit. GitRail loads the latest 200 first-parent
+  paths changed by each loaded commit. SideRail loads the latest 200 first-parent
   commits and still shows the complete range count. `Ctrl-U` clears; Enter
   finishes.
 - `g` toggles Tree and Folders layouts.
@@ -118,11 +151,11 @@ See the [cmux guide](docs/CMUX.md) to use GitRail with another project.
 - `r` refreshes without resetting selection, expansion, layout, search, or
   scroll position.
 - `?` opens an in-place shortcut and file-state legend. `?`, Escape, or `q`
-  closes the legend without closing GitRail.
+  closes the legend without closing SideRail.
 - Keyboard selection uses a gold focus rail and highlighted row. A gold marker
   at the right edge shows the current position whenever content scrolls.
-- Escape clears the current selection; press Escape again to close GitRail.
-  `q` closes GitRail immediately.
+- Escape clears the current selection; press Escape again to close SideRail.
+  `q` closes SideRail immediately.
 - A click selects. A double-click opens a dedicated Herdr preview tab.
 - Folder expansion, commit expansion, and file opening are available through
   both the keyboard and mouse.
@@ -181,12 +214,12 @@ budget was reached; opening that file still computes its bounded preview.
 | Untracked | complete addition from `/dev/null` |
 | Clean | Raw by default; Diff reports no change |
 
-GitRail uses NUL-delimited porcelain-v2, name-status, numstat, raw-diff, and
+SideRail uses NUL-delimited porcelain-v2, name-status, numstat, raw-diff, and
 ls-files formats. Renames and copies retain old/new path pairs, while symlinks,
 submodules, and type changes retain revision-specific mode metadata. The Files
 model keeps all applicable states rather than selecting one ambiguous status.
 
-A refresh is intentionally eventually consistent. GitRail assembles a frame
+A refresh is intentionally eventually consistent. SideRail assembles a frame
 from several bounded Git commands rather than claiming an atomic snapshot of
 HEAD, the index, and the worktree. A repository changing during refresh can
 briefly show adjacent states or counts; filesystem invalidation and bounded
@@ -199,22 +232,22 @@ Configuration merges by key in this order, with later entries taking
 precedence:
 
 1. built-in defaults;
-2. `~/.config/git-rail/config.json`;
+2. `~/.config/siderail/config.json`;
 3. `$EDITOR` when no editor is configured;
-4. `GIT_RAIL_*` environment overrides.
+4. `SIDERAIL_*` environment overrides.
 
-Colors are not part of this file. GitRail resolves its palette from the ANSI
+Colors are not part of this file. SideRail resolves its palette from the ANSI
 indexed colors your terminal theme defines, then adopts Herdr's `accent`, `red`,
 `green`, and `selection_bg` tokens when you have set them. See
 [Colors and glyphs](docs/THEMING.md).
 
-Use [git-rail.config.example.json](git-rail.config.example.json) as a starting
+Use [siderail.config.example.json](siderail.config.example.json) as a starting
 point. Configuration version 1 is validated; malformed JSON and invalid values
 are shown in the rail instead of being ignored. Repository contents are never
 read as configuration and cannot choose editor or viewer executables.
 
-Comparison bases resolve in this order: explicit `GIT_RAIL_BASE`, user
-`baseRef`, `branch.<checked-out-branch>.gitrail-base` from local or worktree Git
+Comparison bases resolve in this order: explicit `SIDERAIL_BASE`, user
+`baseRef`, `branch.<checked-out-branch>.siderail-base` from local or worktree Git
 config, an automatically detected local default branch, and finally its remote
 fallback. If none exists, a committed `HEAD` is the final fallback. Every
 explicitly or branch-configured ref must resolve to a commit; an invalid value
@@ -224,8 +257,8 @@ Set and remove a branch-specific base in repository-local Git metadata (replace
 the example branch and base names with your own):
 
 ```bash
-git config --local 'branch.feature/my-work.gitrail-base' release/1.x
-git config --local --unset-all 'branch.feature/my-work.gitrail-base'
+git config --local 'branch.feature/my-work.siderail-base' release/1.x
+git config --local --unset-all 'branch.feature/my-work.siderail-base'
 ```
 
 For a setting isolated to one linked worktree, enable Git's worktree config and
@@ -233,23 +266,23 @@ use the worktree scope:
 
 ```bash
 git config --local extensions.worktreeConfig true
-git config --worktree 'branch.feature/my-work.gitrail-base' release/1.x
-git config --worktree --unset-all 'branch.feature/my-work.gitrail-base'
+git config --worktree 'branch.feature/my-work.siderail-base' release/1.x
+git config --worktree --unset-all 'branch.feature/my-work.siderail-base'
 ```
 
 Both scopes live under `.git`, are never committed, and can only choose the
 comparison commit; they cannot select an executable. Detached HEAD ignores
 branch keys. An unborn repository has no comparison until it has a commit.
 
-`version` identifies the configuration format, not the GitRail release. It lets
-GitRail reject a future incompatible format instead of interpreting changed
+`version` identifies the configuration format, not the SideRail release. It lets
+SideRail reject a future incompatible format instead of interpreting changed
 fields as commands. Backward-compatible additions remain on version 1. Viewer
 `order` is still accepted for legacy automatic bindings, while new configuration
 should use explicit `key` values.
 
-GitRail opens automatically, without taking focus, in every Git-backed Herdr
+SideRail opens automatically, without taking focus, in every Git-backed Herdr
 tab when Herdr starts or a workspace or tab is created. Disable that globally in
-`~/.config/git-rail/config.json`:
+`~/.config/siderail/config.json`:
 
 ```json
 {
@@ -258,8 +291,8 @@ tab when Herdr starts or a workspace or tab is created. Disable that globally in
 }
 ```
 
-Non-Git tabs and GitRail's own file-preview tabs are ignored. Manual **Open
-GitRail** actions remain available when automatic opening is disabled.
+Non-Git tabs and SideRail's own file-preview tabs are ignored. Manual **Open
+SideRail** actions remain available when automatic opening is disabled.
 Once open, each rail follows the focused content pane in its own tab. Host
 context is checked independently of Git state. Herdr 0.8.2 does not announce
 shell directory changes, so the context source uses bounded snapshots. An
@@ -267,15 +300,15 @@ unchanged context does not run Git. Tabs without a content pane suspend their
 repository subscription; hidden rails retain the latest snapshot without
 redrawing. Visible commit ages advance locally once per minute.
 
-Native filesystem events drive ordinary refreshes. GitRail watches relevant
+Native filesystem events drive ordinary refreshes. SideRail watches relevant
 worktree and Git metadata, batches bursts, and caches Git's classification of
 ignored output. Healthy watchers use a full safety reconciliation every five
 minutes (±10%, at most 330 seconds by default). Set
-`refresh.reconcileIntervalMs` or `GIT_RAIL_RECONCILE_INTERVAL_MS` to an integer
+`refresh.reconcileIntervalMs` or `SIDERAIL_RECONCILE_INTERVAL_MS` to an integer
 from 30,000 to 3,600,000 milliseconds; zero is invalid.
 
 A failed watcher or `poll-only` mode uses `refresh.pollIntervalMs` /
-`GIT_RAIL_POLL_INTERVAL_MS` instead: default 10,000 ms, accepted range
+`SIDERAIL_POLL_INTERVAL_MS` instead: default 10,000 ms, accepted range
 1,000–300,000 ms, with ±10% jitter. **Compatibility change:** an existing
 `pollIntervalMs: 1000` now controls degraded recovery, not healthy one-second
 full reads. Existing configuration remains valid and is never rewritten.
@@ -287,7 +320,7 @@ matches the 34-column development rail; narrower layouts cap the rail at half
 the available split, and Herdr's minimum split ratio still applies on unusually
 wide layouts. Manual resizing after launch remains under Herdr's control:
 
-GitRail never reconstructs a tab to force this placement. Automatic and manual
+SideRail never reconstructs a tab to force this placement. Automatic and manual
 opening create a rail only beside a full-height outer pane; nested layouts that
 cannot accept that split are left unchanged with a visible skip diagnostic.
 
@@ -316,7 +349,7 @@ Or configure an external application such as VS Code:
 }
 ```
 
-Without `editor`, `GIT_RAIL_CLIENT`, or `$EDITOR`, editing is disabled and the
+Without `editor`, `SIDERAIL_CLIENT`, or `$EDITOR`, editing is disabled and the
 preview omits the `e` action.
 
 Viewer actions are conditional per selected filename. Rules match an exact
@@ -327,7 +360,7 @@ pattern accepts one rule or an array of rules, so multiple global or
 file-specific actions can coexist. Each rule can configure its action `label`,
 executable `client`, `args`, launch `mode`, single-letter-or-digit `key`, and
 optional `autoOpen`. `embedded` mode captures bounded output and displays it in
-GitRail's viewport; `{width}` in an argument expands to the available content
+SideRail's viewport; `{width}` in an argument expands to the available content
 width. File-specific
 rules win if two matching actions claim the same key. Preview navigation keys
 are reserved and rejected by validation. Version-1 rules without `key` retain
@@ -364,12 +397,12 @@ For example, two global actions can share the wildcard pattern:
 }
 ```
 
-Supported overrides include `GIT_RAIL_BASE`, `GIT_RAIL_CLIENT`,
-`GIT_RAIL_CLIENT_ARGS` (a JSON string array), `GIT_RAIL_CLIENT_MODE`, and
-`GIT_RAIL_POLL_INTERVAL_MS`, and `GIT_RAIL_RECONCILE_INTERVAL_MS`. Set `GIT_RAIL_DEBUG_LOG` to an explicit file path
+Supported overrides include `SIDERAIL_BASE`, `SIDERAIL_CLIENT`,
+`SIDERAIL_CLIENT_ARGS` (a JSON string array), `SIDERAIL_CLIENT_MODE`, and
+`SIDERAIL_POLL_INTERVAL_MS`, and `SIDERAIL_RECONCILE_INTERVAL_MS`. Set `SIDERAIL_DEBUG_LOG` to an explicit file path
 for sanitized operation names, timestamps, durations, and exit status; source,
 diffs, environment values, and command arguments are never logged.
-Release validation may set `GIT_RAIL_WATCH_MODE` to `watch-only` or `poll-only`
+Release validation may set `SIDERAIL_WATCH_MODE` to `watch-only` or `poll-only`
 to prove the two invalidation paths independently. Ordinary runs leave it unset
 and retain filesystem invalidation plus infrequent healthy reconciliation.
 `watch-only` still retains the safety reconciliation and explicit error recovery;

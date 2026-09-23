@@ -92,7 +92,7 @@ function isAmbiguous(point) {
 }
 
 export function resolveAmbiguousWidth(environment = process.env) {
-  return environment.GIT_RAIL_AMBIGUOUS_WIDTH === "wide" ? 2 : 1;
+  return environment.SIDERAIL_AMBIGUOUS_WIDTH === "wide" ? 2 : 1;
 }
 
 export function setAmbiguousWidth(columns) {
@@ -523,7 +523,7 @@ export function startupFailureState(cwd, error) {
   return {
     cwd,
     repoRoot: "",
-    repository: "GitRail unavailable",
+    repository: "SideRail unavailable",
     branch: "—",
     baseLabel: "main",
     files: [],

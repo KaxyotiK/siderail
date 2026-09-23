@@ -6,37 +6,37 @@ import path from "node:path";
 import { runCommand } from "./process.mjs";
 import { PROTOCOL_VERSION } from "./git-state-protocol.mjs";
 
-const KNOWN_GIT_RAIL_VARIABLES = new Set([
-  "GIT_RAIL_AMBIGUOUS_WIDTH",
-  "GIT_RAIL_BASE",
-  "GIT_RAIL_CLIENT",
-  "GIT_RAIL_CLIENT_ARGS",
-  "GIT_RAIL_CLIENT_MODE",
-  "GIT_RAIL_CMUX_BIN",
-  "GIT_RAIL_DEBUG_LOG",
-  "GIT_RAIL_DEMO",
-  "GIT_RAIL_HOST",
-  "GIT_RAIL_LIVE_GIT_SHIM",
-  "GIT_RAIL_NODE_PATH",
-  "GIT_RAIL_PANEL_WIDTH",
-  "GIT_RAIL_PERFORMANCE_LOG",
-  "GIT_RAIL_POLL_INTERVAL_MS",
-  "GIT_RAIL_PREVIEW_DESCRIPTOR",
-  "GIT_RAIL_PREVIEW_METADATA",
-  "GIT_RAIL_PREVIEW_PATH",
-  "GIT_RAIL_PREVIEW_REPO",
-  "GIT_RAIL_PREVIEW_TEMPORARY",
-  "GIT_RAIL_PROJECT_CWD",
-  "GIT_RAIL_RECONCILE_INTERVAL_MS",
-  "GIT_RAIL_REPO_ROOT",
-  "GIT_RAIL_SOURCE_PANE_ID",
-  "GIT_RAIL_SOURCE_TAB_ID",
-  "GIT_RAIL_STATE_MODE",
-  "GIT_RAIL_STAY_OPEN",
-  "GIT_RAIL_TEST_FATAL",
-  "GIT_RAIL_WATCH_MODE",
-  "GIT_RAIL_WINDOW_ID",
-  "GIT_RAIL_WORKSPACE_CWD",
+const KNOWN_SIDERAIL_VARIABLES = new Set([
+  "SIDERAIL_AMBIGUOUS_WIDTH",
+  "SIDERAIL_BASE",
+  "SIDERAIL_CLIENT",
+  "SIDERAIL_CLIENT_ARGS",
+  "SIDERAIL_CLIENT_MODE",
+  "SIDERAIL_CMUX_BIN",
+  "SIDERAIL_DEBUG_LOG",
+  "SIDERAIL_DEMO",
+  "SIDERAIL_HOST",
+  "SIDERAIL_LIVE_GIT_SHIM",
+  "SIDERAIL_NODE_PATH",
+  "SIDERAIL_PANEL_WIDTH",
+  "SIDERAIL_PERFORMANCE_LOG",
+  "SIDERAIL_POLL_INTERVAL_MS",
+  "SIDERAIL_PREVIEW_DESCRIPTOR",
+  "SIDERAIL_PREVIEW_METADATA",
+  "SIDERAIL_PREVIEW_PATH",
+  "SIDERAIL_PREVIEW_REPO",
+  "SIDERAIL_PREVIEW_TEMPORARY",
+  "SIDERAIL_PROJECT_CWD",
+  "SIDERAIL_RECONCILE_INTERVAL_MS",
+  "SIDERAIL_REPO_ROOT",
+  "SIDERAIL_SOURCE_PANE_ID",
+  "SIDERAIL_SOURCE_TAB_ID",
+  "SIDERAIL_STATE_MODE",
+  "SIDERAIL_STAY_OPEN",
+  "SIDERAIL_TEST_FATAL",
+  "SIDERAIL_WATCH_MODE",
+  "SIDERAIL_WINDOW_ID",
+  "SIDERAIL_WORKSPACE_CWD",
 ]);
 const FIXED_ENVIRONMENT_NAMES = [
   "HOME", "XDG_CONFIG_HOME", "PATH", "LANG", "LANGUAGE", "LC_ALL", "TZ",
@@ -83,7 +83,8 @@ export function collectEffectiveGitEnvironment(environment = process.env, {
   }
   const names = new Set(FIXED_ENVIRONMENT_NAMES);
   for (const name of Object.keys(environment)) {
-    if ((name.startsWith("GIT_") && !KNOWN_GIT_RAIL_VARIABLES.has(name)) || name.startsWith("LC_")) names.add(name);
+    if (name.startsWith("GIT_") || name.startsWith("LC_")
+      || (name.startsWith("SIDERAIL_") && !KNOWN_SIDERAIL_VARIABLES.has(name))) names.add(name);
   }
   names.add("GIT_OPTIONAL_LOCKS");
   const variables = [...names].sort().map((name) => Object.freeze([
@@ -120,10 +121,10 @@ export function collectEffectiveRuntimeSemantics(environment = process.env) {
   });
   return Object.freeze({
     environmentOverrides: Object.freeze({
-      base: override("GIT_RAIL_BASE"),
-      pollOverride: override("GIT_RAIL_POLL_INTERVAL_MS"),
-      reconcileOverride: override("GIT_RAIL_RECONCILE_INTERVAL_MS"),
-      watchModeOverride: override("GIT_RAIL_WATCH_MODE"),
+      base: override("SIDERAIL_BASE"),
+      pollOverride: override("SIDERAIL_POLL_INTERVAL_MS"),
+      reconcileOverride: override("SIDERAIL_RECONCILE_INTERVAL_MS"),
+      watchModeOverride: override("SIDERAIL_WATCH_MODE"),
     }),
   });
 }
@@ -243,7 +244,7 @@ export async function computeCodeFingerprint(runtimeFiles, {
   const duplicate = files.find((entry, index) => index > 0 && entry.relative === files[index - 1].relative);
   if (duplicate) throw identityError("DUPLICATE_RUNTIME_FILE", `runtime file listed twice: ${duplicate.relative}`);
   const hash = createHash("sha256");
-  updateLengthPrefixed(hash, "git-railgun-code-v1");
+  updateLengthPrefixed(hash, "siderail-code-v1");
   updateLengthPrefixed(hash, checkout);
   for (const file of files) {
     updateLengthPrefixed(hash, file.relative);
@@ -365,8 +366,8 @@ export async function preparePrivateRuntimePaths({
   const configured = String(environment.XDG_RUNTIME_DIR || "");
   const configuredSafe = await safeConfiguredRuntimeRoot(configured, { uid, lstat });
   const roots = [
-    ...(configuredSafe ? [path.join(configured, "git-railgun")] : []),
-    path.join(shortTmpRoot, `git-railgun-${uid}`),
+    ...(configuredSafe ? [path.join(configured, "siderail")] : []),
+    path.join(shortTmpRoot, `siderail-${uid}`),
   ];
   let tooLong = false;
   let lastError;

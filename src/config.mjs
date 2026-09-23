@@ -163,13 +163,13 @@ function readConfig(filePath) {
 export function loadConfig(env = process.env) {
   const homeDirectory = env.HOME || os.homedir();
   const configDirectory = env.XDG_CONFIG_HOME || path.join(homeDirectory, ".config");
-  const userPath = path.join(configDirectory, "git-rail", "config.json");
+  const userPath = path.join(configDirectory, "siderail", "config.json");
   const user = readConfig(userPath);
   let config = merge(DEFAULT_CONFIG, user.value);
   const errors = [...user.errors];
 
-  const editorVariable = env.GIT_RAIL_CLIENT !== undefined
-    ? "GIT_RAIL_CLIENT"
+  const editorVariable = env.SIDERAIL_CLIENT !== undefined
+    ? "SIDERAIL_CLIENT"
     : !user.value.editor && env.EDITOR !== undefined ? "EDITOR" : "";
   if (editorVariable) {
     const editorText = String(env[editorVariable] ?? "").trim();
@@ -179,35 +179,35 @@ export function loadConfig(env = process.env) {
       config.editor = { ...config.editor, client, args };
     }
   }
-  if (env.GIT_RAIL_CLIENT_ARGS !== undefined) {
+  if (env.SIDERAIL_CLIENT_ARGS !== undefined) {
     try {
-      const args = JSON.parse(env.GIT_RAIL_CLIENT_ARGS);
+      const args = JSON.parse(env.SIDERAIL_CLIENT_ARGS);
       if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) throw new Error("expected an array of strings");
       config.editor.args = args;
     } catch (error) {
-      errors.push(`GIT_RAIL_CLIENT_ARGS: ${error.message}`);
+      errors.push(`SIDERAIL_CLIENT_ARGS: ${error.message}`);
     }
   }
-  if (env.GIT_RAIL_CLIENT_MODE !== undefined) {
-    if (["auto", "terminal", "external"].includes(env.GIT_RAIL_CLIENT_MODE)) config.editor.mode = env.GIT_RAIL_CLIENT_MODE;
-    else errors.push("GIT_RAIL_CLIENT_MODE: expected auto, terminal, or external");
+  if (env.SIDERAIL_CLIENT_MODE !== undefined) {
+    if (["auto", "terminal", "external"].includes(env.SIDERAIL_CLIENT_MODE)) config.editor.mode = env.SIDERAIL_CLIENT_MODE;
+    else errors.push("SIDERAIL_CLIENT_MODE: expected auto, terminal, or external");
   }
-  if (env.GIT_RAIL_BASE !== undefined) {
-    const baseRef = String(env.GIT_RAIL_BASE).trim();
+  if (env.SIDERAIL_BASE !== undefined) {
+    const baseRef = String(env.SIDERAIL_BASE).trim();
     if (baseRef) config.baseRef = baseRef;
-    else errors.push("GIT_RAIL_BASE: expected a non-empty Git reference");
+    else errors.push("SIDERAIL_BASE: expected a non-empty Git reference");
   }
-  if (env.GIT_RAIL_POLL_INTERVAL_MS !== undefined) {
-    const text = String(env.GIT_RAIL_POLL_INTERVAL_MS).trim();
+  if (env.SIDERAIL_POLL_INTERVAL_MS !== undefined) {
+    const text = String(env.SIDERAIL_POLL_INTERVAL_MS).trim();
     const interval = /^\d+$/.test(text) ? Number(text) : NaN;
     if (Number.isSafeInteger(interval) && interval >= 1_000 && interval <= 300_000) config.refresh.pollIntervalMs = interval;
-    else errors.push("GIT_RAIL_POLL_INTERVAL_MS: expected an integer from 1000 to 300000");
+    else errors.push("SIDERAIL_POLL_INTERVAL_MS: expected an integer from 1000 to 300000");
   }
-  if (env.GIT_RAIL_RECONCILE_INTERVAL_MS !== undefined) {
-    const text = String(env.GIT_RAIL_RECONCILE_INTERVAL_MS).trim();
+  if (env.SIDERAIL_RECONCILE_INTERVAL_MS !== undefined) {
+    const text = String(env.SIDERAIL_RECONCILE_INTERVAL_MS).trim();
     const interval = /^\d+$/.test(text) ? Number(text) : NaN;
     if (Number.isSafeInteger(interval) && interval >= 30_000 && interval <= 3_600_000) config.refresh.reconcileIntervalMs = interval;
-    else errors.push("GIT_RAIL_RECONCILE_INTERVAL_MS: expected an integer from 30000 to 3600000");
+    else errors.push("SIDERAIL_RECONCILE_INTERVAL_MS: expected an integer from 30000 to 3600000");
   }
   errors.push(...validateConfig(config));
   return { config, errors: [...new Set(errors)] };

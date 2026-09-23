@@ -1,6 +1,6 @@
 # Changelog
 
-Herdr GitRail follows Semantic Versioning. Until 1.0, minor releases may include
+SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
 ## 0.1.0 - Unreleased
@@ -22,20 +22,20 @@ intentional configuration changes documented here.
   adopts Herdr's `accent`, `red`, `green`, and `selection_bg` tokens when the
   user has set them. See [Colors and glyphs](docs/THEMING.md).
 - Measures East Asian Ambiguous characters according to the terminal's own
-  setting. `GIT_RAIL_AMBIGUOUS_WIDTH=wide` keeps tree guides, rules, and
+  setting. `SIDERAIL_AMBIGUOUS_WIDTH=wide` keeps tree guides, rules, and
   accented filenames aligned on terminals that render them double width.
 - Draws the branch mark as `↱` and the copied mark as `◫`. The previous `⑂` and
   `⧉` are absent from Menlo, so they rendered as empty boxes in Terminal.app.
 
 ### Security
 
-- Repository contents never control GitRail configuration or select editor or
+- Repository contents never control SideRail configuration or select editor or
   viewer executables. Branch-specific comparison refs may come from uncommitted
   local or worktree Git config; all executable settings remain limited to
   built-in defaults, the user configuration file, and explicit process
   environment overrides.
 - Verifies workspace, label, and process identity before closing a cached rail
-  or preview pane. GitRail never stages or reconstructs a user's pane layout.
+  or preview pane. SideRail never stages or reconstructs a user's pane layout.
 - Bounds Git commands, preview bytes, output, search memory, directory scans,
   and auto-open work; sanitizes terminal control sequences and avoids shells for
   repository-derived arguments.
@@ -67,11 +67,11 @@ intentional configuration changes documented here.
 
 ### Configuration
 
-- Adds `branch.<checked-out-branch>.gitrail-base` in local or worktree Git config
+- Adds `branch.<checked-out-branch>.siderail-base` in local or worktree Git config
   for uncommitted per-branch comparison bases, below explicit environment/user
   bases and above automatic local/remote default-branch resolution.
-- Removes pre-release repository-level `.git-rail.json` configuration. Move any
-  desired settings to `~/.config/git-rail/config.json`.
+- Removes pre-release repository-level `.siderail.json` configuration. Move any
+  desired settings to `~/.config/siderail/config.json`.
 - Removes the unused JSON Schema/editor-integration artifact. Existing
   development configuration must remove `$schema`; runtime validation is the
   sole configuration authority.
@@ -81,6 +81,16 @@ intentional configuration changes documented here.
 
 ### Installation and upgrade
 
+- Publishes as the `siderail` npm package with a `siderail` command:
+  `siderail setup` links the install as Herdr plugin `siderail` and adds a
+  SideRail control to cmux's global `~/.config/cmux/dock.json`;
+  `siderail status` reports each host's registration and flags stale ones;
+  `siderail uninstall` removes only this install's registrations.
+- Updates with `npm install -g siderail@latest`. Open sidebars detect the
+  replaced install and restart on the new version in place.
+- Renames the pre-release project from GitRail to SideRail: plugin id
+  `siderail`, `~/.config/siderail/`, `SIDERAIL_*` environment variables, and
+  the `branch.<name>.siderail-base` Git config key.
 - Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS and Linux through
   reproducible local release checks. The project does not use GitHub Actions.
 - Keeps owner-only exact-revision copies available to detached external viewers
@@ -88,6 +98,6 @@ intentional configuration changes documented here.
 - Routes all manifest entrypoints through a launcher that resolves an absolute
   Node executable and rejects unsupported versions before layout or terminal
   mutation.
-- This is the first release, so no public upgrade or migration path exists.
-  Pre-release checkouts should be unlinked and installed again from the release
-  candidate.
+- This is the first release, so no upgrade or migration path from earlier
+  versions exists. Remove a pre-release checkout's link (plugin
+  `local.git-rail`) and Dock control, then install the package.

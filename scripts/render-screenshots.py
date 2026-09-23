@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the deterministic GitRail demo into the documentation screenshots.
+"""Render the deterministic SideRail demo into the documentation screenshots.
 
 Maintainer tool. `npm run screenshots:verify` needs neither this script nor its
 one dependency; it only compares committed PNG bytes and deterministic terminal
@@ -9,7 +9,7 @@ output. Regenerate with:
     python3 scripts/render-screenshots.py
 
 The reference palette below is what a conventional dark terminal theme resolves
-GitRail's indexed colors to. GitRail itself pins no 24-bit colors; see
+SideRail's indexed colors to. SideRail itself pins no 24-bit colors; see
 docs/THEMING.md.
 """
 
@@ -50,7 +50,7 @@ INDEXED = {
 def snapshot(columns):
     result = subprocess.run(
         [
-            "node", "scripts/git-rail.mjs", "--demo", "--snapshot",
+            "node", "scripts/siderail.mjs", "--demo", "--snapshot",
             "--width", str(columns), "--height", str(ROWS),
         ],
         cwd=ROOT, capture_output=True, check=True, text=True,
@@ -120,7 +120,7 @@ def render(columns, rows):
     regular = ImageFont.truetype(FONT, 20)
     bold = ImageFont.truetype(FONT, 20, index=1)
 
-    caption = f"Herdr GitRail · demo fixture · {columns} columns"
+    caption = f"SideRail · demo fixture · {columns} columns"
     while caption and regular.getlength(caption) > columns * CELL_W:
         caption = caption.rsplit(" · ", 1)[0] if " · " in caption else caption[:-1]
     draw.text((PAD_X, CAPTION_Y), caption, font=regular, fill=INDEXED[3])
@@ -149,7 +149,7 @@ def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     for columns in WIDTHS:
         image = render(columns, parse(snapshot(columns)))
-        destination = OUTPUT / f"gitrail-{columns}.png"
+        destination = OUTPUT / f"siderail-{columns}.png"
         image.save(destination, optimize=True)
         print(f"{destination.relative_to(ROOT)} {image.width}x{image.height}")
 

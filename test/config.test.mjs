@@ -7,17 +7,17 @@ import { clientMode, DEFAULT_CONFIG, executableAvailable, launchExecutable, load
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 async function writeUserConfig(environment, value) {
-  const directory = path.join(environment.XDG_CONFIG_HOME, "git-rail");
+  const directory = path.join(environment.XDG_CONFIG_HOME, "siderail");
   await fs.mkdir(directory, { recursive: true });
   await fs.writeFile(path.join(directory, "config.json"), JSON.stringify(value));
 }
 
 test("live pane owns the single product title", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
-  assert.match(manifest, /title = "HERDR GITRAIL"/);
+  assert.match(manifest, /title = "SIDERAIL"/);
 });
 
-test("Herdr opens GitRail for restored and newly created tabs", async () => {
+test("Herdr opens SideRail for restored and newly created tabs", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
   assert.match(manifest, /\[\[startup\]\][\s\S]*?auto-open-herdr-tabs\.mjs/);
   assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.created"[\s\S]*?auto-open-herdr-tabs\.mjs/);
@@ -26,14 +26,14 @@ test("Herdr opens GitRail for restored and newly created tabs", async () => {
   assert.match(manifest, /\[\[events\]\]\s*on = "workspace\.closed"[\s\S]*?auto-open-herdr-tabs\.mjs/);
 });
 
-test("Herdr exposes a current-tab GitRail toggle action", async () => {
+test("Herdr exposes a current-tab SideRail toggle action", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
-  assert.match(manifest, /id = "toggle-git-rail"[\s\S]*?open-herdr-panel\.sh", "git-tui", "toggle"/);
+  assert.match(manifest, /id = "toggle-siderail"[\s\S]*?open-herdr-panel\.sh", "git-tui", "toggle"/);
 });
 
 test("file previews open in a dedicated Herdr tab", async () => {
   const manifest = await fs.readFile("herdr-plugin.toml", "utf8");
-  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  const rail = await fs.readFile("scripts/siderail.mjs", "utf8");
   assert.match(manifest, /id = "file-preview"[\s\S]*?placement = "tab"/);
   assert.match(rail, /resolveDirectMarkdownOpen\(state\.config, file\.path\)/);
   assert.match(rail, /openExternalFile/);
@@ -44,7 +44,7 @@ test("file previews open in a dedicated Herdr tab", async () => {
 });
 
 test("cmux previews use native file tabs without changing the Herdr preview", async () => {
-  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  const rail = await fs.readFile("scripts/siderail.mjs", "utf8");
   const cmuxLifecycle = await fs.readFile("src/cmux-preview-lifecycle.mjs", "utf8");
   const herdrPreview = await fs.readFile("scripts/file-preview.mjs", "utf8");
   assert.match(rail, /targetSurfaceId: cmuxMainSurfaceId/);
@@ -77,7 +77,7 @@ test("preview scrolling repaints in place without clearing the screen", async ()
 });
 
 test("manual refresh confirmation is transient", async () => {
-  const rail = await fs.readFile("scripts/git-rail.mjs", "utf8");
+  const rail = await fs.readFile("scripts/siderail.mjs", "utf8");
   assert.match(rail, /showTransientStatus\("Git state refreshed"\)/);
   assert.match(rail, /showTransientStatus\(previewStatus\)/);
   assert.doesNotMatch(rail, /statusMessage = `Preview opened/);
@@ -92,7 +92,7 @@ test("configuration validates version, launch mode, and refresh bounds", () => {
 });
 
 test("the shipped example is governed by runtime validation alone", async () => {
-  const example = JSON.parse(await fs.readFile("git-rail.config.example.json", "utf8"));
+  const example = JSON.parse(await fs.readFile("siderail.config.example.json", "utf8"));
   assert.deepEqual(validateConfig(example), []);
   assert.ok(validateConfig({ ...example, $schema: "removed" }).includes("unknown configuration key: $schema"));
 });
@@ -163,7 +163,7 @@ test("viewer actions resolve conditionally by selected filename", () => {
 });
 
 test("viewer executable preflight detects commands without invoking them", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-viewer-bin-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-viewer-bin-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const executable = path.join(root, "test-viewer");
   await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
@@ -178,7 +178,7 @@ test("viewer executable preflight detects commands without invoking them", async
 });
 
 test("installed Markdown rules bypass the generic preview only when system open is directly usable", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-direct-markdown-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-direct-markdown-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const open = path.join(root, "open");
   await fs.writeFile(open, "#!/bin/sh\nexit 0\n");
@@ -200,7 +200,7 @@ test("configuration rejects mistyped structured values", () => {
 });
 
 test("user configuration merges by key and environment wins", async (t) => {
-  const { environment } = hermeticEnvironment(t, { GIT_RAIL_BASE: "upstream/trunk", GIT_RAIL_CLIENT: "nvim" });
+  const { environment } = hermeticEnvironment(t, { SIDERAIL_BASE: "upstream/trunk", SIDERAIL_CLIENT: "nvim" });
   await writeUserConfig(environment, { version: 1, editor: { client: "hx", mode: "terminal" }, refresh: { pollIntervalMs: 7000 } });
   const { config, errors } = loadConfig(environment);
   assert.deepEqual(errors, []);
@@ -236,7 +236,7 @@ test("an explicit Glow TUI rule is preserved", async (t) => {
 test("environment overrides do not mutate built-in defaults", (t) => {
   const { environment } = hermeticEnvironment(t);
   const before = JSON.stringify(DEFAULT_CONFIG);
-  const first = loadConfig({ ...environment, GIT_RAIL_CLIENT_ARGS: '["-f"]', GIT_RAIL_POLL_INTERVAL_MS: "2000", GIT_RAIL_RECONCILE_INTERVAL_MS: "60000" });
+  const first = loadConfig({ ...environment, SIDERAIL_CLIENT_ARGS: '["-f"]', SIDERAIL_POLL_INTERVAL_MS: "2000", SIDERAIL_RECONCILE_INTERVAL_MS: "60000" });
   const second = loadConfig(environment);
   assert.deepEqual(first.errors, []);
   assert.equal(JSON.stringify(DEFAULT_CONFIG), before);
@@ -261,26 +261,26 @@ test("editor integration is optional and EDITOR remains a fallback", (t) => {
 test("invalid environment overrides report errors without replacing valid defaults", (t) => {
   const { environment } = hermeticEnvironment(t);
   const { config, errors } = loadConfig({ ...environment,
-    GIT_RAIL_BASE: "   ",
-    GIT_RAIL_CLIENT: "   ",
-    GIT_RAIL_CLIENT_ARGS: "not-json",
-    GIT_RAIL_CLIENT_MODE: "embedded",
-    GIT_RAIL_POLL_INTERVAL_MS: "NaN",
-    GIT_RAIL_RECONCILE_INTERVAL_MS: "0",
+    SIDERAIL_BASE: "   ",
+    SIDERAIL_CLIENT: "   ",
+    SIDERAIL_CLIENT_ARGS: "not-json",
+    SIDERAIL_CLIENT_MODE: "embedded",
+    SIDERAIL_POLL_INTERVAL_MS: "NaN",
+    SIDERAIL_RECONCILE_INTERVAL_MS: "0",
   });
   assert.equal(config.baseRef, undefined);
   assert.deepEqual(config.editor, DEFAULT_CONFIG.editor);
   assert.equal(config.refresh.pollIntervalMs, DEFAULT_CONFIG.refresh.pollIntervalMs);
   assert.equal(config.refresh.reconcileIntervalMs, DEFAULT_CONFIG.refresh.reconcileIntervalMs);
-  for (const variable of ["GIT_RAIL_BASE", "GIT_RAIL_CLIENT", "GIT_RAIL_CLIENT_ARGS", "GIT_RAIL_CLIENT_MODE", "GIT_RAIL_POLL_INTERVAL_MS", "GIT_RAIL_RECONCILE_INTERVAL_MS"]) {
+  for (const variable of ["SIDERAIL_BASE", "SIDERAIL_CLIENT", "SIDERAIL_CLIENT_ARGS", "SIDERAIL_CLIENT_MODE", "SIDERAIL_POLL_INTERVAL_MS", "SIDERAIL_RECONCILE_INTERVAL_MS"]) {
     assert.ok(errors.some((error) => error.startsWith(`${variable}:`)), `${variable} should report its invalid value`);
   }
 });
 
 test("out-of-range polling overrides preserve a user interval", async (t) => {
-  const { environment } = hermeticEnvironment(t, { GIT_RAIL_POLL_INTERVAL_MS: "999" });
+  const { environment } = hermeticEnvironment(t, { SIDERAIL_POLL_INTERVAL_MS: "999" });
   await writeUserConfig(environment, { version: 1, refresh: { pollIntervalMs: 7000 } });
   const { config, errors } = loadConfig(environment);
   assert.equal(config.refresh.pollIntervalMs, 7000);
-  assert.ok(errors.some((error) => error.startsWith("GIT_RAIL_POLL_INTERVAL_MS:")));
+  assert.ok(errors.some((error) => error.startsWith("SIDERAIL_POLL_INTERVAL_MS:")));
 });

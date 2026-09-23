@@ -7,7 +7,7 @@ import { openExternalFile } from "../src/direct-file-open.mjs";
 import { runGit } from "../src/process.mjs";
 
 async function temporaryRoot(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-direct-open-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-direct-open-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return root;
 }
@@ -67,7 +67,7 @@ test("historical Markdown opens an exact read-only copy and schedules its cleanu
   t.after(() => fs.rm(retainedDirectory, { recursive: true, force: true }));
   assert.equal(result.sourcePath, openedPath);
   assert.equal(retainedDirectory, path.dirname(openedPath));
-  assert.match(path.basename(retainedDirectory), /^herdr-gitrail-preview-/);
+  assert.match(path.basename(retainedDirectory), /^siderail-preview-/);
   assert.doesNotMatch(await fs.readFile(openedPath, "utf8"), /Worktree/);
 });
 

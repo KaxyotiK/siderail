@@ -1,5 +1,5 @@
-id = "local.git-rail"
-name = "Herdr GitRail"
+id = "siderail"
+name = "SideRail"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
 description = "A trustworthy, read-only Files and Git sidebar for each Herdr tab"
@@ -25,40 +25,40 @@ on = "workspace.closed"
 command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/auto-open-herdr-tabs.mjs"]
 
 [[actions]]
-id = "open-git-rail"
-title = "Open GitRail"
+id = "open-siderail"
+title = "Open SideRail"
 contexts = ["workspace"]
 command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-tui"]
 
 [[actions]]
-id = "toggle-git-rail"
-title = "Toggle GitRail"
+id = "toggle-siderail"
+title = "Toggle SideRail"
 contexts = ["workspace"]
 command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-tui", "toggle"]
 
 [[actions]]
-id = "open-git-rail-mockup"
-title = "Open GitRail Demo"
+id = "open-siderail-mockup"
+title = "Open SideRail Demo"
 contexts = ["workspace"]
 command = ["/bin/bash", "scripts/open-herdr-panel.sh", "git-mockup"]
 
 [[panes]]
 id = "git-tui"
-title = "HERDR GITRAIL"
+title = "SIDERAIL"
 description = "Read-only Files and Git inspection for the focused directory"
 placement = "overlay"
-command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/git-rail.mjs"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/siderail.mjs"]
 
 [[panes]]
 id = "git-mockup"
-title = "GitRail Demo"
-description = "Deterministic GitRail demo derived from a real fixture repository"
+title = "SideRail Demo"
+description = "Deterministic SideRail demo derived from a real fixture repository"
 placement = "overlay"
-command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/git-rail.mjs", "--demo"]
+command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/siderail.mjs", "--demo"]
 
 [[panes]]
 id = "file-preview"
-title = "GitRail Preview"
+title = "SideRail Preview"
 description = "Exact descriptor-aware diff and file preview"
 placement = "tab"
 command = ["/bin/bash", "scripts/node-launcher.sh", "scripts/file-preview.mjs"]

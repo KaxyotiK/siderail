@@ -50,7 +50,7 @@ async function verifiedPreviewPane({ run, herdr, paneId, terminalId, workspaceId
   });
   const pane = resultPane(paneResult.stdout);
   if (!pane || pane.pane_id !== paneId || pane.terminal_id !== terminalId
-    || pane.workspace_id !== workspaceId || pane.label !== "GitRail Preview") return false;
+    || pane.workspace_id !== workspaceId || pane.label !== "SideRail Preview") return false;
   const processResult = await run(herdr, ["pane", "process-info", "--pane", paneId], {
     cwd,
     timeoutMs: 3_000,

@@ -518,7 +518,7 @@ async function main() {
     assert.equal(ping.protocol, 20, `unexpected Herdr protocol ${ping.protocol}`);
 
     const initial = await call("workspace.create", {
-      cwd: fixtureDirectories[0], label: "GitRail contract probe", focus: true,
+      cwd: fixtureDirectories[0], label: "SideRail contract probe", focus: true,
     });
     const workspaceId = initial.workspace.workspace_id;
     const firstTabId = initial.tab.tab_id;
@@ -711,7 +711,7 @@ async function main() {
     let sharedVerification = null;
     if (options.verifyAdapter) {
       const adapterWorkspace = await call("workspace.create", {
-        cwd: fixtureDirectories[0], label: "GitRail adapter probe", focus: true,
+        cwd: fixtureDirectories[0], label: "SideRail adapter probe", focus: true,
       });
       const adapterWorkspaceId = adapterWorkspace.workspace.workspace_id;
       const adapterTabId = adapterWorkspace.tab.tab_id;
@@ -724,7 +724,7 @@ async function main() {
       });
       let adapterRailId = railResult.pane.pane_id;
       const adapterRailTerminalId = railResult.pane.terminal_id;
-      await call("pane.rename", { pane_id: adapterRailId, label: "HERDR GITRAIL" });
+      await call("pane.rename", { pane_id: adapterRailId, label: "SIDERAIL" });
       await delay(300);
 
       const candidateStage = options.candidateStage || "A";

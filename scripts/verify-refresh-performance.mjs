@@ -24,7 +24,7 @@ function runtimeFiles(directory = "src") {
     return entry.isDirectory() ? runtimeFiles(relative) : entry.isFile() && entry.name.endsWith(".mjs") ? [relative] : [];
   });
 }
-const currentRuntime = [...runtimeFiles(), "scripts/git-rail.mjs", "scripts/git-state-coordinator.mjs", "scripts/node-launcher.sh"].sort();
+const currentRuntime = [...runtimeFiles(), "scripts/siderail.mjs", "scripts/git-state-coordinator.mjs", "scripts/node-launcher.sh"].sort();
 
 assert.equal(baseline.mode, "baseline");
 assert.equal(candidate.mode, "compare");

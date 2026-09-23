@@ -12,7 +12,7 @@ import { runCommand } from "../src/process.mjs";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const NODE_LAUNCHER = path.join(SCRIPT_DIRECTORY, "cmux-node-launcher.sh");
-const CMUX_ENTRYPOINT = path.join(SCRIPT_DIRECTORY, "cmux-git-rail.mjs");
+const CMUX_ENTRYPOINT = path.join(SCRIPT_DIRECTORY, "cmux-siderail.mjs");
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'\\''`)}'`;
@@ -41,20 +41,20 @@ function isConfiguredDockWrapper(surface) {
 
 function dockStartupEnvironment(context) {
   return {
-    GIT_RAIL_HOST: "cmux",
-    GIT_RAIL_NODE_PATH: process.execPath,
-    GIT_RAIL_PROJECT_CWD: context.cwd,
-    GIT_RAIL_STAY_OPEN: "1",
-    ...(context.windowId ? { GIT_RAIL_WINDOW_ID: context.windowId } : {}),
-    CMUX_DOCK_CONTROL_ID: "git-rail",
-    CMUX_DOCK_CONTROL_TITLE: "GitRail",
+    SIDERAIL_HOST: "cmux",
+    SIDERAIL_NODE_PATH: process.execPath,
+    SIDERAIL_PROJECT_CWD: context.cwd,
+    SIDERAIL_STAY_OPEN: "1",
+    ...(context.windowId ? { SIDERAIL_WINDOW_ID: context.windowId } : {}),
+    CMUX_DOCK_CONTROL_ID: "siderail",
+    CMUX_DOCK_CONTROL_TITLE: "SideRail",
   };
 }
 
 /**
  * `send` types into a shell that no longer carries the Dock's startup
  * environment, so a relaunch has to restate it. Without this the restarted
- * control loses GIT_RAIL_WINDOW_ID and GIT_RAIL_PROJECT_CWD and resolves the
+ * control loses SIDERAIL_WINDOW_ID and SIDERAIL_PROJECT_CWD and resolves the
  * globally focused window instead of the Dock-owning one.
  */
 export function cmuxDockRelaunchCommand(command, variables) {
@@ -86,14 +86,14 @@ export async function launchCmuxDock({
     timeoutMs: 3_000,
     maxOutputBytes: 2 * 1_024 * 1_024,
   });
-  const callerOwnedSurfaceId = environment.CMUX_DOCK_CONTROL_ID === "git-rail"
+  const callerOwnedSurfaceId = environment.CMUX_DOCK_CONTROL_ID === "siderail"
     ? String(environment.CMUX_SURFACE_ID || "")
     : "";
   const dockSurfaces = surfaces(parse(list.stdout)).filter((surface) => surface.dock_scope);
   const visibleSurfaceIds = dockSurfaces.map(surfaceId).filter(Boolean);
   const readVisibleRegistration = () => readRegistration({
     workspaceId: context.workspaceId,
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: visibleSurfaceIds,
     environment,
   });
@@ -109,7 +109,7 @@ export async function launchCmuxDock({
     : null;
   let dockSurface = registeredSurface || dockSurfaces.find((surface) => (
     surfaceId(surface) === callerOwnedSurfaceId
-    || surfaceControlId(surface) === "git-rail"
+    || surfaceControlId(surface) === "siderail"
     || String(surface.initial_command || "").includes(CMUX_ENTRYPOINT)
   ));
   let created = false;
@@ -154,7 +154,7 @@ export async function launchCmuxDock({
     if (!surfaceId || payload.surface_id) throw new Error("cmux did not return a Dock surface id");
     dockSurface = { id: surfaceId };
     created = true;
-    const renameArgs = ["rename-tab", "--surface", surfaceId, "--title", "GitRail"];
+    const renameArgs = ["rename-tab", "--surface", surfaceId, "--title", "SideRail"];
     if (context.windowId) renameArgs.push("--window", context.windowId);
     try { await run(cmux, renameArgs, { env: environment, timeoutMs: 3_000, maxOutputBytes: 256 * 1_024 }); } catch {}
   }
@@ -169,9 +169,9 @@ export async function launchCmuxDock({
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   assertSupportedNode();
   launchCmuxDock().then(({ created, relaunched }) => {
-    process.stdout.write(created || relaunched ? "GitRail opened in the cmux Dock.\n" : "GitRail is already open in the cmux Dock.\n");
+    process.stdout.write(created || relaunched ? "SideRail opened in the cmux Dock.\n" : "SideRail is already open in the cmux Dock.\n");
   }).catch((error) => {
-    process.stderr.write(`Could not open GitRail in cmux: ${error.message}\n`);
+    process.stderr.write(`Could not open SideRail in cmux: ${error.message}\n`);
     process.exitCode = 1;
   });
 }

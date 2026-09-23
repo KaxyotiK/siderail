@@ -12,10 +12,10 @@ async function write(root, relativePath, contents, mode = 0o600) {
 async function git(root, args, env = {}) {
   return runGit(root, args, {
     env: {
-      GIT_AUTHOR_NAME: "GitRail Fixture",
-      GIT_AUTHOR_EMAIL: "fixture@git-rail.invalid",
-      GIT_COMMITTER_NAME: "GitRail Fixture",
-      GIT_COMMITTER_EMAIL: "fixture@git-rail.invalid",
+      GIT_AUTHOR_NAME: "SideRail Fixture",
+      GIT_AUTHOR_EMAIL: "fixture@siderail.invalid",
+      GIT_COMMITTER_NAME: "SideRail Fixture",
+      GIT_COMMITTER_EMAIL: "fixture@siderail.invalid",
       GIT_AUTHOR_DATE: "2026-01-02T12:00:00Z",
       GIT_COMMITTER_DATE: "2026-01-02T12:00:00Z",
       ...env,
@@ -24,10 +24,10 @@ async function git(root, args, env = {}) {
 }
 
 export async function createFixtureRepository() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "git-rail-fixture-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-fixture-"));
   await fs.chmod(root, 0o700);
   await git(root, ["init", "--initial-branch=main"]);
-  await write(root, "README.md", "# GitRail fixture\n\nA real repository powers this demo.\n");
+  await write(root, "README.md", "# SideRail fixture\n\nA real repository powers this demo.\n");
   await write(root, "src/rail.mjs", "export const sections = ['against', 'commits'];\n");
   await write(root, "src/status.mjs", "export const status = 'clean';\n");
   await write(root, "docs/usage.md", "# Usage\n\nOpen the rail in Herdr.\n");
@@ -47,5 +47,5 @@ export async function createFixtureRepository() {
 }
 
 export async function removeFixtureRepository(root) {
-  if (root && path.basename(root).startsWith("git-rail-fixture-")) await fs.rm(root, { recursive: true, force: true });
+  if (root && path.basename(root).startsWith("siderail-fixture-")) await fs.rm(root, { recursive: true, force: true });
 }

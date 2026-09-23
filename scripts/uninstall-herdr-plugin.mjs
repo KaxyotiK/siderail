@@ -9,11 +9,11 @@ import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 assertSupportedNode();
 
 const OWNED_LABELS = new Map([
-  ["HERDR GITRAIL", { script: "scripts/git-rail.mjs", demo: false }],
-  ["HERDER GITRAIL", { script: "scripts/git-rail.mjs", demo: false }],
-  ["Grove Git Rail", { script: "scripts/git-rail.mjs", demo: false }],
-  ["GitRail Demo", { script: "scripts/git-rail.mjs", demo: true }],
-  ["GitRail Preview", { script: "scripts/file-preview.mjs", demo: false }],
+  ["SIDERAIL", { script: "scripts/siderail.mjs", demo: false }],
+  ["HERDR GITRAIL", { script: "scripts/siderail.mjs", demo: false }],
+  ["Grove Git Rail", { script: "scripts/siderail.mjs", demo: false }],
+  ["SideRail Demo", { script: "scripts/siderail.mjs", demo: true }],
+  ["SideRail Preview", { script: "scripts/file-preview.mjs", demo: false }],
 ]);
 
 function parseJson(text) {
@@ -59,13 +59,15 @@ async function verifiedOwnedPane({ run, herdr, pane, pluginRoot }) {
   return processes.some((processInfo) => processMatches(processInfo, identity, pluginRoot));
 }
 
-export async function uninstallGitRail({
+export async function uninstallSideRail({
   environment = process.env,
   run = runCommand,
   pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url))),
+  // Callers that have verified ownership pass the id they checked; only the
+  // checkout's standalone entry honors a host-provided override.
+  pluginId = environment.HERDR_PLUGIN_ID || "siderail",
 } = {}) {
   const herdr = environment.HERDR_BIN_PATH || "herdr";
-  const pluginId = environment.HERDR_PLUGIN_ID || "local.git-rail";
   const listed = await run(herdr, ["pane", "list"], {
     timeoutMs: 8_000,
     maxOutputBytes: 16 * 1_024 * 1_024,
@@ -82,7 +84,7 @@ export async function uninstallGitRail({
     }
   }
   if (ambiguous.length) {
-    throw new Error(`refusing to unlink while GitRail-labelled panes cannot be proven owned: ${ambiguous.map((pane) => sanitizeTerminalText(pane.pane_id)).join(", ")}`);
+    throw new Error(`refusing to unlink while SideRail-labelled panes cannot be proven owned: ${ambiguous.map((pane) => sanitizeTerminalText(pane.pane_id)).join(", ")}`);
   }
   for (const pane of verified) {
     await closeVerifiedPluginPane({ run, herdr, paneId: pane.pane_id });
@@ -96,8 +98,8 @@ export async function uninstallGitRail({
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
-  uninstallGitRail().then((result) => {
-    process.stdout.write(`Unlinked ${result.pluginId}; closed ${result.closedPaneIds.length} verified GitRail pane(s).\n`);
+  uninstallSideRail().then((result) => {
+    process.stdout.write(`Unlinked ${result.pluginId}; closed ${result.closedPaneIds.length} verified SideRail pane(s).\n`);
   }).catch((error) => {
     console.error(sanitizeTerminalText(error.message));
     process.exitCode = 1;

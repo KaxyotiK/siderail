@@ -16,7 +16,7 @@ const PASSTHROUGH = [
 ];
 
 export function hermeticEnvironment(t, overrides = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-test-env-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-test-env-"));
   const environment = {};
   for (const key of PASSTHROUGH) {
     if (process.env[key] !== undefined) environment[key] = process.env[key];
@@ -34,7 +34,7 @@ export function hermeticEnvironment(t, overrides = {}) {
     ...overrides,
   });
   for (const key of Object.keys(environment)) {
-    if ((key.startsWith("HERDR_") || key.startsWith("GIT_RAIL_")) && !(key in overrides)) delete environment[key];
+    if ((key.startsWith("HERDR_") || key.startsWith("SIDERAIL_")) && !(key in overrides)) delete environment[key];
   }
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return { environment, root, home, config, cache, state };

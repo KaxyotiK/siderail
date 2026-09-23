@@ -11,7 +11,7 @@ import {
 } from "./helpers/herdr-socket-client.mjs";
 
 async function fixture(handler) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-herdr-socket-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-herdr-socket-"));
   const socketPath = path.join(root, "api.sock");
   const server = net.createServer(handler);
   await new Promise((resolve, reject) => {

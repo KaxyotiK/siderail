@@ -12,3 +12,6 @@ __pycache__/
 
 # Local agent prompts, transcripts and launch bookkeeping stay private.
 /work/git-refresh/convergence-state/
+
+# Cross-project agent discussion transcripts.
+.herdr-converge/

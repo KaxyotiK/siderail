@@ -9,9 +9,9 @@ import { createHerdrContextSource, readHerdrSessionSnapshot } from "../src/herdr
 function snapshot({ cwd = "/repo", content = true, visible = true } = {}) {
   const panes = content ? [
     { pane_id: "w1:p1", terminal_id: "content", workspace_id: "w1", tab_id: "w1:t1", foreground_cwd: cwd },
-    { pane_id: "w1:p2", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "HERDR GITRAIL" },
+    { pane_id: "w1:p2", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "SIDERAIL" },
   ] : [
-    { pane_id: "w1:p2", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "HERDR GITRAIL" },
+    { pane_id: "w1:p2", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "SIDERAIL" },
   ];
   return {
     focused_workspace_id: visible ? "w1" : "w9",

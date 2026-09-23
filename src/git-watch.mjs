@@ -7,11 +7,11 @@ async function canonical(candidate) {
 }
 
 export function shouldInstallWatchers(environment = process.env) {
-  return environment.GIT_RAIL_WATCH_MODE !== "poll-only";
+  return environment.SIDERAIL_WATCH_MODE !== "poll-only";
 }
 
 export function shouldInstallRecoveryPoll(environment = process.env, { watchFailed = false } = {}) {
-  return watchFailed || environment.GIT_RAIL_WATCH_MODE !== "watch-only";
+  return watchFailed || environment.SIDERAIL_WATCH_MODE !== "watch-only";
 }
 
 export function closeWatcherOnError(watcher, onError) {

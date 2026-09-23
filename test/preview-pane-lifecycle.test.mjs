@@ -10,19 +10,19 @@ import { openOwnedPreview, previewPaneStatePath } from "../src/preview-pane-life
 const PROJECT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-lifecycle-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-preview-lifecycle-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return { root, environment: { XDG_CACHE_HOME: root } };
 }
 
-function mockRunner({ staleLabel = "GitRail Preview", staleWorkspace = "w1", argv = ["node", "scripts/file-preview.mjs"], failInspection = false, missingPane = false, failOpen = false, failRename = false, malformedOpen = false, openedPane = {} } = {}) {
+function mockRunner({ staleLabel = "SideRail Preview", staleWorkspace = "w1", argv = ["node", "scripts/file-preview.mjs"], failInspection = false, missingPane = false, failOpen = false, failRename = false, malformedOpen = false, openedPane = {} } = {}) {
   const calls = [];
   const opened = {
     pane_id: "new-pane",
     tab_id: "preview-tab",
     terminal_id: "new-terminal",
     workspace_id: "w1",
-    label: "GitRail Preview",
+    label: "SideRail Preview",
     ...openedPane,
   };
   const run = async (_command, args) => {

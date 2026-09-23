@@ -21,7 +21,7 @@ function environment(root, overrides = {}) {
   return {
     XDG_CACHE_HOME: root,
     HERDR_BIN_PATH: "herdr-test",
-    HERDR_PLUGIN_ID: "local.git-rail",
+    HERDR_PLUGIN_ID: "siderail",
     HERDR_WORKSPACE_ID: "w1",
     HERDR_TAB_ID: "w1:t1",
     HERDR_PANE_ID: "w1:p1",
@@ -55,9 +55,9 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
     }
     if (args[0] === "pane" && args[1] === "process-info") {
       const pane = panes.find((item) => item.pane_id === args.at(-1));
-      const argv = pane?.label === "GitRail Demo"
-        ? ["node", "scripts/git-rail.mjs", "--demo"]
-        : ["node", "scripts/git-rail.mjs"];
+      const argv = pane?.label === "SideRail Demo"
+        ? ["node", "scripts/siderail.mjs", "--demo"]
+        : ["node", "scripts/siderail.mjs"];
       return { stdout: JSON.stringify({ result: { process_info: { foreground_processes: [{ argv, cwd: PROJECT_ROOT }] } } }) };
     }
     if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") {
@@ -67,7 +67,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
         tab_id: args.includes("--target-pane") ? paneTabs.get(targetPaneId) : "w1:t8",
         pane_id: openedPaneId,
         terminal_id: `term-${openedPaneId}`,
-        label: args.includes("git-mockup") ? "GitRail Demo" : "HERDR GITRAIL",
+        label: args.includes("git-mockup") ? "SideRail Demo" : "SIDERAIL",
       };
       paneTabs.set(openedPaneId, openedPane.tab_id);
       await afterMutation?.(args);
@@ -102,7 +102,7 @@ async function temporaryRoot(t, prefix) {
 }
 
 test("orphaned pane locks are recovered instead of suppressing auto-open", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-lock-");
+  const root = await temporaryRoot(t, "siderail-lock-");
   const env = environment(root);
   await ensurePaneStateDirectory(env);
   const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
@@ -117,7 +117,7 @@ test("orphaned pane locks are recovered instead of suppressing auto-open", async
 });
 
 test("a live lock cannot be age-evicted or released by an earlier owner", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-live-lock-");
+  const root = await temporaryRoot(t, "siderail-live-lock-");
   const env = environment(root);
   await ensurePaneStateDirectory(env);
   const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
@@ -135,7 +135,7 @@ test("a live lock cannot be age-evicted or released by an earlier owner", async 
 });
 
 test("an orphaned reclaimer cannot permanently wedge a pane lock", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-reclaim-lock-");
+  const root = await temporaryRoot(t, "siderail-reclaim-lock-");
   const env = environment(root);
   await ensurePaneStateDirectory(env);
   const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
@@ -149,15 +149,15 @@ test("an orphaned reclaimer cannot permanently wedge a pane lock", async (t) => 
 });
 
 test("current and older-spelling rails are adopted, deduplicated, and never reopened from themselves", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-adopt-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p3", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-adopt-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p3", SIDERAIL_WORKSPACE_CWD: "/repo" });
   await ensurePaneStateDirectory(env);
   const legacyState = legacyPaneStatePath({ workspaceId: "w1", entrypoint: "git-tui", environment: env });
   await writePaneState(legacyState, "w1:p3", "/repo");
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDER GITRAIL" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p4", cwd: "/repo", label: "HERDR GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDR GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p4", cwd: "/repo", label: "SIDERAIL" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p5", cwd: "/repo", label: "Grove Git Rail" },
   ];
   const mocked = mockRun({ panes, layout: {
@@ -187,15 +187,15 @@ test("current and older-spelling rails are adopted, deduplicated, and never reop
   await assert.rejects(fs.stat(legacyState), { code: "ENOENT" });
 });
 
-test("toggle closes only the verified GitRail rail and clears its tab state", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-toggle-close-");
+test("toggle closes only the verified SideRail rail and clears its tab state", async (t) => {
+  const root = await temporaryRoot(t, "siderail-toggle-close-");
   const env = environment(root, { HERDR_PANE_ID: "w1:p1" });
   await ensurePaneStateDirectory(env);
   const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
   await writePaneState(statePath, "w1:p3", "/repo");
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDR GITRAIL" },
   ];
   const mocked = mockRun({ panes, layout: { area: { x: 0, y: 0, width: 100, height: 20 }, panes: [] } });
   const result = await openHerdrPanel({
@@ -213,8 +213,8 @@ test("toggle closes only the verified GitRail rail and clears its tab state", as
 });
 
 test("toggle opens a rail when the current tab has none", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-toggle-open-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-toggle-open-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [{ workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" }];
   const mocked = mockRun({ panes, layout: {
     area: { x: 0, y: 0, width: 100, height: 20 },
@@ -235,8 +235,8 @@ test("toggle opens a rail when the current tab has none", async (t) => {
 });
 
 test("automatic ensure uses a safe outer-right split without layout staging", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-safe-auto-split-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-safe-auto-split-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [{ workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" }];
   const mocked = mockRun({ panes, layout: {
     area: { x: 0, y: 0, width: 100, height: 20 },
@@ -259,7 +259,7 @@ test("automatic ensure uses a safe outer-right split without layout staging", as
 });
 
 test("legacy rails are replaced at the right edge using the tab-focused source cwd", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-legacy-");
+  const root = await temporaryRoot(t, "siderail-legacy-");
   const env = environment(root, { HERDR_PANE_ID: "" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo/one" },
@@ -286,12 +286,12 @@ test("legacy rails are replaced at the right edge using the tab-focused source c
   assert.ok(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p3"));
   const open = mocked.calls.find((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open");
   assert.equal(open[open.indexOf("--target-pane") + 1], "w1:p2");
-  assert.ok(open.includes("GIT_RAIL_REPO_ROOT=/repo/two/sub"));
+  assert.ok(open.includes("SIDERAIL_REPO_ROOT=/repo/two/sub"));
 });
 
 test("legacy migration open failure retains the verified legacy rail", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-legacy-open-failure-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-legacy-open-failure-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "Grove Git Rail" },
@@ -310,11 +310,11 @@ test("legacy migration open failure retains the verified legacy rail", async (t)
 });
 
 test("automatic ensure adopts a middle rail without rearranging user panes", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-repair-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-repair-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo", label: "HERDR GITRAIL" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo" },
   ];
   const layout = { area: { x: 0, y: 0, width: 130, height: 20 }, focused_pane_id: "w1:p1", panes: [
@@ -347,8 +347,8 @@ test("rightmost placement is independent of pane listing order", () => {
 });
 
 test("automatic ensure skips an unsafe vertical layout without staging or opening", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-vertical-ensure-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-vertical-ensure-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
@@ -369,8 +369,8 @@ test("automatic ensure skips an unsafe vertical layout without staging or openin
 });
 
 test("manual open also skips an unsafe vertical layout without rearranging user panes", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-vertical-manual-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-vertical-manual-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
@@ -398,12 +398,12 @@ test("manual open also skips an unsafe vertical layout without rearranging user 
 });
 
 test("manual open retains an existing verified rail when replacement is unsafe", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-existing-vertical-manual-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-existing-vertical-manual-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDR GITRAIL" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 120, height: 40 },
@@ -429,11 +429,11 @@ test("manual open retains an existing verified rail when replacement is unsafe",
 });
 
 test("manual replace retargets an existing rail while ensure adopts it", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-retarget-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo/two" });
+  const root = await temporaryRoot(t, "siderail-retarget-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo/two" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo/two" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDR GITRAIL" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 100, height: 20 },
@@ -454,11 +454,11 @@ test("manual replace retargets an existing rail while ensure adopts it", async (
 });
 
 test("replacement open failure retains the existing verified rail", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-replacement-open-failure-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo/two" });
+  const root = await temporaryRoot(t, "siderail-replacement-open-failure-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo/two" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo/two" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDR GITRAIL" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 100, height: 20 }, focused_pane_id: "w1:p1", zoomed: false,
@@ -474,11 +474,11 @@ test("replacement open failure retains the existing verified rail", async (t) =>
 });
 
 test("replace compensates the new pane when the owned rail cannot close", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-close-failure-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo/two" });
+  const root = await temporaryRoot(t, "siderail-close-failure-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo/two" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo/two" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo/one", label: "HERDR GITRAIL" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 100, height: 20 }, focused_pane_id: "w1:p1", zoomed: false,
@@ -497,11 +497,11 @@ test("replace compensates the new pane when the owned rail cannot close", async 
 });
 
 test("zoomed tabs are unzoomed for replacement and restored afterward", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-zoomed-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-zoomed-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", label: "HERDR GITRAIL" },
   ];
   const baseLayout = {
     area: { x: 0, y: 0, width: 100, height: 20 }, focused_pane_id: "w1:p1",
@@ -537,12 +537,12 @@ test("zoomed tabs are unzoomed for replacement and restored afterward", async (t
   assert.equal(zoomed, true);
 });
 
-test("GitRail Demo panes use entrypoint-specific identity instead of accumulating", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-demo-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+test("SideRail Demo panes use entrypoint-specific identity instead of accumulating", async (t) => {
+  const root = await temporaryRoot(t, "siderail-demo-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "GitRail Demo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "SideRail Demo" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 100, height: 20 },
@@ -561,11 +561,11 @@ test("GitRail Demo panes use entrypoint-specific identity instead of accumulatin
   assert.equal(mocked.calls.filter((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open").length, 1);
 });
 
-test("a GitRail Demo pane cannot become the main rail's content source", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-demo-source-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p3", GIT_RAIL_WORKSPACE_CWD: "/plugin" });
+test("a SideRail Demo pane cannot become the main rail's content source", async (t) => {
+  const root = await temporaryRoot(t, "siderail-demo-source-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p3", SIDERAIL_WORKSPACE_CWD: "/plugin" });
   const panes = [{
-    workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/plugin", label: "GitRail Demo",
+    workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/plugin", label: "SideRail Demo",
   }];
   const mocked = mockRun({ panes, layout: {
     area: { x: 0, y: 0, width: 100, height: 20 },
@@ -574,15 +574,15 @@ test("a GitRail Demo pane cannot become the main rail's content source", async (
   } });
   await assert.rejects(openHerdrPanel({
     entrypoint: "git-tui", environment: env, run: mocked.run, resize: async () => {}, writeOutput: () => {},
-  }), /unable to resolve a non-GitRail pane/);
+  }), /unable to resolve a non-SideRail pane/);
   assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
 });
 
-test("a user pane renamed like GitRail is never treated as plugin-owned", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-spoof-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p1", GIT_RAIL_WORKSPACE_CWD: "/repo" });
+test("a user pane renamed like SideRail is never treated as plugin-owned", async (t) => {
+  const root = await temporaryRoot(t, "siderail-spoof-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [{
-    workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo", label: "HERDER GITRAIL",
+    workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo", label: "HERDR GITRAIL",
   }];
   const layout = {
     area: { x: 0, y: 0, width: 100, height: 20 },
@@ -602,7 +602,7 @@ test("a user pane renamed like GitRail is never treated as plugin-owned", async 
     }
     if (args[0] === "pane" && args[1] === "get" && args[2] === "w1:p9") {
       return { stdout: JSON.stringify({ result: { pane: {
-        workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p9", terminal_id: "term-p9", label: "HERDER GITRAIL",
+        workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p9", terminal_id: "term-p9", label: "HERDR GITRAIL",
       } } }) };
     }
     return { stdout: JSON.stringify({ result: { type: "ok" } }) };
@@ -613,11 +613,11 @@ test("a user pane renamed like GitRail is never treated as plugin-owned", async 
 });
 
 test("ownership inspection failure aborts instead of opening a duplicate rail", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-ownership-timeout-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-ownership-timeout-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
-    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", label: "HERDER GITRAIL" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", label: "HERDR GITRAIL" },
   ];
   const layout = {
     area: { x: 0, y: 0, width: 100, height: 20 }, focused_pane_id: "w1:p1",
@@ -635,8 +635,8 @@ test("ownership inspection failure aborts instead of opening a duplicate rail", 
 });
 
 test("an invalid plugin-open pane id is never moved into the target tab", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-invalid-open-");
-  const env = environment(root, { GIT_RAIL_WORKSPACE_CWD: "/repo" });
+  const root = await temporaryRoot(t, "siderail-invalid-open-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
     { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
@@ -652,19 +652,19 @@ test("an invalid plugin-open pane id is never moved into the target tab", async 
   const run = async (command, args, options) => {
     if (args[0] === "pane" && args[1] === "get" && args[2] === "FOREIGN:pane") {
       return { stdout: JSON.stringify({ result: { pane: {
-        pane_id: "FOREIGN:pane", workspace_id: "other", tab_id: "other:t1", label: "HERDER GITRAIL",
+        pane_id: "FOREIGN:pane", workspace_id: "other", tab_id: "other:t1", label: "HERDR GITRAIL",
       } } }) };
     }
     return mocked.run(command, args, options);
   };
   await assert.rejects(openHerdrPanel({
     entrypoint: "git-tui", environment: env, run, resize: async () => {}, writeOutput: () => {},
-  }), /invalid GitRail pane/);
+  }), /invalid SideRail pane/);
   assert.equal(mocked.calls.some((args) => args[0] === "pane" && args[1] === "move" && args[2] === "FOREIGN:pane"), false);
 });
 
 test("closed-tab cleanup removes state and orphan locks only for that tab", async (t) => {
-  const root = await temporaryRoot(t, "gitrail-cleanup-");
+  const root = await temporaryRoot(t, "siderail-cleanup-");
   const env = environment(root);
   await ensurePaneStateDirectory(env);
   const closed = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });

@@ -13,6 +13,7 @@ export const REQUIRED_RELEASE_CELLS = [
   "dependency-audit",
   "live-macos",
   "live-linux",
+  "npm-install",
   "screenshots",
 ];
 
@@ -24,6 +25,7 @@ const NODE_CELL_MAJORS = new Map([
 const LIVE_PLATFORM_CELLS = new Map([
   ["live-macos", /^macOS\s+\d+(?:\.\d+)+/i],
   ["live-linux", /^Linux\s+.+/i],
+  ["npm-install", /^(?:macOS\s+\d+(?:\.\d+)+|Linux\s+.+)/i],
 ]);
 
 function assertSha(sha, label = "candidate SHA") {
@@ -58,7 +60,7 @@ function digestFile(file) {
 function checkedManifest(file, candidateSha) {
   assertSha(candidateSha);
   const manifest = readManifest(file);
-  if (manifest.version !== 5 || manifest.candidateSha !== candidateSha) {
+  if (manifest.version !== 6 || manifest.candidateSha !== candidateSha) {
     throw new Error("evidence manifest does not name the candidate SHA");
   }
   return manifest;
@@ -85,7 +87,7 @@ function commonRecord({ candidateSha, command, status, platform, node, herdr, vi
 export function initializeEvidence({ file, candidateSha, release = "0.1.0", now = new Date().toISOString() }) {
   assertSha(candidateSha);
   if (fs.existsSync(file)) throw new Error(`evidence file already exists: ${file}`);
-  const manifest = { version: 5, release, candidateSha, createdAt: now, cells: {} };
+  const manifest = { version: 6, release, candidateSha, createdAt: now, cells: {} };
   writeManifest(file, manifest);
   return manifest;
 }
@@ -306,7 +308,7 @@ export function createTagMessage({
     return `- ${cell}: ${blobRoot}/${evidence.path}#sha256=${evidence.sha256}`;
   });
   return [
-    `Herdr GitRail ${manifest.release}`,
+    `SideRail ${manifest.release}`,
     "",
     `Validated candidate: ${candidateSha}`,
     `Evidence commit: ${evidenceCommit}`,

@@ -2,16 +2,16 @@
 
 ## No Git repository
 
-Change a content pane in that Herdr tab into the intended worktree. GitRail
+Change a content pane in that Herdr tab into the intended worktree. SideRail
 follows the tab's focused content pane through its independent context source;
 press `r` to request an immediate refresh. Tabs are resolved independently.
 
-For cmux, GitRail resolves the selected main workspace's `current_directory`;
+For cmux, SideRail resolves the selected main workspace's `current_directory`;
 it never uses its own Dock surface as the source. Confirm the intended main
 workspace is selected and press `r`. If cmux's socket is unavailable, the
 control falls back to the project cwd from `.cmux/dock.json`.
 
-## GitRail is missing from the cmux Dock
+## SideRail is missing from the cmux Dock
 
 Project Dock config seeds only a new Dock. A restored (including intentionally
 empty) Dock snapshot wins over `.cmux/dock.json`. Reload the Dock config or run
@@ -23,46 +23,46 @@ the build supports v2 surface discovery and close.
 Direct Dock launch additionally needs `surface.create` with `initial_command`
 and `startup_environment`. See [CMUX.md](CMUX.md).
 
-Configured GitRail records active identity before cmux context discovery, and
+Configured SideRail records active identity before cmux context discovery, and
 the direct launcher waits briefly when a configured control is still starting.
 Unrelated configured controls do not block direct launch. After `q` leaves the
 control at its login shell, `npm run cmux:launch` reuses that terminal and
-starts GitRail again.
+starts SideRail again.
 
-## GitRail did not open automatically
+## SideRail did not open automatically
 
 Automatic opening runs for each Git-backed tab when Herdr starts or emits
 `workspace.created` or `tab.created`. Confirm the plugin is enabled and that
 `herdr.autoOpen` is not `false` in the user configuration. A
 newly linked plugin does not receive Herdr's one-shot startup hook until the next
-server start; use **Open GitRail** for an existing tab in the meantime. GitRail
+server start; use **Open SideRail** for an existing tab in the meantime. SideRail
 file-preview tabs are intentionally excluded.
 
-GitRail adopts an existing rail instead of opening a duplicate. If an earlier
+SideRail adopts an existing rail instead of opening a duplicate. If an earlier
 process was interrupted during pane creation, the next attempt automatically
 recovers its orphaned lock.
 
-GitRail opens only when Herdr can create a direct outer-right split beside a
+SideRail opens only when Herdr can create a direct outer-right split beside a
 full-height pane. On top/bottom or otherwise nested layouts where that is not
 safe, both automatic and manual opening report a skip and leave every pane
 untouched. Rearrange the tab manually if you want to make room for the rail.
 
-## GitRail opened at the wrong width
+## SideRail opened at the wrong width
 
-Set `herdr.sidebarWidth` to an integer from 20 to 200. GitRail applies this only
+Set `herdr.sidebarWidth` to an integer from 20 to 200. SideRail applies this only
 when creating the pane, so later manual resizing is preserved. On narrow layouts
 the initial rail is capped at half of the available split; on unusually wide
 layouts Herdr's minimum split ratio may keep it wider than the requested value.
 
 ## Base ref is wrong or missing
 
-Set `GIT_RAIL_BASE` for a process override or `baseRef` in user configuration.
+Set `SIDERAIL_BASE` for a process override or `baseRef` in user configuration.
 For one checked-out branch, set or remove an uncommitted repository-local
 preference with:
 
 ```bash
-git config --local 'branch.feature/my-work.gitrail-base' release/1.x
-git config --local --unset-all 'branch.feature/my-work.gitrail-base'
+git config --local 'branch.feature/my-work.siderail-base' release/1.x
+git config --local --unset-all 'branch.feature/my-work.siderail-base'
 ```
 
 To isolate it to the current linked worktree instead, first enable Git's
@@ -73,9 +73,9 @@ git config --local extensions.worktreeConfig true
 ```
 
 Then use `--worktree` in place of `--local` in both branch commands. Precedence
-is `GIT_RAIL_BASE`, user `baseRef`, the current branch key, automatic local
+is `SIDERAIL_BASE`, user `baseRef`, the current branch key, automatic local
 default-branch resolution, remote fallback, and finally a committed `HEAD`.
-GitRail prefers the local counterpart of the remote HEAD, then local `main` or
+SideRail prefers the local counterpart of the remote HEAD, then local `main` or
 `master`, before the corresponding remote refs. This keeps local `main` clean
 even when `origin/main` is stale. Detached HEAD ignores branch keys, and unborn
 repositories have no Against-base or commit range until the first commit.
@@ -84,10 +84,10 @@ blob/tree object expressions are reported instead of silently falling back.
 
 ## Configuration error
 
-GitRail displays the file and validation error. Validate JSON syntax and require
+SideRail displays the file and validation error. Validate JSON syntax and require
 `version: 1`. Editor launch modes are `auto`, `terminal`, and `external`.
 Viewer launch modes also include `embedded`, which displays the viewer's output
-inside GitRail.
+inside SideRail.
 
 ## Editor or viewer does not open
 
@@ -104,7 +104,7 @@ The `*` rule matches every filename. No viewer auto-opens unless its rule sets
 `autoOpen: true`; in Herdr, the installed Markdown rules invoke the system
 application directly and create no preview tab. Confirm that `open` on macOS or
 `xdg-open` on Linux is available. Embedded viewers return bounded, sanitized
-terminal output to GitRail, which retains control of wrapping, scrolling,
+terminal output to SideRail, which retains control of wrapping, scrolling,
 searching, and resizing.
 
 ## Binary or oversized preview
@@ -128,9 +128,9 @@ refresh starts. A missed event is recovered by the healthy safety reconciliation
 (default five minutes ±10%). Watcher failures use the separate degraded interval
 (default ten seconds ±10%) and retry watcher installation.
 
-`refresh.reconcileIntervalMs` / `GIT_RAIL_RECONCILE_INTERVAL_MS` controls the
+`refresh.reconcileIntervalMs` / `SIDERAIL_RECONCILE_INTERVAL_MS` controls the
 healthy safety scan (30,000–3,600,000 ms). `refresh.pollIntervalMs` /
-`GIT_RAIL_POLL_INTERVAL_MS` controls degraded or poll-only recovery
+`SIDERAIL_POLL_INTERVAL_MS` controls degraded or poll-only recovery
 (1,000–300,000 ms). Both bounds apply before jitter. Old poll settings remain
 valid but no longer force frequent full reads with healthy watchers.
 
@@ -153,7 +153,7 @@ five-minute scan protects against silently lost notifications. Repeated writes
 to known ignored files and another worktree's index do not rebuild this
 worktree's state. Unknown paths are classified conservatively.
 
-For a diagnostic launch, `GIT_RAIL_STATE_MODE=in-process` explicitly uses a
+For a diagnostic launch, `SIDERAIL_STATE_MODE=in-process` explicitly uses a
 separate engine in that rail. Healthy Git reconciliation and watcher filtering
 still apply; work is no longer shared between tabs, and the transitional Herdr
 context snapshot interval is ten seconds. The normal value is `shared`.

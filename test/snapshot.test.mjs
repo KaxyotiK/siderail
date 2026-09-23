@@ -19,7 +19,7 @@ const SELECTED_BAR = `${SELECTED}${ACCENT}\u258f`;
 const exec = promisify(execFile);
 
 async function writeUserConfig(environment, value) {
-  const directory = path.join(environment.XDG_CONFIG_HOME, "git-rail");
+  const directory = path.join(environment.XDG_CONFIG_HOME, "siderail");
   await fs.mkdir(directory, { recursive: true });
   await fs.writeFile(path.join(directory, "config.json"), JSON.stringify(value));
 }
@@ -54,8 +54,8 @@ test("a wide-ambiguous terminal keeps every row inside the rail width", async (t
   const columns = 52;
   const render = async (mode) => {
     const { stdout } = await execHermetic(t, process.execPath, [
-      "scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(columns), "--height", "32",
-    ], { maxBuffer: 2 * 1024 * 1024 }, { GIT_RAIL_AMBIGUOUS_WIDTH: mode });
+      "scripts/siderail.mjs", "--demo", "--snapshot", "--width", String(columns), "--height", "32",
+    ], { maxBuffer: 2 * 1024 * 1024 }, { SIDERAIL_AMBIGUOUS_WIDTH: mode });
     return plainTerminal(stdout).split("\n").map((line) => line.replace(/\r/g, ""));
   };
   const narrow = await render("narrow");
@@ -75,9 +75,9 @@ test("a wide-ambiguous terminal keeps every row inside the rail width", async (t
 
 for (const width of [25, 36, 52, 100]) {
   test(`demo snapshot is coherent at ${width} columns`, async (t) => {
-    const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+    const { stdout } = await execHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
-    assert.doesNotMatch(plain, /HERDR GITRAIL/);
+    assert.doesNotMatch(plain, /SIDERAIL/);
     assert.match(plain, /feature\/sidebar/);
     assert.match(plain, /CHANGES\s+FILES/);
     assert.doesNotMatch(plain, /CHANGES \d/);
@@ -94,23 +94,23 @@ for (const width of [25, 36, 52, 100]) {
   });
 }
 
-test("demo snapshot ignores ambient user configuration and GitRail overrides", async (t) => {
+test("demo snapshot ignores ambient user configuration and SideRail overrides", async (t) => {
   const { environment } = hermeticEnvironment(t, {
-    GIT_RAIL_PANEL_WIDTH: "99",
-    GIT_RAIL_POLL_INTERVAL_MS: "invalid",
+    SIDERAIL_PANEL_WIDTH: "99",
+    SIDERAIL_POLL_INTERVAL_MS: "invalid",
   });
   await writeUserConfig(environment, { version: 1, unexpected: "ambient" });
   const { stdout } = await exec(process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--snapshot", "--width", "52", "--height", "32",
+    "scripts/siderail.mjs", "--demo", "--snapshot", "--width", "52", "--height", "32",
   ], { env: environment });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.doesNotMatch(plain, /config\.json|unknown|invalid polling/i);
-  assert.match(plain, /gitrail-fixture/);
+  assert.match(plain, /siderail-fixture/);
 });
 
 for (const width of [25, 100]) {
   test(`Files view starts with folders collapsed at ${width} columns`, async (t) => {
-    const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
+    const { stdout } = await execHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--snapshot", "--files", "--width", String(width), "--height", "40"], { maxBuffer: 2 * 1024 * 1024 });
     const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
     assert.ok(plain.indexOf("docs") < plain.indexOf("README.md"));
     assert.ok(plain.indexOf("src") < plain.indexOf("README.md"));
@@ -124,7 +124,7 @@ for (const width of [25, 100]) {
 test("production Files repaint materializes only the 20k-path viewport", async (t) => {
   for (const width of [36, 52, 100]) {
     const { stderr } = await execHermetic(t, process.execPath, [
-      "scripts/git-rail.mjs",
+      "scripts/siderail.mjs",
       "--demo",
       "--snapshot",
       "--files",
@@ -142,7 +142,7 @@ test("production Files repaint materializes only the 20k-path viewport", async (
 
 test("Files search expands matching paths from collapsed folders for keyboard access", async (t) => {
   const child = spawnHermetic(t, process.execPath, [
-    "scripts/git-rail.mjs",
+    "scripts/siderail.mjs",
     "--demo",
     "--files",
     "--width", "52",
@@ -168,7 +168,7 @@ test("Files search expands matching paths from collapsed folders for keyboard ac
 
 test("a selected folder row is legible instead of muted against the selection", async (t) => {
   const child = spawnHermetic(t, process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
+    "scripts/siderail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
   ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -194,7 +194,7 @@ test("a selected folder row is legible instead of muted against the selection", 
 
 test("keyboard navigation expands an initially collapsed Files folder", async (t) => {
   const child = spawnHermetic(t, process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
+    "scripts/siderail.mjs", "--demo", "--files", "--width", "52", "--height", "40",
   ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -214,7 +214,7 @@ test("keyboard navigation expands an initially collapsed Files folder", async (t
 });
 
 test("Changes search includes commit history summaries", async (t) => {
-  const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "descriptor-aware", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+  const { stdout } = await execHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--snapshot", "--search", "descriptor-aware", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /1 result/);
   assert.match(plain, /Commits  1/);
@@ -223,7 +223,7 @@ test("Changes search includes commit history summaries", async (t) => {
 });
 
 test("commit-history search filters expanded commit children", async (t) => {
-  const { stdout } = await execHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "preview.md", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
+  const { stdout } = await execHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--snapshot", "--search", "preview.md", "--width", "52", "--height", "32"], { maxBuffer: 2 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /2 results/);
   assert.match(plain, /Against main  1/);
@@ -234,7 +234,7 @@ test("commit-history search filters expanded commit children", async (t) => {
 
 test("loaded commit search rows replace preview glyphs with real status and stats", async (t) => {
   const child = spawnHermetic(t, process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--search", "preview.md", "--width", "52", "--height", "32",
+    "scripts/siderail.mjs", "--demo", "--search", "preview.md", "--width", "52", "--height", "32",
   ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -254,7 +254,7 @@ test("Changes and Files default to Tree at narrow and wide widths", async (t) =>
   for (const width of [25, 100]) {
     for (const tabArgs of [[], ["--files"]]) {
       const { stdout } = await execHermetic(t, process.execPath, [
-        "scripts/git-rail.mjs", "--demo", "--snapshot", ...tabArgs, "--width", String(width), "--height", "28",
+        "scripts/siderail.mjs", "--demo", "--snapshot", ...tabArgs, "--width", String(width), "--height", "28",
       ]);
       assert.match(plainTerminal(stdout), /≡ Tree/);
     }
@@ -263,14 +263,14 @@ test("Changes and Files default to Tree at narrow and wide widths", async (t) =>
 
 test("Tree and Folders layouts render identical file status and stats", async (t) => {
   const tree = await execHermetic(t, process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--snapshot", "--search", "status.mjs", "--width", "52", "--height", "28",
+    "scripts/siderail.mjs", "--demo", "--snapshot", "--search", "status.mjs", "--width", "52", "--height", "28",
   ]);
   const treePlain = plainTerminal(tree.stdout);
   assert.match(treePlain, /≡ Tree/);
   assert.equal((treePlain.match(/⊡ status\.mjs\s+\+2 −1/g) || []).length, 2);
 
   const child = spawnHermetic(t, process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--search", "status.mjs", "--width", "100", "--height", "28",
+    "scripts/siderail.mjs", "--demo", "--search", "status.mjs", "--width", "100", "--height", "28",
   ], { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -289,7 +289,7 @@ test("Tree and Folders layouts render identical file status and stats", async (t
 });
 
 test("rendered status matrix includes Git glyphs, numeric stats, and binary labels", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-render-matrix-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-render-matrix-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -312,7 +312,7 @@ test("rendered status matrix includes Git glyphs, numeric stats, and binary labe
   await fs.symlink("missing-target", path.join(root, "added-link"));
   await runGit(root, ["add", "added.txt", "added-link", "copy-target.txt"]);
 
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "100", "--height", "60"], { cwd: root });
   const plain = plainTerminal(stdout);
   assert.match(plain, /⊞ added\.txt\s+\+1/);
@@ -337,7 +337,7 @@ test("rendered status matrix includes Git glyphs, numeric stats, and binary labe
 });
 
 test("conflicted files render their dedicated on-screen glyph", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-render-conflict-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-render-conflict-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -351,16 +351,16 @@ test("conflicted files render their dedicated on-screen glyph", async (t) => {
   await fs.writeFile(path.join(root, "conflict.txt"), "main\n");
   await runGit(root, ["commit", "-am", "main"], { env: identity });
   await assert.rejects(runGit(root, ["merge", "other"], { env: identity }));
-  const { stdout } = await execHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--snapshot", "--width", "100", "--height", "36"], { cwd: root });
+  const { stdout } = await execHermetic(t, process.execPath, [path.resolve("scripts/siderail.mjs"), "--snapshot", "--width", "100", "--height", "36"], { cwd: root });
   assert.match(plainTerminal(stdout), /! conflict\.txt/);
 });
 
 test("large repositories fully render Changes and Files without continuation controls", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-large-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-large-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await Promise.all(Array.from({ length: 250 }, (_, index) => fs.writeFile(path.join(root, `file-${String(index).padStart(3, "0")}.txt`), `${index}\n`)));
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "270"], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /Untracked  250/);
@@ -376,7 +376,7 @@ test("large repositories fully render Changes and Files without continuation con
 });
 
 test("Files render includes current untracked paths and excludes every deleted path", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-files-render-current-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-files-render-current-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -397,7 +397,7 @@ test("Files render includes current untracked paths and excludes every deleted p
   await fs.rm(path.join(root, "never-committed.txt"));
   await fs.writeFile(path.join(root, "untracked.txt"), "untracked\n");
 
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /□ present\.txt/);
@@ -406,37 +406,37 @@ test("Files render includes current untracked paths and excludes every deleted p
 });
 
 test("sidebar rows stay within terminal width for wide filenames", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-wide-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-wide-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await fs.writeFile(path.join(root, `${"界".repeat(20)}.txt`), "wide\n");
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "25", "--height", "28"], { cwd: root });
   assert.ok(stdout.trimEnd().split("\n").every((line) => terminalColumns(line) <= 25));
 });
 
 test("clean Changes view states that the worktree is clean", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-clean-state-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-clean-state-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
   await fs.writeFile(path.join(root, "README.md"), "clean\n");
   await runGit(root, ["add", "README.md"]);
   await runGit(root, ["commit", "-m", "clean"], { env: identity });
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const { stdout } = await execHermetic(t, process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root });
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /No changes against main · working tree clean/);
 });
 
 test("non-repository Files stays browsable with one neutral file icon", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-filesystem-snapshot-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-filesystem-snapshot-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.mkdir(path.join(root, "src"));
   await fs.writeFile(path.join(root, "README.md"), "# Directory\n");
   await fs.writeFile(path.join(root, "settings.toml"), "enabled = true\n");
   await fs.writeFile(path.join(root, "src", "index.mjs"), "export {};\n");
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const files = await execHermetic(t, process.execPath, [script, "--snapshot", "--files", "--width", "52", "--height", "28"], { cwd: root }, { HERDR_BIN_PATH: path.join(root, "missing-herdr") });
   const filesPlain = files.stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(filesPlain, /› src\//);
@@ -453,7 +453,7 @@ test("non-repository Files stays browsable with one neutral file icon", async (t
 });
 
 test("keyboard can expand a commit-summary search result", async (t) => {
-  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--search", "descriptor-aware"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--search", "descriptor-aware"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -474,7 +474,7 @@ test("keyboard can expand a commit-summary search result", async (t) => {
 });
 
 test("help overlay explains keys and icons, scrolls, and returns to a highlighted selection", async (t) => {
-  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "36", "--height", "18"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--width", "36", "--height", "18"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -510,7 +510,7 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
 });
 
 test("Escape clears a keyboard selection before a second press closes the rail", async (t) => {
-  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "52", "--height", "24"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--width", "52", "--height", "24"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -536,10 +536,10 @@ test("Escape clears a keyboard selection before a second press closes the rail",
 });
 
 test("fatal rail errors restore terminal modes before exiting nonzero", async (t) => {
-  const child = spawnHermetic(t, process.execPath, ["scripts/git-rail.mjs", "--demo", "--width", "36", "--height", "18"], {
+  const child = spawnHermetic(t, process.execPath, ["scripts/siderail.mjs", "--demo", "--width", "36", "--height", "18"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "pipe"],
-  }, { NODE_ENV: "test", GIT_RAIL_TEST_FATAL: "1" });
+  }, { NODE_ENV: "test", SIDERAIL_TEST_FATAL: "1" });
   let stdout = "";
   let stderr = "";
   child.stdout.setEncoding("utf8");
@@ -552,11 +552,11 @@ test("fatal rail errors restore terminal modes before exiting nonzero", async (t
   });
   assert.equal(exitCode, 1);
   assert.match(stdout, /\u001b\[\?1000l\u001b\[\?1006l\u001b\[\?25h\u001b\[\?1049l/);
-  assert.match(stderr, /GitRail fatal error: Error: injected fatal error/);
+  assert.match(stderr, /SideRail fatal error: Error: injected fatal error/);
 });
 
 test("selection survives edit, stage, and commit refreshes while Files drops a later deletion", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-live-transitions-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-live-transitions-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -566,10 +566,10 @@ test("selection survives edit, stage, and commit refreshes while Files drops a l
   await runGit(root, ["switch", "-c", "feature/live"]);
   await fs.writeFile(path.join(root, "live.txt"), "edited\nextra\n");
 
-  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--width", "100", "--height", "32"], {
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/siderail.mjs"), "--width", "100", "--height", "32"], {
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
-  }, { GIT_RAIL_POLL_INTERVAL_MS: "1000" });
+  }, { SIDERAIL_POLL_INTERVAL_MS: "1000" });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
   child.stdout.setEncoding("utf8");
@@ -595,7 +595,7 @@ test("selection survives edit, stage, and commit refreshes while Files drops a l
 });
 
 test("the live rail clears main history when branches change", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-live-branch-switch-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-live-branch-switch-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -610,10 +610,10 @@ test("the live rail clears main history when branches change", async (t) => {
   await runGit(root, ["commit", "-m", "feature only"], { env: identity });
   await runGit(root, ["switch", "main"]);
 
-  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/git-rail.mjs"), "--width", "100", "--height", "32"], {
+  const child = spawnHermetic(t, process.execPath, [path.resolve("scripts/siderail.mjs"), "--width", "100", "--height", "32"], {
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
-  }, { GIT_RAIL_POLL_INTERVAL_MS: "1000" });
+  }, { SIDERAIL_POLL_INTERVAL_MS: "1000" });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
   child.stdout.setEncoding("utf8");
@@ -646,7 +646,7 @@ test("the live rail clears main history when branches change", async (t) => {
 });
 
 test("terminal editor return and manual reload both re-read preview content", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-reload-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-preview-reload-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const editor = path.join(root, "test-editor");
   await fs.writeFile(editor, "#!/bin/sh\nprintf 'after editor\\n' > \"$1\"\n");
@@ -658,10 +658,10 @@ test("terminal editor return and manual reload both re-read preview content", as
     cwd: root,
     env: {
       ...environment,
-      GIT_RAIL_PREVIEW_PATH: "note.txt",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
-      GIT_RAIL_PREVIEW_METADATA: Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url"),
+      SIDERAIL_PREVIEW_PATH: "note.txt",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
+      SIDERAIL_PREVIEW_METADATA: Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url"),
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -700,10 +700,10 @@ test("preview processes coalesced search input, advances matches, and exposes ho
     cwd: process.cwd(),
     env: {
       ...environment,
-      GIT_RAIL_PREVIEW_PATH: "src/config.mjs",
-      GIT_RAIL_PREVIEW_REPO: process.cwd(),
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "src/config.mjs",
+      SIDERAIL_PREVIEW_REPO: process.cwd(),
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -738,7 +738,7 @@ test("preview processes coalesced search input, advances matches, and exposes ho
 });
 
 test("embedded Markdown rendering stays inside the pageable preview viewport", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-rendered-markdown-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-rendered-markdown-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const renderer = path.join(root, "test-renderer");
   await fs.writeFile(renderer, `#!/bin/sh
@@ -766,10 +766,10 @@ done
     cwd: root,
     env: {
       ...environment,
-      GIT_RAIL_PREVIEW_PATH: "README.md",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "README.md",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -802,22 +802,22 @@ done
 });
 
 test("a hostile repository config cannot auto-launch a preview executable", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-hostile-repo-config-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-hostile-repo-config-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const marker = path.join(root, "spawned-marker");
   const hostile = path.join(root, "hostile-viewer");
   await fs.writeFile(hostile, `#!/bin/sh\nprintf pwned > ${JSON.stringify(marker)}\n`);
   await fs.chmod(hostile, 0o700);
   await fs.writeFile(path.join(root, "note.txt"), "repository content\n");
-  await fs.writeFile(path.join(root, ".git-rail.json"), JSON.stringify({
+  await fs.writeFile(path.join(root, ".siderail.json"), JSON.stringify({
     version: 1,
     viewers: { ".txt": { client: hostile, mode: "embedded", key: "3", autoOpen: true } },
   }));
   const { environment } = hermeticEnvironment(t, {
-    GIT_RAIL_PREVIEW_PATH: "note.txt",
-    GIT_RAIL_PREVIEW_REPO: root,
-    GIT_RAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
-    GIT_RAIL_PREVIEW_METADATA: Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url"),
+    SIDERAIL_PREVIEW_PATH: "note.txt",
+    SIDERAIL_PREVIEW_REPO: root,
+    SIDERAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
+    SIDERAIL_PREVIEW_METADATA: Buffer.from(JSON.stringify({ status: "clean" })).toString("base64url"),
   });
   const child = spawn(process.execPath, [path.resolve("scripts/file-preview.mjs"), "--width", "32", "--height", "18"], {
     cwd: root,
@@ -840,7 +840,7 @@ test("a hostile repository config cannot auto-launch a preview executable", asyn
 });
 
 test("embedded Glow renders the selected Markdown bytes through stdin", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-glow-stdin-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-glow-stdin-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const renderer = path.join(root, "glow");
   await fs.writeFile(renderer, `#!/bin/sh
@@ -864,10 +864,10 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
     cwd: root,
     env: {
       ...environment,
-      GIT_RAIL_PREVIEW_PATH: "README.md",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "README.md",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -896,7 +896,7 @@ printf '\\033[1mRendered from stdin\\033[0m\\n'
 });
 
 test("a configured Markdown action auto-opens embedded Glow and action 3 renders it again", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-default-glow-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-default-glow-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const renderer = path.join(root, "glow");
   const calls = path.join(root, "glow-calls");
@@ -922,10 +922,10 @@ printf 'Glow rendered from stdin\n'
     cwd: root,
     env: {
       ...environment,
-      GIT_RAIL_PREVIEW_PATH: "README.md",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "README.md",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -960,7 +960,7 @@ printf 'Glow rendered from stdin\n'
 });
 
 test("preview reports repaint latency for a large allowed line count", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-many-lines-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-many-lines-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -973,10 +973,10 @@ test("preview reports repaint latency for a large allowed line count", async (t)
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
   }, {
-      GIT_RAIL_PREVIEW_PATH: "many.txt",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "many.txt",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
   });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -1007,7 +1007,7 @@ test("preview reports repaint latency for a large allowed line count", async (t)
 });
 
 test("preview avoids wrapped-row amplification for a pathological single line", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-long-line-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-long-line-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.writeFile(path.join(root, "long.txt"), "x".repeat(150_000));
   const descriptor = Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url");
@@ -1016,10 +1016,10 @@ test("preview avoids wrapped-row amplification for a pathological single line", 
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
   }, {
-      GIT_RAIL_PREVIEW_PATH: "long.txt",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "long.txt",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
   });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";
@@ -1042,7 +1042,7 @@ test("preview avoids wrapped-row amplification for a pathological single line", 
 });
 
 test("preview rejects pathological line counts before rendered-memory amplification", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-line-limit-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-line-limit-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -1055,10 +1055,10 @@ test("preview rejects pathological line counts before rendered-memory amplificat
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
   }, {
-      GIT_RAIL_PREVIEW_PATH: "million.txt",
-      GIT_RAIL_PREVIEW_REPO: root,
-      GIT_RAIL_PREVIEW_DESCRIPTOR: descriptor,
-      GIT_RAIL_PREVIEW_METADATA: metadata,
+      SIDERAIL_PREVIEW_PATH: "million.txt",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: descriptor,
+      SIDERAIL_PREVIEW_METADATA: metadata,
   });
   t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
   let stdout = "";

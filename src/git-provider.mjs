@@ -139,7 +139,7 @@ async function configuredBranchBase(repoRoot, branch) {
   if (!branch) return null;
   try {
     const output = await gitMachineText(repoRoot, [
-      "config", "-z", "--show-scope", "--get-all", `branch.${branch}.gitrail-base`,
+      "config", "-z", "--show-scope", "--get-all", `branch.${branch}.siderail-base`,
     ]);
     const fields = output.split("\0");
     if (fields.at(-1) === "") fields.pop();
@@ -175,7 +175,7 @@ async function resolveBase(repoRoot, requested, branch) {
     return validateConfiguredBase(
       repoRoot,
       branchBase,
-      `Branch base ref branch.${branch}.gitrail-base`,
+      `Branch base ref branch.${branch}.siderail-base`,
     );
   }
   let remoteHead = "";

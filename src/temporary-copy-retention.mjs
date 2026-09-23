@@ -7,8 +7,8 @@ import { fileURLToPath, URL } from "node:url";
 
 const EXTERNAL_COPY_RETENTION_MS = 15 * 60 * 1_000;
 const INITIALIZATION_GRACE_MS = 5_000;
-const PREVIEW_PREFIX = "herdr-gitrail-preview-";
-const STATE_DIRECTORY_NAME = "herdr-gitrail-retention";
+const PREVIEW_PREFIX = "siderail-preview-";
+const STATE_DIRECTORY_NAME = "siderail-retention";
 const WORKER_LOCK_NAME = "worker.lock";
 const REQUESTS_DIRECTORY_NAME = "requests";
 const CLEANER_PATH = fileURLToPath(new URL("../scripts/temporary-copy-cleaner.mjs", import.meta.url));
@@ -17,7 +17,7 @@ function ownedDirectory(directory, temporaryRoot) {
   const resolved = path.resolve(directory);
   const root = path.resolve(temporaryRoot);
   if (path.dirname(resolved) !== root || !path.basename(resolved).startsWith(PREVIEW_PREFIX)) {
-    throw new Error("Refusing to retain a directory outside GitRail's private preview area");
+    throw new Error("Refusing to retain a directory outside SideRail's private preview area");
   }
   const stat = fs.lstatSync(resolved);
   if (!stat.isDirectory() || (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
@@ -31,7 +31,7 @@ function ensureOwnedStateDirectory(directory) {
   catch (error) { if (error.code !== "EEXIST") throw error; }
   const stat = fs.lstatSync(directory);
   if (!stat.isDirectory() || (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
-    throw new Error("GitRail retention state is not an owner-controlled directory");
+    throw new Error("SideRail retention state is not an owner-controlled directory");
   }
   fs.chmodSync(directory, 0o700);
 }
@@ -141,7 +141,7 @@ export async function runTemporaryCopyCleaner(temporaryRoot, lockDirectory, {
 } = {}) {
   const paths = retentionPaths(temporaryRoot);
   const lock = path.resolve(lockDirectory);
-  if (lock !== paths.lockDirectory) throw new Error("Invalid GitRail retention-worker directory");
+  if (lock !== paths.lockDirectory) throw new Error("Invalid SideRail retention-worker directory");
   while (true) {
     while (sweepRetentionRequests(paths.root, paths.requestsDirectory)) {
       await new Promise((resolve) => setTimeout(resolve, scanIntervalMs));

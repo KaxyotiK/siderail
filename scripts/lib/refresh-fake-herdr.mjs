@@ -22,7 +22,7 @@ function finish(result, exitCode = 0) {
 }
 
 function appendComponent(entry) {
-  const target = process.env.GIT_RAIL_PERFORMANCE_LOG;
+  const target = process.env.SIDERAIL_PERFORMANCE_LOG;
   if (!target) return;
   fs.appendFileSync(target, `${JSON.stringify({
     timestamp: new Date().toISOString(),
@@ -88,10 +88,10 @@ if (args[0] === "--socket-server") {
   await serveSocket(args[1], args[2]);
 } else {
 const railPaneId = process.env.HERDR_PANE_ID || "rail";
-const sourcePaneId = process.env.GIT_RAIL_SOURCE_PANE_ID || "content";
+const sourcePaneId = process.env.SIDERAIL_SOURCE_PANE_ID || "content";
 const tabId = process.env.HERDR_TAB_ID || "tab";
 const workspaceId = process.env.HERDR_WORKSPACE_ID || "workspace";
-const cwd = process.env.GIT_RAIL_REPO_ROOT || process.cwd();
+const cwd = process.env.SIDERAIL_REPO_ROOT || process.cwd();
 append({ phase: "start", args });
 
 if (args[0] === "pane" && args[1] === "get") {
@@ -99,7 +99,7 @@ if (args[0] === "pane" && args[1] === "get") {
     pane_id: railPaneId,
     tab_id: tabId,
     workspace_id: workspaceId,
-    label: "HERDR GITRAIL",
+    label: "SIDERAIL",
     cwd,
     foreground_cwd: cwd,
   } });
@@ -110,7 +110,7 @@ if (args[0] === "pane" && args[1] === "list") {
       pane_id: railPaneId,
       tab_id: tabId,
       workspace_id: workspaceId,
-      label: "HERDR GITRAIL",
+      label: "SIDERAIL",
       cwd,
       foreground_cwd: cwd,
     },

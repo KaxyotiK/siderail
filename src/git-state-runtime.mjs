@@ -85,8 +85,8 @@ export async function resolveGitStateRuntime({
   }
   const selectedRuntimeFiles = runtimeFiles || await runtimeSourceFiles(checkoutPath);
   const { config, errors } = loadConfig(environment);
-  const watchMode = ["watch-only", "poll-only", "watch-and-poll"].includes(environment.GIT_RAIL_WATCH_MODE)
-    ? environment.GIT_RAIL_WATCH_MODE
+  const watchMode = ["watch-only", "poll-only", "watch-and-poll"].includes(environment.SIDERAIL_WATCH_MODE)
+    ? environment.SIDERAIL_WATCH_MODE
     : "watch-and-poll";
   const providerConfig = Object.freeze({
     baseRef: config.baseRef || "",

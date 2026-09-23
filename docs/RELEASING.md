@@ -1,6 +1,6 @@
 # Releasing
 
-GitRail does not use GitHub Actions. Release validation runs locally against one
+SideRail does not use GitHub Actions. Release validation runs locally against one
 immutable candidate commit and records hashed logs. Any change to code,
 documentation, screenshots, dependencies, the manifest, or packaged files
 creates a new candidate and invalidates all evidence.
@@ -29,7 +29,7 @@ coordinator blocks:
 set -euo pipefail
 candidate_sha=$(git rev-parse HEAD)
 test -z "$(git status --porcelain)"
-evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-gitrail/releases/0.1.0/$candidate_sha"
+evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/siderail/releases/0.1.0/$candidate_sha"
 evidence_file="$evidence_root/evidence.json"
 mkdir -p "$evidence_root"
 test ! -e "$evidence_file"
@@ -78,7 +78,7 @@ This proves the test helpers cannot inherit a live Herdr pane or executable.
 
 ```bash
 set -euo pipefail
-poison_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-poison.XXXXXX")
+poison_root=$(mktemp -d "${TMPDIR:-/tmp}/siderail-poison.XXXXXX")
 trap 'rm -rf -- "$poison_root"' EXIT
 printf '%s\n' '#!/bin/sh' 'echo "poisoned Herdr escaped the test helper" >&2' 'exit 97' > "$poison_root/herdr"
 chmod 700 "$poison_root/herdr"
@@ -101,7 +101,7 @@ Validate only files committed in the candidate:
 
 ```bash
 set -euo pipefail
-archive_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-archive.XXXXXX")
+archive_root=$(mktemp -d "${TMPDIR:-/tmp}/siderail-archive.XXXXXX")
 trap 'rm -rf -- "$archive_root"' EXIT
 archive_log="$evidence_root/archive.log"
 {
@@ -190,6 +190,23 @@ herdr --version > "$handoff_root/herdr.txt"
 chmod 600 "$handoff_root"/*
 ```
 
+The Linux worker can run on the coordinator's Mac in Docker instead of on a
+separate Linux host, which needs no hosted CI. `scripts/run-linux-worker.sh`
+builds `scripts/linux-worker/Dockerfile` (Debian 12, the chosen Node major, and
+Herdr 0.8.2 verified against a pinned SHA-256), clones the candidate from this
+repository's Git directory mounted read-only, runs the same live smoke, and
+writes the handoff directly to its final path. It refuses to report success
+unless every handoff file exists and names the candidate. Docker Desktop runs
+the container on its own Linux VM kernel; a physical Linux host running the
+block above remains equally acceptable.
+
+```bash
+set -euo pipefail
+test "$(git rev-parse HEAD)" = "$candidate_sha"
+test -z "$(git status --porcelain)"
+/bin/bash scripts/run-linux-worker.sh "$candidate_sha" "$evidence_root/live-linux-handoff" 24
+```
+
 Transfer both completed directories to the coordinator without changing their
 contents, naming them `$evidence_root/live-macos-handoff` and
 `$evidence_root/live-linux-handoff`. Then, back in the original coordinator
@@ -215,6 +232,41 @@ for live_cell in live-macos live-linux; do
 done
 test "$(git rev-parse HEAD)" = "$candidate_sha"
 test -z "$(git status --porcelain)"
+```
+
+## npm install lifecycle
+
+Run this block in the coordinator shell on macOS or Linux with Herdr 0.8.x and
+Node 22 or 24. `scripts/verify-npm-install.sh` packs the candidate from
+`git archive`, installs it globally into a private npm prefix, and runs
+`siderail setup` against a private Herdr session and a private cmux `HOME`. It
+then upgrades to a patch-bumped package while a rail is open and proves that
+the rail restarts onto the new install in place, that toggle still verifies it,
+and that `siderail uninstall` leaves no registration or process behind. It
+never reads or writes the operator's Herdr, cmux, or npm configuration. The
+verified tarball is kept for publishing.
+
+```bash
+set -euo pipefail
+case "$(uname -s)" in
+  Darwin) platform="macOS $(sw_vers -productVersion)" ;;
+  Linux) platform="Linux $(. /etc/os-release && printf '%s' "$PRETTY_NAME")" ;;
+  *) echo "the npm install lifecycle requires macOS or Linux" >&2; exit 1 ;;
+esac
+npm_log="$evidence_root/npm-install.log"
+test ! -e "$evidence_root/package"
+{
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+  HERDR_BIN_PATH=$(command -v herdr) /bin/bash scripts/verify-npm-install.sh \
+    "$candidate_sha" "$evidence_root/package"
+  test "$(git rev-parse HEAD)" = "$candidate_sha"
+  test -z "$(git status --porcelain)"
+} 2>&1 | tee "$npm_log"
+npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidate_sha" \
+  --cell npm-install --command "pack; global install; setup; in-place upgrade; uninstall" \
+  --status pass --evidence-file "$npm_log" --platform "$platform" \
+  --node "$(node --version)" --herdr "$(herdr --version)"
 ```
 
 ## Screenshots
@@ -243,7 +295,7 @@ npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidat
 
 ## Verify and seal
 
-All eight required cells must pass before evidence can be sealed:
+All nine required cells must pass before evidence can be sealed:
 
 ```bash
 set -euo pipefail
@@ -262,11 +314,11 @@ evidence_commit=$(git rev-parse HEAD)
 test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
 npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
   --evidence-commit "$evidence_commit" \
-  --repository-url "https://github.com/KaxyotiK/git-railgun" \
+  --repository-url "https://github.com/KaxyotiK/siderail" \
   --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
 ```
 
-The evidence-only direct-child commit contains the manifest and all eight hashed
+The evidence-only direct-child commit contains the manifest and all nine hashed
 logs. L2b is complete only after that commit is reviewed and retained in the
 repository. A subsequent status-only documentation commit may mark L2b and the
 readiness rows complete while naming both immutable SHAs. Creating or pushing
@@ -280,3 +332,23 @@ git show --no-patch v0.1.0
 ```
 
 Do not move an existing tag.
+
+## Publish to npm
+
+Publishing requires the pushed `v0.1.0` tag and its own explicit
+authorization. Publish the exact tarball that the npm install lifecycle
+verified, after checking its digest against the sealed log:
+
+```bash
+set -euo pipefail
+tarball="$evidence_root/package/siderail-0.1.0.tgz"
+test -f "$tarball"
+digest=$(shasum -a 256 "$tarball" | cut -d' ' -f1)
+grep -q "siderail-0.1.0.tgz: .* sha256 $digest\$" "release-evidence/0.1.0/$candidate_sha/files/npm-install.log"
+test "$(git rev-parse "v0.1.0^{commit}")" = "$candidate_sha"
+npm publish "$tarball" --access public
+npm view siderail@0.1.0 version
+```
+
+npm does not allow a published version to be reused. A defect found after
+publishing ships as a new patch version through a new candidate.

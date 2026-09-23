@@ -14,9 +14,9 @@ import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const COMMIT_ENV = {
   GIT_AUTHOR_NAME: "Git Rail fixture",
-  GIT_AUTHOR_EMAIL: "fixture@git-rail.invalid",
+  GIT_AUTHOR_EMAIL: "fixture@siderail.invalid",
   GIT_COMMITTER_NAME: "Git Rail fixture",
-  GIT_COMMITTER_EMAIL: "fixture@git-rail.invalid",
+  GIT_COMMITTER_EMAIL: "fixture@siderail.invalid",
 };
 
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -45,7 +45,7 @@ function comparable(value) {
 }
 
 async function createFixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-invalidation-integration-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-invalidation-integration-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const { environment } = hermeticEnvironment(t, {
     GIT_CONFIG_NOSYSTEM: "1",
@@ -366,7 +366,7 @@ test("quiet reads preserve index bytes and reconciliation repairs failed or repl
 });
 
 test("an unborn repository becomes a committed repository through native invalidation", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-unborn-integration-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-unborn-integration-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const { environment } = hermeticEnvironment(t, {
     GIT_CONFIG_NOSYSTEM: "1",
@@ -387,7 +387,7 @@ test("an unborn repository becomes a committed repository through native invalid
 
 test("a missing-object provider error retains state and bounded fallback recovers it", async (t) => {
   const fixture = await createFixture(t);
-  const configDirectory = path.join(fixture.environment.XDG_CONFIG_HOME, "git-rail");
+  const configDirectory = path.join(fixture.environment.XDG_CONFIG_HOME, "siderail");
   await fs.mkdir(configDirectory, { recursive: true });
   await fs.writeFile(path.join(configDirectory, "config.json"), JSON.stringify({
     version: 1,

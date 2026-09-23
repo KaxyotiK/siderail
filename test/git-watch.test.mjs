@@ -24,12 +24,12 @@ test("an asynchronous watcher error closes only that watcher and reaches recover
 
 test("the release witness can isolate the recovery poll from filesystem watchers", () => {
   assert.equal(shouldInstallWatchers({}), true);
-  assert.equal(shouldInstallWatchers({ GIT_RAIL_WATCH_MODE: "ordinary" }), true);
-  assert.equal(shouldInstallWatchers({ GIT_RAIL_WATCH_MODE: "poll-only" }), false);
+  assert.equal(shouldInstallWatchers({ SIDERAIL_WATCH_MODE: "ordinary" }), true);
+  assert.equal(shouldInstallWatchers({ SIDERAIL_WATCH_MODE: "poll-only" }), false);
   assert.equal(shouldInstallRecoveryPoll({}), true);
-  assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "poll-only" }), true);
-  assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "watch-only" }), false);
-  assert.equal(shouldInstallRecoveryPoll({ GIT_RAIL_WATCH_MODE: "watch-only" }, { watchFailed: true }), true);
+  assert.equal(shouldInstallRecoveryPoll({ SIDERAIL_WATCH_MODE: "poll-only" }), true);
+  assert.equal(shouldInstallRecoveryPoll({ SIDERAIL_WATCH_MODE: "watch-only" }), false);
+  assert.equal(shouldInstallRecoveryPoll({ SIDERAIL_WATCH_MODE: "watch-only" }, { watchFailed: true }), true);
 });
 
 test("git watcher resolves and deduplicates per-worktree and common git directories", async () => {

@@ -136,12 +136,12 @@ test("preview tab names use a safe capped basename", () => {
 });
 
 test("ambiguous-width characters follow the configured terminal setting", () => {
-  // GitRail's own tree guides, rules, and separators are all East Asian
+  // SideRail's own tree guides, rules, and separators are all East Asian
   // Ambiguous, so a terminal set to render them wide shifts every column.
   try {
     assert.equal(resolveAmbiguousWidth({}), 1);
-    assert.equal(resolveAmbiguousWidth({ GIT_RAIL_AMBIGUOUS_WIDTH: "narrow" }), 1);
-    assert.equal(resolveAmbiguousWidth({ GIT_RAIL_AMBIGUOUS_WIDTH: "wide" }), 2);
+    assert.equal(resolveAmbiguousWidth({ SIDERAIL_AMBIGUOUS_WIDTH: "narrow" }), 1);
+    assert.equal(resolveAmbiguousWidth({ SIDERAIL_AMBIGUOUS_WIDTH: "wide" }), 2);
 
     setAmbiguousWidth(1);
     assert.equal(terminalColumns("└─ a"), 4);
@@ -358,7 +358,7 @@ test("sidebar snapshots cannot emit OSC52 from repository and filename data", as
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await fs.writeFile(path.join(root, "\u001b]52;c;file-secret\u0007.txt"), "safe\n");
-  const script = path.resolve("scripts/git-rail.mjs");
+  const script = path.resolve("scripts/siderail.mjs");
   const { environment } = hermeticEnvironment(t);
   const { stdout } = await exec(process.execPath, [script, "--snapshot", "--width", "52", "--height", "28"], { cwd: root, env: environment });
   assert.doesNotMatch(stdout, /\u001b\]|(?:repo|file)-secret/);

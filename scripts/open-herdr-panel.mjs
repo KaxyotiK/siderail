@@ -17,16 +17,16 @@ import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resizeConfiguredSidebar } from "./resize-herdr-sidebar.mjs";
 
-const RAIL_LABEL = "HERDR GITRAIL";
+const RAIL_LABEL = "SIDERAIL";
 assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
-const DEMO_LABEL = "GitRail Demo";
-const PREVIEW_LABEL = "GitRail Preview";
+const DEMO_LABEL = "SideRail Demo";
+const PREVIEW_LABEL = "SideRail Preview";
 const PLUGIN_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const ENTRYPOINT_IDENTITIES = Object.freeze({
   // Linked-checkout upgrades can leave panes with the older title running.
-  "git-tui": { current: [RAIL_LABEL, "HERDER GITRAIL"], legacy: [LEGACY_RAIL_LABEL] },
+  "git-tui": { current: [RAIL_LABEL, "HERDR GITRAIL"], legacy: [LEGACY_RAIL_LABEL] },
   "git-mockup": { current: [DEMO_LABEL], legacy: [] },
 });
 
@@ -120,7 +120,7 @@ async function resolveInvocation(environment, herdr, run) {
   let workspaceId = environment.HERDR_WORKSPACE_ID || context.workspace_id || "";
   let tabId = environment.HERDR_TAB_ID || context.tab_id || "";
   let requestedPaneId = environment.HERDR_PANE_ID || environment.HERDR_TARGET_PANE_ID || context.focused_pane_id || "";
-  let workspaceCwd = environment.GIT_RAIL_WORKSPACE_CWD
+  let workspaceCwd = environment.SIDERAIL_WORKSPACE_CWD
     || context.worktree?.checkout_path
     || context.focused_pane_cwd
     || context.workspace_cwd
@@ -167,19 +167,19 @@ async function verifiedOwnedRail(run, herdr, pane, state, entrypoint) {
     return processes.some((processInfo) => {
       const argv = Array.isArray(processInfo.argv) ? processInfo.argv.map(String) : [];
       const cwd = processInfo.cwd ? path.resolve(String(processInfo.cwd)) : "";
-      const scriptArgument = argv.find((argument) => argument === "scripts/git-rail.mjs"
-        || argument.endsWith("/scripts/git-rail.mjs"));
+      const scriptArgument = argv.find((argument) => argument === "scripts/siderail.mjs"
+        || argument.endsWith("/scripts/siderail.mjs"));
       if (!scriptArgument || !cwd) return false;
       const scriptPath = path.isAbsolute(scriptArgument)
         ? path.resolve(scriptArgument)
         : path.resolve(cwd, scriptArgument);
-      const isGitRail = scriptPath === path.join(PLUGIN_ROOT, "scripts/git-rail.mjs");
+      const isSideRail = scriptPath === path.join(PLUGIN_ROOT, "scripts/siderail.mjs");
       const isDemo = argv.includes("--demo");
-      return isGitRail && (entrypoint === "git-mockup" ? isDemo : !isDemo);
+      return isSideRail && (entrypoint === "git-mockup" ? isDemo : !isDemo);
     });
   } catch (error) {
     throw new Error(
-      `unable to verify ownership of existing GitRail pane ${sanitizeTerminalText(pane.pane_id)}: ${sanitizeTerminalText(error.message)}`,
+      `unable to verify ownership of existing SideRail pane ${sanitizeTerminalText(pane.pane_id)}: ${sanitizeTerminalText(error.message)}`,
       { cause: error },
     );
   }
@@ -194,7 +194,7 @@ async function validateOpenedRail({
   entrypoint,
   priorPaneIds,
 }) {
-  if (priorPaneIds.has(paneId)) throw new Error("Herdr returned an existing pane instead of the opened GitRail pane");
+  if (priorPaneIds.has(paneId)) throw new Error("Herdr returned an existing pane instead of the opened SideRail pane");
   const { payload } = await commandJson(run, herdr, ["pane", "get", paneId], {
     timeoutMs: 3_000,
     maxOutputBytes: 256 * 1_024,
@@ -203,7 +203,7 @@ async function validateOpenedRail({
   const labels = entrypointIdentity(entrypoint).current;
   if (!pane || pane.pane_id !== paneId || pane.workspace_id !== workspaceId
     || (tabId && pane.tab_id !== tabId) || !hasLabel(pane, labels)) {
-    throw new Error("Herdr returned an invalid GitRail pane after opening the plugin");
+    throw new Error("Herdr returned an invalid SideRail pane after opening the plugin");
   }
   return pane;
 }
@@ -271,7 +271,7 @@ export async function openHerdrPanel({
 } = {}) {
   if (!entrypoint) throw new Error("missing entrypoint");
   const herdr = environment.HERDR_BIN_PATH || "herdr";
-  const pluginId = environment.HERDR_PLUGIN_ID || "local.git-rail";
+  const pluginId = environment.HERDR_PLUGIN_ID || "siderail";
   const invocation = await resolveInvocation(environment, herdr, run);
   const { workspaceId } = invocation;
   await ensurePaneStateDirectory(environment);
@@ -353,7 +353,7 @@ export async function openHerdrPanel({
         && replacementTarget.rect.y === beforeReplace.area.y
         && replacementTarget.rect.height === beforeReplace.area.height;
       if (!replacementSafe) {
-        console.error(`GitRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
+        console.error(`SideRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
         return { paneId: keptRail.pane_id, adopted: true, openMode, skipped: true };
       }
       replacementRails = [
@@ -394,7 +394,7 @@ export async function openHerdrPanel({
           await resize({ paneId: keptRail.pane_id, workspaceCwd: adoptedCwd, environment });
         }
       } catch (error) {
-        console.error(`GitRail was adopted, but its sidebar placement could not be repaired: ${sanitizeTerminalText(error.message)}`);
+        console.error(`SideRail was adopted, but its sidebar placement could not be repaired: ${sanitizeTerminalText(error.message)}`);
       }
       await writePaneState(statePath, keptRail.pane_id, adoptedCwd, keptRail.terminal_id || "");
       await removeLegacyPaneState({ workspaceId, entrypoint, environment });
@@ -420,7 +420,7 @@ export async function openHerdrPanel({
       await removeLegacyPaneState({ workspaceId, entrypoint, environment });
       return { paneId: legacy.pane_id, adopted: true };
     }
-    if (!layoutProbe) throw new Error("unable to resolve a non-GitRail pane in the target tab");
+    if (!layoutProbe) throw new Error("unable to resolve a non-SideRail pane in the target tab");
     const replacementPaneIds = new Set(replacementRails.map((pane) => pane.pane_id));
     for (const pane of legacyRails) {
       if (!replacementPaneIds.has(pane.pane_id)) await closeOwnedPane(run, herdr, pane.pane_id);
@@ -454,15 +454,15 @@ export async function openHerdrPanel({
         "--entrypoint", entrypoint,
         "--no-focus",
       ];
-      if (invocation.workspaceCwd) openArgs.push("--env", `GIT_RAIL_REPO_ROOT=${invocation.workspaceCwd}`);
-      if (source.pane_id) openArgs.push("--env", `GIT_RAIL_SOURCE_PANE_ID=${source.pane_id}`);
-      if (invocation.tabId) openArgs.push("--env", `GIT_RAIL_SOURCE_TAB_ID=${invocation.tabId}`);
+      if (invocation.workspaceCwd) openArgs.push("--env", `SIDERAIL_REPO_ROOT=${invocation.workspaceCwd}`);
+      if (source.pane_id) openArgs.push("--env", `SIDERAIL_SOURCE_PANE_ID=${source.pane_id}`);
+      if (invocation.tabId) openArgs.push("--env", `SIDERAIL_SOURCE_TAB_ID=${invocation.tabId}`);
       openArgs.push("--target-pane", placementPaneId, "--placement", "split", "--direction", "right");
       const priorPaneIds = await workspacePaneIds(run, herdr, workspaceId);
       const opened = await run(herdr, openArgs, { timeoutMs: 8_000, maxOutputBytes: 2 * 1_024 * 1_024 });
       paneId = resultPaneId(opened.stdout);
       openedStdout = opened.stdout;
-      if (!paneId) throw new Error("Herdr did not return the opened GitRail pane id");
+      if (!paneId) throw new Error("Herdr did not return the opened SideRail pane id");
       await validateOpenedRail({
         run,
         herdr,
@@ -482,7 +482,7 @@ export async function openHerdrPanel({
         throw error;
       }
     } else {
-      console.error(`GitRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
+      console.error(`SideRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
       return { paneId: "", adopted: false, openMode, skipped: true };
     }
     writeOutput(openedStdout);
@@ -497,14 +497,14 @@ export async function openHerdrPanel({
         terminalId = openedPane.terminal_id || "";
       }
     } catch (error) {
-      console.error(`GitRail opened, but its pane instance identity could not be recorded: ${sanitizeTerminalText(error.message)}`);
+      console.error(`SideRail opened, but its pane instance identity could not be recorded: ${sanitizeTerminalText(error.message)}`);
     }
     await writePaneState(statePath, paneId, invocation.workspaceCwd, terminalId);
     await removeLegacyPaneState({ workspaceId, entrypoint, environment });
     try {
       await resize({ paneId, workspaceCwd: invocation.workspaceCwd, environment });
     } catch (error) {
-      console.error(`GitRail opened, but its configured sidebar width could not be applied: ${sanitizeTerminalText(error.message)}`);
+      console.error(`SideRail opened, but its configured sidebar width could not be applied: ${sanitizeTerminalText(error.message)}`);
     }
     return { paneId, adopted: false, openMode };
   } finally {
