@@ -17,6 +17,8 @@ export const REQUIRED_RELEASE_CELLS = [
   "screenshots",
 ];
 
+const PACKAGE_VERSION = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")).version;
+
 const NODE_CELL_MAJORS = new Map([
   ["local-node-22", 22],
   ["local-node-24", 24],
@@ -84,7 +86,7 @@ function commonRecord({ candidateSha, command, status, platform, node, herdr, vi
   };
 }
 
-export function initializeEvidence({ file, candidateSha, release = "0.1.0", now = new Date().toISOString() }) {
+export function initializeEvidence({ file, candidateSha, release = PACKAGE_VERSION, now = new Date().toISOString() }) {
   assertSha(candidateSha);
   if (fs.existsSync(file)) throw new Error(`evidence file already exists: ${file}`);
   const manifest = { version: 6, release, candidateSha, createdAt: now, cells: {} };

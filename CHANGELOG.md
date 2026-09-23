@@ -3,6 +3,14 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
+## 0.1.1 - 2026-09-23
+
+Republishes 0.1.0 with no functional changes. 0.1.0 was withdrawn from npm
+shortly after release; install 0.1.1 instead.
+
+- The license copyright holder is now KaxyotiK.
+- The source repository is now https://github.com/KaxyotiK/siderail.
+
 ## 0.1.0 - 2026-09-23
 
 Initial release.
