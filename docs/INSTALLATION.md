@@ -108,8 +108,9 @@ the rail it imports) and `package.json`, `src/`, and `scripts/` look the same on
 two consecutive checks, the sidebar restores the terminal and exits with status
 75. The Node launcher then starts it again from the same path on the new code,
 in the same pane. Two matching checks mean extraction has paused, not that it
-has finished, so a restarted sidebar that fails within 10 seconds is retried up
-to five times before the launcher gives up and exits with its status. Rails left
+has finished, so a restarted sidebar that fails within 10 seconds is started
+again, for at most five restarted launches, before the launcher gives up and
+exits with its last status. Rails left
 on an older coordinator release it when they restart, and that coordinator
 exits. A sidebar whose launcher process dies on its own exits rather than
 lingering.

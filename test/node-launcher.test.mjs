@@ -124,15 +124,16 @@ test("a restart that fails while the new install settles is retried until it sta
   const result = await launch(root, "scripts/cmux-siderail.mjs");
   assert.equal(result.code, 0);
   assert.equal(result.stdout.trim().split("\n").length, 4);
-  assert.match(result.stderr, /retrying \(2 of 5\)/);
+  assert.match(result.stderr, /starting attempt 3 of 5/);
 });
 
-test("a restart that keeps failing stops after five retries with its own status", async (t) => {
+test("a restart that keeps failing stops after five restarted launches with its own status", async (t) => {
   const root = await restartFixture(t, "siderail.mjs", [75, 4]);
   const result = await launch(root, "scripts/siderail.mjs");
   assert.equal(result.code, 4);
-  assert.equal(result.stdout.trim().split("\n").length, 7);
-  assert.match(result.stderr, /retrying \(5 of 5\)/);
+  assert.equal(result.stdout.trim().split("\n").length, 6, "the original rail plus five restarted launches");
+  assert.match(result.stderr, /starting attempt 5 of 5/);
+  assert.doesNotMatch(result.stderr, /attempt 6/);
 });
 
 test("a first-run failure and a signal after a restart are never retried", async (t) => {
