@@ -23,7 +23,8 @@ coordinator blocks:
 set -euo pipefail
 candidate_sha=$(git rev-parse HEAD)
 test -z "$(git status --porcelain)"
-evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/siderail/releases/0.1.0/$candidate_sha"
+release=$(node -p 'require("./package.json").version')
+evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/siderail/releases/$release/$candidate_sha"
 evidence_file="$evidence_root/evidence.json"
 mkdir -p "$evidence_root"
 test ! -e "$evidence_file"
@@ -296,14 +297,14 @@ set -euo pipefail
 npm run release:evidence -- verify --file "$evidence_file" --sha "$candidate_sha"
 test "$(git rev-parse HEAD)" = "$candidate_sha"
 test -z "$(git status --porcelain)"
-bundle_path="release-evidence/0.1.0/$candidate_sha"
+bundle_path="release-evidence/$release/$candidate_sha"
 test ! -e "$bundle_path"
 npm run release:evidence -- seal --file "$evidence_file" --sha "$candidate_sha" \
   --output "$bundle_path"
 npm run release:evidence -- verify-bundle --bundle "$bundle_path" --sha "$candidate_sha"
 git add -- "$bundle_path"
 git diff --cached --check
-git commit -m "Archive v0.1.0 candidate evidence"
+git commit -m "Archive v$release candidate evidence"
 evidence_commit=$(git rev-parse HEAD)
 test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
 npm run --silent release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
@@ -315,32 +316,32 @@ npm run --silent release:evidence -- tag-message --bundle "$bundle_path" --sha "
 The evidence-only direct-child commit contains the manifest and all nine hashed
 logs. Push it and merge it into `main` with a merge commit, never a squash or
 rebase, so it stays the candidate's direct child and the tag message's links
-resolve. Creating or pushing `v0.1.0` requires separate explicit authorization:
+resolve. Creating or pushing `v$release` requires separate explicit authorization:
 
 ```bash
 set -euo pipefail
-test -z "$(git tag -l v0.1.0)"
-git tag -a v0.1.0 "$candidate_sha" -F "$evidence_root/tag-message.txt"
-git show --no-patch v0.1.0
+test -z "$(git tag -l "v$release")"
+git tag -a "v$release" "$candidate_sha" -F "$evidence_root/tag-message.txt"
+git show --no-patch "v$release"
 ```
 
 Do not move an existing tag.
 
 ## Publish to npm
 
-Publishing requires the pushed `v0.1.0` tag and its own explicit
+Publishing requires the pushed `v$release` tag and its own explicit
 authorization. Publish the exact tarball that the npm install lifecycle
 verified, after checking its digest against the sealed log:
 
 ```bash
 set -euo pipefail
-tarball="$evidence_root/package/siderail-0.1.0.tgz"
+tarball="$evidence_root/package/siderail-$release.tgz"
 test -f "$tarball"
 digest=$(shasum -a 256 "$tarball" | cut -d' ' -f1)
-grep -q "siderail-0.1.0.tgz: .* sha256 $digest\$" "release-evidence/0.1.0/$candidate_sha/files/npm-install.log"
-test "$(git rev-parse "v0.1.0^{commit}")" = "$candidate_sha"
+grep -q "siderail-$release.tgz: .* sha256 $digest\$" "release-evidence/$release/$candidate_sha/files/npm-install.log"
+test "$(git rev-parse "v$release^{commit}")" = "$candidate_sha"
 npm publish "$tarball" --access public
-npm view siderail@0.1.0 version
+npm view "siderail@$release" version
 ```
 
 npm does not allow a published version to be reused. A defect found after

@@ -25,7 +25,7 @@ operations described in [the cmux guide](docs/CMUX.md); cmux is macOS-only.
 
 The launcher rejects Node versions older than 22. Release validation runs on
 Node 22 and 24 and covers Herdr 0.8.x; other supported Node releases and newer
-Herdr versions are outside the 0.1.0 validation target.
+Herdr versions are outside the 0.1.x validation target.
 
 No editor is required. SideRail uses `$EDITOR` when it is set, or an explicit
 editor configuration when provided. In Herdr, the installed defaults open

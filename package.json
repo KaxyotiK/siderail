@@ -1,6 +1,6 @@
 {
   "name": "siderail",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A compact, read-only Files and Git sidebar for Herdr and cmux",
   "keywords": [
     "herdr",

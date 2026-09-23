@@ -13,7 +13,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(HERE, "..");
 const RESOURCE_SOURCE = path.join(HERE, "lib", "refresh-resource-sample.c");
 const FAKE_HERDR = path.join(HERE, "lib", "refresh-fake-herdr.mjs");
-const DEFAULT_BASELINE_REVISION = "6603d33c61b6646b4a54806b028961c8fd1379e2";
+const DEFAULT_BASELINE_REVISION = "4abe950b5e93bcddd9441bc60183da63b30246d0";
 const FIXED_GIT_ENV = {
   GIT_AUTHOR_NAME: "Git Rail performance fixture",
   GIT_AUTHOR_EMAIL: "fixture@siderail.invalid",
