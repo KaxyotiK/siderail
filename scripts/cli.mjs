@@ -203,6 +203,11 @@ export async function main(argv = process.argv.slice(2), {
 
 const invokedDirectly = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
 if (invokedDirectly) {
+  // A reader such as `head` or `grep -q` may close the pipe early.
+  process.stdout.on("error", (error) => {
+    if (error.code === "EPIPE") process.exit(process.exitCode ?? 0);
+    throw error;
+  });
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(`siderail: ${sanitizeTerminalText(error.message)}`);
     process.exitCode = 1;

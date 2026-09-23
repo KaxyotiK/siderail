@@ -225,3 +225,13 @@ test("the installed bin runs through a symlink and reports errors on stderr", (t
   assert.equal(failure.status, 1);
   assert.match(failure.stderr, /^siderail: unknown command "nope"/m);
 });
+
+test("the bin exits cleanly when its reader closes the pipe early", (t) => {
+  const { environment } = hermeticEnvironment(t);
+  const result = spawnSync("/bin/bash", ["-c", `"${process.execPath}" "$1" help | (exec 0<&-; sleep 0.2); echo "status=\${PIPESTATUS[0]}"`, "bash", path.join(ROOT, "scripts", "cli.mjs")], {
+    env: environment,
+    encoding: "utf8",
+  });
+  assert.match(result.stdout, /status=0/);
+  assert.doesNotMatch(result.stderr, /EPIPE/);
+});
