@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } from "../src/cmux-context.mjs";
 import { startCmuxContextWatcher } from "../src/cmux-context-watch.mjs";
 import { resolveHostIdentity } from "../src/host-identity.mjs";
@@ -58,6 +59,7 @@ import {
 } from "../src/terminal-ui.mjs";
 import { commitAge } from "../src/tui-format.mjs";
 import { resolvePalette } from "../src/theme.mjs";
+import { RESTART_EXIT_CODE, watchInstallReplacement } from "../src/install-watch.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
@@ -1107,9 +1109,11 @@ function startCmuxInvalidation() {
   });
 }
 let cleanupComplete = false;
+let installWatcher;
 async function cleanup() {
   if (cleanupComplete) return;
   cleanupComplete = true;
+  installWatcher?.close();
   clearTimeout(contextTimer); hostSubscription?.unsubscribe?.(); hostContextSource?.close?.();
   cmuxContextWatcher?.close(); cmuxContextWatcher = undefined; clearTimeout(renderTimer); clearTimeout(statusTimer);
   await railController?.close();
@@ -1120,6 +1124,11 @@ async function cleanup() {
   if (!snapshotMode) process.stdout.write(`${ESC}?1000l${ESC}?1006l${ESC}?25h${ESC}?1049l`);
 }
 async function quit() { await cleanup(); process.exit(0); }
+async function restartOnReplacedInstall() {
+  debugLog("install-watch", { outcome: "replaced" });
+  await cleanup();
+  process.exit(RESTART_EXIT_CODE);
+}
 async function fatal(error) {
   await cleanup();
   process.stderr.write(`SideRail fatal error: ${safe(error?.stack || error?.message || error)}\n`);
@@ -1135,6 +1144,10 @@ if (snapshotMode) {
   process.exit(0);
 }
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
+installWatcher = watchInstallReplacement({
+  root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+  onReplaced: () => { restartOnReplacedInstall().catch(fatal); },
+});
 process.stdin.setEncoding("utf8");
 process.stdin.setRawMode?.(true);
 process.stdin.resume();

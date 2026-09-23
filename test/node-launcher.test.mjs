@@ -78,3 +78,43 @@ test("in-process Node version guard rejects unsupported majors", () => {
   assert.throws(() => assertSupportedNode("21.9.0"), /requires Node\.js 22/);
   assert.equal(assertSupportedNode("24.1.0"), 24);
 });
+
+async function restartFixture(t, scriptName) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-restart-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, "scripts"));
+  // Exits 75 on the first run, as a rail does after its install is swapped.
+  await fs.writeFile(path.join(root, "scripts", scriptName), [
+    "const fs = await import('node:fs');",
+    "const runs = Number(fs.existsSync('runs') ? fs.readFileSync('runs', 'utf8') : 0) + 1;",
+    "fs.writeFileSync('runs', String(runs));",
+    "process.stdout.write(`run ${runs} in ${process.cwd()}\\n`);",
+    "process.exit(runs === 1 ? 75 : 3);",
+    "",
+  ].join("\n"));
+  return root;
+}
+
+test("launcher reruns a rail from its launch directory after an install-swap restart", async (t) => {
+  const root = await restartFixture(t, "siderail.mjs");
+  const realRoot = await fs.realpath(root);
+  await assert.rejects(
+    execFileAsync("/bin/bash", [launcher, "scripts/siderail.mjs"], {
+      cwd: root,
+      env: { SIDERAIL_NODE_PATH: process.execPath, PATH: "/untrusted" },
+    }),
+    (error) => error.code === 3
+      && error.stdout === `run 1 in ${realRoot}\nrun 2 in ${realRoot}\n`,
+  );
+});
+
+test("launcher does not rerun non-rail entrypoints that exit with the restart status", async (t) => {
+  const root = await restartFixture(t, "file-preview.mjs");
+  await assert.rejects(
+    execFileAsync("/bin/bash", [launcher, "scripts/file-preview.mjs"], {
+      cwd: root,
+      env: { SIDERAIL_NODE_PATH: process.execPath, PATH: "/untrusted" },
+    }),
+    (error) => error.code === 75 && /^run 1 in /.test(error.stdout) && !error.stdout.includes("run 2"),
+  );
+});
