@@ -110,10 +110,10 @@ function fakeFactories(environment, behavior = {}) {
 
 test("state mode is explicit and rejects unknown rollback values", () => {
   assert.equal(resolveRailStateMode({}), "shared");
-  assert.equal(resolveRailStateMode({ GIT_RAIL_STATE_MODE: "shared" }), "shared");
-  assert.equal(resolveRailStateMode({ GIT_RAIL_STATE_MODE: "in-process" }), "in-process");
+  assert.equal(resolveRailStateMode({ SIDERAIL_STATE_MODE: "shared" }), "shared");
+  assert.equal(resolveRailStateMode({ SIDERAIL_STATE_MODE: "in-process" }), "in-process");
   assert.throws(
-    () => resolveRailStateMode({ GIT_RAIL_STATE_MODE: "sometimes" }),
+    () => resolveRailStateMode({ SIDERAIL_STATE_MODE: "sometimes" }),
     (error) => error.code === "GIT_STATE_MODE_UNSUPPORTED",
   );
 });
@@ -131,10 +131,10 @@ test("namespace semantics follow immutable environment overrides, not mutable co
   assert.equal(first.effectiveConfigId, fileEdited.effectiveConfigId);
   assert.notEqual(first.providerConfig.baseRef, fileEdited.providerConfig.baseRef);
 
-  const baseOverride = resolveSharedRuntimeSemantics({ ...environment, GIT_RAIL_BASE: "release" }, { loadConfiguration: configuration });
-  const pollOverride = resolveSharedRuntimeSemantics({ ...environment, GIT_RAIL_POLL_INTERVAL_MS: "20000" }, { loadConfiguration: configuration });
-  const reconcileOverride = resolveSharedRuntimeSemantics({ ...environment, GIT_RAIL_RECONCILE_INTERVAL_MS: "60000" }, { loadConfiguration: configuration });
-  const watchOverride = resolveSharedRuntimeSemantics({ ...environment, GIT_RAIL_WATCH_MODE: "poll-only" }, { loadConfiguration: configuration });
+  const baseOverride = resolveSharedRuntimeSemantics({ ...environment, SIDERAIL_BASE: "release" }, { loadConfiguration: configuration });
+  const pollOverride = resolveSharedRuntimeSemantics({ ...environment, SIDERAIL_POLL_INTERVAL_MS: "20000" }, { loadConfiguration: configuration });
+  const reconcileOverride = resolveSharedRuntimeSemantics({ ...environment, SIDERAIL_RECONCILE_INTERVAL_MS: "60000" }, { loadConfiguration: configuration });
+  const watchOverride = resolveSharedRuntimeSemantics({ ...environment, SIDERAIL_WATCH_MODE: "poll-only" }, { loadConfiguration: configuration });
   for (const changed of [baseOverride, pollOverride, reconcileOverride, watchOverride]) {
     assert.notEqual(changed.effectiveConfigId, first.effectiveConfigId);
   }
@@ -234,7 +234,7 @@ test("different immutable semantics cannot borrow the first runtime", async (t) 
   t.after(() => runtime.close());
   assert.throws(
     () => runtime.openRepositorySubscription({
-      context: { cwd: "/repo", environment: { ...environment, GIT_RAIL_BASE: "release" } },
+      context: { cwd: "/repo", environment: { ...environment, SIDERAIL_BASE: "release" } },
       onDelivery() {},
     }),
     (error) => error.code === "GIT_STATE_CONTEXT_INCOMPATIBLE",
@@ -341,7 +341,7 @@ test("close does not wait on a blocked ready or unbounded remote close", async (
 
 test("explicit in-process mode is selected before shared runtime construction", async () => {
   await assert.rejects(
-    createSharedRailRuntime({ environment: { GIT_RAIL_STATE_MODE: "in-process" } }),
+    createSharedRailRuntime({ environment: { SIDERAIL_STATE_MODE: "in-process" } }),
     (error) => error.code === "GIT_STATE_IN_PROCESS_REQUESTED",
   );
 });
@@ -349,7 +349,7 @@ test("explicit in-process mode is selected before shared runtime construction", 
 test("real facade and daemon derive one namespace and deliver repository state", {
   skip: process.platform === "win32",
 }, async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-shared-facade-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-shared-facade-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const hostSocketPath = path.join(root, "herdr.sock");
   await fs.writeFile(hostSocketPath, "isolated identity fixture");
@@ -361,8 +361,8 @@ test("real facade and daemon derive one namespace and deliver repository state",
     HERDR_SOCKET_PATH: hostSocketPath,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: os.devNull,
-    GIT_RAIL_POLL_INTERVAL_MS: "60000",
-    GIT_RAIL_RECONCILE_INTERVAL_MS: "60000",
+    SIDERAIL_POLL_INTERVAL_MS: "60000",
+    SIDERAIL_RECONCILE_INTERVAL_MS: "60000",
   };
   const runtime = await createSharedRailRuntime({ environment });
   const seen = [];
@@ -440,7 +440,7 @@ test("facade rejects malformed identities and invalid subscription contracts", a
   await assert.rejects(createSharedRailRuntime({ environment, ...fake,
     resolveRuntime: async () => ({ ...runtimeFor(environment), identity: { ...runtimeFor(environment).identity, effectiveConfigId: "wrong" } }),
     loadConfiguration: configuration }), { code: "GIT_STATE_RUNTIME_SEMANTICS_MISMATCH" });
-  assert.throws(() => resolveSharedRuntimeSemantics({ GIT_RAIL_WATCH_MODE: "invalid" }, { loadConfiguration: configuration }), /WATCH_MODE/);
+  assert.throws(() => resolveSharedRuntimeSemantics({ SIDERAIL_WATCH_MODE: "invalid" }, { loadConfiguration: configuration }), /WATCH_MODE/);
   const runtime = await createSharedRailRuntime({ environment, ...fake, loadConfiguration: configuration });
   t.after(() => runtime.close());
   assert.throws(() => runtime.openRepositorySubscription({ context: {}, onDelivery() {} }), /context.cwd/);

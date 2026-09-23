@@ -2,20 +2,20 @@ function parseJson(value) {
   try { return JSON.parse(value || "{}"); } catch { return {}; }
 }
 
-const GITRAIL_LABELS = new Set([
-  "HERDR GITRAIL",
-  "HERDER GITRAIL",
+const SIDERAIL_LABELS = new Set([
+  "SIDERAIL",
+  "HERDER SIDERAIL",
   "Grove Git Rail",
-  "GitRail Demo",
-  "GitRail Preview",
+  "SideRail Demo",
+  "SideRail Preview",
 ]);
 
 export function selectTabContentPane(panes, layout, {
   railPaneId = "",
   sourcePaneId = "",
 } = {}) {
-  const candidates = panes.filter((pane) => pane.pane_id !== railPaneId && pane.label !== "GitRail Preview");
-  const content = candidates.filter((pane) => !GITRAIL_LABELS.has(pane.label));
+  const candidates = panes.filter((pane) => pane.pane_id !== railPaneId && pane.label !== "SideRail Preview");
+  const content = candidates.filter((pane) => !SIDERAIL_LABELS.has(pane.label));
   return content.find((pane) => pane.pane_id === layout?.focused_pane_id)
     || content.find((pane) => pane.pane_id === sourcePaneId)
     || content[0]

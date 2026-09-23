@@ -7,12 +7,12 @@ import {
   selectTabContentPane,
 } from "../src/herdr-context.mjs";
 
-test("content selection follows each tab's focused pane and ignores GitRail panes", () => {
+test("content selection follows each tab's focused pane and ignores SideRail panes", () => {
   const panes = [
     { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/repo/one" },
     { pane_id: "w1:p2", tab_id: "w1:t1", foreground_cwd: "/repo/two" },
-    { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER GITRAIL" },
-    { pane_id: "w1:p4", tab_id: "w1:t1", label: "HERDR GITRAIL" },
+    { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER SIDERAIL" },
+    { pane_id: "w1:p4", tab_id: "w1:t1", label: "SIDERAIL" },
   ];
   assert.equal(selectTabContentPane(panes, { focused_pane_id: "w1:p2" }, {
     railPaneId: "w1:p3",
@@ -40,7 +40,7 @@ test("live cwd resolution is scoped to the rail's own tab", async () => {
       return { stdout: JSON.stringify({ result: { panes: [
         { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/other-tab" },
         { pane_id: "w1:p2", tab_id: "w1:t2", foreground_cwd: "/repo/current" },
-        { pane_id: "w1:p3", tab_id: "w1:t2", label: "HERDER GITRAIL" },
+        { pane_id: "w1:p3", tab_id: "w1:t2", label: "HERDER SIDERAIL" },
       ] } }) };
     }
     return { stdout: JSON.stringify({ result: { layout: { focused_pane_id: "w1:p2" } } }) };
@@ -59,11 +59,11 @@ test("live cwd resolution is scoped to the rail's own tab", async () => {
   });
 });
 
-test("a focused GitRail Demo never becomes the main rail's content source", () => {
+test("a focused SideRail Demo never becomes the main rail's content source", () => {
   const panes = [
     { pane_id: "w1:p1", foreground_cwd: "/repo/customer" },
-    { pane_id: "w1:p2", foreground_cwd: "/plugin", label: "GitRail Demo" },
-    { pane_id: "w1:p3", label: "HERDER GITRAIL" },
+    { pane_id: "w1:p2", foreground_cwd: "/plugin", label: "SideRail Demo" },
+    { pane_id: "w1:p3", label: "HERDER SIDERAIL" },
   ];
   assert.equal(selectTabContentPane(panes, { focused_pane_id: "w1:p2" }, {
     railPaneId: "w1:p3",
@@ -71,7 +71,7 @@ test("a focused GitRail Demo never becomes the main rail's content source", () =
   }).pane_id, "w1:p1");
 });
 
-test("a stored GitRail Demo source is discarded in favor of real tab content", async () => {
+test("a stored SideRail Demo source is discarded in favor of real tab content", async () => {
   const run = async (_command, args) => {
     if (args[0] === "pane" && args[1] === "get") {
       return { stdout: JSON.stringify({ result: { pane: {
@@ -81,8 +81,8 @@ test("a stored GitRail Demo source is discarded in favor of real tab content", a
     if (args[0] === "pane" && args[1] === "list") {
       return { stdout: JSON.stringify({ result: { panes: [
         { pane_id: "w1:p1", tab_id: "w1:t1", foreground_cwd: "/repo/customer" },
-        { pane_id: "w1:p2", tab_id: "w1:t1", foreground_cwd: "/plugin", label: "GitRail Demo" },
-        { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER GITRAIL" },
+        { pane_id: "w1:p2", tab_id: "w1:t1", foreground_cwd: "/plugin", label: "SideRail Demo" },
+        { pane_id: "w1:p3", tab_id: "w1:t1", label: "HERDER SIDERAIL" },
       ] } }) };
     }
     return { stdout: JSON.stringify({ result: { layout: { focused_pane_id: "w1:p3" } } }) };
@@ -112,7 +112,7 @@ test("a moved rail resolves cwd from its current workspace instead of its launch
     if (args[0] === "pane" && args[1] === "list") {
       return { stdout: JSON.stringify({ result: { panes: [
         { pane_id: "w2:p1", tab_id: "w2:t4", foreground_cwd: "/new/repo" },
-        { pane_id: "w2:p3", tab_id: "w2:t4", label: "HERDER GITRAIL" },
+        { pane_id: "w2:p3", tab_id: "w2:t4", label: "HERDER SIDERAIL" },
       ] } }) };
     }
     return { stdout: JSON.stringify({ result: { layout: { focused_pane_id: "w2:p1" } } }) };
@@ -138,7 +138,7 @@ test("snapshot context follows a moved rail by terminal identity and reports vis
     focused_tab_id: "w2:t4",
     panes: [
       { pane_id: "w2:p1", terminal_id: "content", workspace_id: "w2", tab_id: "w2:t4", foreground_cwd: "/repo" },
-      { pane_id: "w2:p3", terminal_id: "rail-terminal", workspace_id: "w2", tab_id: "w2:t4", label: "HERDR GITRAIL" },
+      { pane_id: "w2:p3", terminal_id: "rail-terminal", workspace_id: "w2", tab_id: "w2:t4", label: "SIDERAIL" },
     ],
     layouts: [{ workspace_id: "w2", tab_id: "w2:t4", focused_pane_id: "w2:p1", zoomed: false }],
   };
@@ -162,7 +162,7 @@ test("snapshot context distinguishes hidden and no-content rails", () => {
   const base = {
     focused_workspace_id: "w1",
     focused_tab_id: "w1:t2",
-    panes: [{ pane_id: "w1:p3", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "HERDR GITRAIL" }],
+    panes: [{ pane_id: "w1:p3", terminal_id: "rail", workspace_id: "w1", tab_id: "w1:t1", label: "SIDERAIL" }],
     layouts: [{ workspace_id: "w1", tab_id: "w1:t1", focused_pane_id: "w1:p3", zoomed: false }],
   };
   const context = selectHerdrSnapshotContext(base, { railPaneId: "w1:p3", fallbackCwd: "/fallback" });

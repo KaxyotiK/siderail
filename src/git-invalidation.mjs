@@ -221,7 +221,7 @@ export async function createRepositoryWatcher({
     const home = environment.HOME || process.cwd();
     const xdg = environment.XDG_CONFIG_HOME || path.join(home, ".config");
     const files = new Set([
-      path.join(xdg, "git-rail", "config.json"), path.join(home, ".gitconfig"),
+      path.join(xdg, "siderail", "config.json"), path.join(home, ".gitconfig"),
       path.join(xdg, "git", "config"), path.join(xdg, "git", "ignore"), path.join(xdg, "git", "attributes"),
     ]);
     for (const variable of ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_INDEX_FILE", "GIT_CONFIG"]) {

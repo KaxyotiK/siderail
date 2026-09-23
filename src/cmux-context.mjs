@@ -38,10 +38,10 @@ const SURFACE_STATE_DIRECTORY_NAME = "surfaces";
 
 function controlStateDirectory(environment) {
   const root = environment.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(root, "herdr-gitrail", "cmux-controls");
+  return path.join(root, "siderail", "cmux-controls");
 }
 
-export function cmuxDockControlStatePath({ workspaceId, controlId = "git-rail", environment = process.env }) {
+export function cmuxDockControlStatePath({ workspaceId, controlId = "siderail", environment = process.env }) {
   return path.join(controlStateDirectory(environment), `${safeToken(workspaceId)}-${safeToken(controlId)}.json`);
 }
 
@@ -50,7 +50,7 @@ export function cmuxDockControlStatePath({ workspaceId, controlId = "git-rail", 
  * never collide with a version 2 workspace-keyed one, and so the legacy scan
  * skips them without needing to parse anything.
  */
-export function cmuxDockControlSurfaceStatePath({ surfaceId, controlId = "git-rail", environment = process.env }) {
+export function cmuxDockControlSurfaceStatePath({ surfaceId, controlId = "siderail", environment = process.env }) {
   return path.join(
     controlStateDirectory(environment),
     SURFACE_STATE_DIRECTORY_NAME,
@@ -58,7 +58,7 @@ export function cmuxDockControlSurfaceStatePath({ surfaceId, controlId = "git-ra
   );
 }
 
-function validatedLegacyControlState(state, { workspaceId = "", controlId = "git-rail" } = {}) {
+function validatedLegacyControlState(state, { workspaceId = "", controlId = "siderail" } = {}) {
   if (state?.version !== 2
     || !normalized(state.controlId)
     || normalized(state.controlId) !== normalized(controlId)
@@ -76,7 +76,7 @@ function validatedLegacyControlState(state, { workspaceId = "", controlId = "git
  * following is observational only: it changes as the user switches workspaces,
  * and keying on it made every visited workspace write another record.
  */
-function validatedSurfaceControlState(state, { surfaceId = "", controlId = "git-rail" } = {}) {
+function validatedSurfaceControlState(state, { surfaceId = "", controlId = "siderail" } = {}) {
   if (state?.version !== 3
     || !normalized(state.controlId)
     || normalized(state.controlId) !== normalized(controlId)
@@ -118,7 +118,7 @@ function processIsAlive(processId) {
 
 /**
  * A recorded process id alone cannot prove the recorded process is still the one
- * running: after a GitRail control exits, its id can be reassigned, and the
+ * running: after a SideRail control exits, its id can be reassigned, and the
  * launcher would then decline to relaunch a Dock that needs it. Pairing the id
  * with the kernel's start time for that id closes the reuse window.
  *
@@ -174,7 +174,7 @@ async function writeControlState(statePath, record) {
 
 /**
  * Publish without clobbering. A control registering for real must be able to
- * replace its own record, but a migration must never overwrite one: a GitRail
+ * replace its own record, but a migration must never overwrite one: a SideRail
  * that started between the version 3 miss and this write owns the surface now,
  * and replacing its registration would make the launcher act on a stale record
  * and interrupt a healthy control. `link` fails rather than replacing, which
@@ -196,7 +196,7 @@ async function publishControlState(statePath, record) {
 export async function registerCmuxDockControl({
   workspaceId,
   surfaceId,
-  controlId = "git-rail",
+  controlId = "siderail",
   instanceId = `pid-${process.pid}`,
   processId = process.pid,
   environment = process.env,
@@ -322,7 +322,7 @@ async function migrateLegacyRegistration(selected, duplicates, { controlId, envi
 
 export async function readCmuxDockControlRegistration({
   workspaceId,
-  controlId = "git-rail",
+  controlId = "siderail",
   surfaceIds = [],
   environment = process.env,
   now = Date.now,
@@ -347,7 +347,7 @@ export async function readCmuxDockControlRegistration({
 }
 
 export function cmuxExecutable(environment = process.env) {
-  return normalized(environment.GIT_RAIL_CMUX_BIN)
+  return normalized(environment.SIDERAIL_CMUX_BIN)
     || normalized(environment.CMUX_BUNDLED_CLI_PATH)
     || "cmux";
 }
@@ -365,11 +365,11 @@ function windowOwnsSurface(payload, surfaceId) {
 }
 
 /**
- * Resolve the cmux window that owns this GitRail surface.
+ * Resolve the cmux window that owns this SideRail surface.
  *
  * cmux reports `caller: null` for Dock surfaces, so the owning window cannot be
  * read back from `identify`. The surface's own id is the only durable anchor, so
- * the owner is the window whose panel list contains it. `GIT_RAIL_WINDOW_ID` and
+ * the owner is the window whose panel list contains it. `SIDERAIL_WINDOW_ID` and
  * the global-Dock `CMUX_WORKSPACE_ID` convention are checked only afterwards,
  * because both are lost across Dock restore and relaunch.
  */
@@ -388,7 +388,7 @@ export async function resolveCmuxOwnerWindowId({
     const panels = await cmuxCall(run, cmux, ["list-panels", "--window", windowId], environment, 2 * 1_024 * 1_024);
     if (windowOwnsSurface(parseValue(panels.stdout), ownSurfaceId)) return windowId;
   }
-  const hinted = normalized(environment.GIT_RAIL_WINDOW_ID);
+  const hinted = normalized(environment.SIDERAIL_WINDOW_ID);
   if (hinted && windowIds.includes(hinted)) return hinted;
   const dockOwner = normalized(environment.CMUX_WORKSPACE_ID);
   return dockOwner && windowIds.includes(dockOwner) ? dockOwner : "";
@@ -403,7 +403,7 @@ export function selectedMainWorkspace(identifyPayload, workspacePayload, environ
   const windowId = normalized(
     ownerWindowId
     || workspace.window_id
-    || environment.GIT_RAIL_WINDOW_ID
+    || environment.SIDERAIL_WINDOW_ID
     || caller.window_id
     || focused.window_id,
   );
@@ -476,7 +476,7 @@ async function currentWorkspace({ run, cmux, identifyPayload, environment, owner
   const focused = identifyPayload?.focused || identifyPayload?.active || {};
   const caller = identifyPayload?.caller || {};
   const windowId = normalized(
-    ownerWindowId || environment.GIT_RAIL_WINDOW_ID || caller.window_id || focused.window_id,
+    ownerWindowId || environment.SIDERAIL_WINDOW_ID || caller.window_id || focused.window_id,
   );
   const args = ["--json", "--id-format", "both", "current-workspace"];
   if (windowId) args.push("--window", windowId);
@@ -495,7 +495,7 @@ async function ownerWindow({ run, cmux, environment, ownerWindowId }) {
     const discovered = await resolveCmuxOwnerWindowId({ run, cmux, environment });
     if (discovered) return discovered;
   } catch { /* discovery is best effort; the environment hint still applies */ }
-  return normalized(environment.GIT_RAIL_WINDOW_ID);
+  return normalized(environment.SIDERAIL_WINDOW_ID);
 }
 
 export async function resolveCmuxProjectContext({
@@ -507,7 +507,7 @@ export async function resolveCmuxProjectContext({
   isRepository = withinRepository,
   ownerWindowId = "",
 } = {}) {
-  const projectFallback = normalized(environment.GIT_RAIL_PROJECT_CWD) || fallbackCwd;
+  const projectFallback = normalized(environment.SIDERAIL_PROJECT_CWD) || fallbackCwd;
   let identifyPayload = {};
   let workspacePayload = {};
   let surfacePayload = {};

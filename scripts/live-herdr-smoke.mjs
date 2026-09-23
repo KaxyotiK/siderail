@@ -11,12 +11,12 @@ import { assertSupportedNode } from "../src/node-version.mjs";
 
 assertSupportedNode();
 
-const pluginId = "local.git-rail";
-const railLabel = "HERDR GITRAIL";
-const previewLabel = "GitRail Preview";
+const pluginId = "siderail";
+const railLabel = "SIDERAIL";
+const previewLabel = "SideRail Preview";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-live-herdr-"));
-const nonGitRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-live-nongit-"));
+const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-live-herdr-"));
+const nonGitRoot = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-live-nongit-"));
 const commandEnvironment = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };
 
 for (const key of [
@@ -174,15 +174,15 @@ function focusTab(tabId) {
 }
 
 async function railFor(tabId) {
-  return eventually(`GitRail pane in ${tabId}`, () => tabPanes(tabId).find((pane) => pane.label === railLabel));
+  return eventually(`SideRail pane in ${tabId}`, () => tabPanes(tabId).find((pane) => pane.label === railLabel));
 }
 
 async function openFileFromRail(railPaneId, fileName) {
   const existingPreviews = new Set(panes().filter((pane) => pane.label === previewLabel).map((pane) => pane.pane_id));
   herdr(["pane", "send-text", railPaneId, "/"]);
-  await eventually("GitRail search mode", () => paneText(railPaneId).includes("▏"));
+  await eventually("SideRail search mode", () => paneText(railPaneId).includes("▏"));
   herdr(["pane", "send-keys", railPaneId, "ctrl+u"]);
-  await eventually("cleared GitRail search", () => paneText(railPaneId).includes("⌕ ▏"));
+  await eventually("cleared SideRail search", () => paneText(railPaneId).includes("⌕ ▏"));
   herdr(["pane", "send-text", railPaneId, fileName]);
   await eventually(`${fileName} active search`, () => paneText(railPaneId).includes(`⌕ ${fileName}▏`));
   herdr(["pane", "send-keys", railPaneId, "enter"]);
@@ -231,8 +231,8 @@ async function invokeAction(actionId) {
 
 function initializeFixture() {
   git(["init", "--initial-branch=main"]);
-  git(["config", "user.name", "GitRail Smoke"]);
-  git(["config", "user.email", "gitrail-smoke@example.invalid"]);
+  git(["config", "user.name", "SideRail Smoke"]);
+  git(["config", "user.email", "siderail-smoke@example.invalid"]);
   write("clean.txt", "Clean baseline\n");
   write("modified.txt", "tracked baseline\n");
   git(["add", "."]);
@@ -247,11 +247,11 @@ async function main() {
   initializeFixture();
   const beforeInspection = repositoryInvariant();
   const observations = [];
-  const watchMode = process.env.GIT_RAIL_WATCH_MODE || "watch-and-poll";
+  const watchMode = process.env.SIDERAIL_WATCH_MODE || "watch-and-poll";
   assert.ok(["watch-only", "poll-only", "watch-and-poll"].includes(watchMode), `unsupported live witness watch mode: ${watchMode}`);
 
   const beforeGitEvents = pluginLogCount();
-  const sourceA = createWorkspace(fixtureRoot, "GitRail live Git");
+  const sourceA = createWorkspace(fixtureRoot, "SideRail live Git");
   await waitForPluginEvents(beforeGitEvents);
   // Herdr can deliver workspace.created before the root pane is queryable. The
   // startup/event supervisor is intentionally idempotent, so reconcile once
@@ -262,7 +262,7 @@ async function main() {
   assert.equal(initialPanes.filter((pane) => pane.label === railLabel).length, 1);
   assert.equal(railA.focused, false);
 
-  const railState = await eventually("initial GitRail render", () => {
+  const railState = await eventually("initial SideRail render", () => {
     const text = paneText(railA.pane_id);
     return text.includes("Staged") && text.includes("Untracked") ? text : "";
   });
@@ -272,7 +272,7 @@ async function main() {
   observations.push("auto-open and Staged/Unstaged/Untracked separation");
 
   const beforeNonGitEvents = pluginLogCount();
-  const nonGit = createWorkspace(nonGitRoot, "GitRail live non-Git");
+  const nonGit = createWorkspace(nonGitRoot, "SideRail live non-Git");
   await waitForPluginEvents(beforeNonGitEvents);
   assert.deepEqual(tabPanes(nonGit.tabId).map((pane) => pane.pane_id), [nonGit.paneId]);
   observations.push("non-Git auto-open exclusion");
@@ -280,7 +280,7 @@ async function main() {
   const split = herdrJson(["pane", "split", sourceA.paneId, "--direction", "down", "--ratio", "0.30", "--cwd", fixtureRoot, "--focus"]);
   const unrelatedPaneId = split.result.pane.pane_id;
   focusTab(sourceA.tabId);
-  await invokeAction("toggle-git-rail");
+  await invokeAction("toggle-siderail");
   await eventually("manual Toggle close", () => !tabPanes(sourceA.tabId).some((pane) => pane.label === railLabel));
   assertPaneExists(sourceA.paneId);
   assertPaneExists(unrelatedPaneId);
@@ -293,14 +293,14 @@ async function main() {
   assertPaneExists(unrelatedPaneId);
 
   focusTab(sourceA.tabId);
-  await invokeAction("open-git-rail");
+  await invokeAction("open-siderail");
   assert.equal(tabPanes(sourceA.tabId).some((pane) => pane.label === railLabel), false, "manual open changed an unsafe layout");
   assertPaneExists(sourceA.paneId);
   assertPaneExists(unrelatedPaneId);
   herdr(["pane", "close", unrelatedPaneId]);
   assertPaneExists(unrelatedPaneId, false);
   focusTab(sourceA.tabId);
-  await invokeAction("open-git-rail");
+  await invokeAction("open-siderail");
   const rebuiltRailA = await railFor(sourceA.tabId);
   assertPaneExists(sourceA.paneId);
   observations.push("manual Toggle and automatic/manual unsafe-layout skips without pane reconstruction");
@@ -354,8 +354,8 @@ async function main() {
   git(["switch", "-c", "live-refresh"]);
   await eventually("watcher or recovery-poll branch convergence", () => paneText(rebuiltRailA.pane_id).includes("live-refresh"), { timeout: 20_000 });
 
-  const gitShim = process.env.GIT_RAIL_LIVE_GIT_SHIM;
-  assert.ok(gitShim && fs.existsSync(gitShim), "GIT_RAIL_LIVE_GIT_SHIM must name the live server's isolated git executable");
+  const gitShim = process.env.SIDERAIL_LIVE_GIT_SHIM;
+  assert.ok(gitShim && fs.existsSync(gitShim), "SIDERAIL_LIVE_GIT_SHIM must name the live server's isolated git executable");
   const disabledGitShim = `${gitShim}.disabled`;
   fs.renameSync(gitShim, disabledGitShim);
   try {
@@ -373,15 +373,15 @@ async function main() {
   observations.push(`manual refresh, ${watchMode} convergence, and failure-state preservation`);
 
   focusTab(sourceA.tabId);
-  await invokeAction("open-git-rail-mockup");
-  const demoPane = await eventually("live demo pane", () => panes().find((pane) => pane.label === "GitRail Demo"));
+  await invokeAction("open-siderail-mockup");
+  const demoPane = await eventually("live demo pane", () => panes().find((pane) => pane.label === "SideRail Demo"));
   const demoText = await eventually("live demo content", () => {
     const text = paneText(demoPane.pane_id);
     return text.includes("Staged") && text.includes("Untracked") ? text : "";
   });
   assert.match(demoText, /Staged/);
   for (const width of [36, 52, 100]) {
-    assert.ok(fs.statSync(path.join(repositoryRoot, "docs", "screenshots", `gitrail-${width}.png`)).size > 10_000);
+    assert.ok(fs.statSync(path.join(repositoryRoot, "docs", "screenshots", `siderail-${width}.png`)).size > 10_000);
   }
   observations.push("real demo pane and checked-in 36/52/100 capture artifacts");
 

@@ -34,7 +34,7 @@ function deliveryForWire(delivery) {
 }
 
 function performanceComponent(environment, entry) {
-  const target = environment.GIT_RAIL_PERFORMANCE_LOG;
+  const target = environment.SIDERAIL_PERFORMANCE_LOG;
   if (!target) return;
   try {
     fsSync.appendFileSync(target, `${JSON.stringify({

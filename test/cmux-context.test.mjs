@@ -17,19 +17,19 @@ import {
 } from "../src/cmux-context.mjs";
 
 test("cmux executable selection prefers an explicit override and then the bundled CLI", () => {
-  assert.equal(cmuxExecutable({ GIT_RAIL_CMUX_BIN: "/test/cmux", CMUX_BUNDLED_CLI_PATH: "/bundle/cmux" }), "/test/cmux");
+  assert.equal(cmuxExecutable({ SIDERAIL_CMUX_BIN: "/test/cmux", CMUX_BUNDLED_CLI_PATH: "/bundle/cmux" }), "/test/cmux");
   assert.equal(cmuxExecutable({ CMUX_BUNDLED_CLI_PATH: "/bundle/cmux" }), "/bundle/cmux");
   assert.equal(cmuxExecutable({}), "cmux");
 });
 
 test("cmux Dock control ownership is keyed by its own surface, not the workspace it follows", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-control-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-control-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   const register = (workspaceId, updatedAt) => registerCmuxDockControl({
     workspaceId,
     surfaceId: "configured-dock",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance-1",
     processId: 4242,
     environment,
@@ -39,13 +39,13 @@ test("cmux Dock control ownership is keyed by its own surface, not the workspace
   assert.equal(await register("workspace-a", 1234), true);
   assert.deepEqual(await readCmuxDockControlRegistration({
     workspaceId: "workspace-a",
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: ["configured-dock"],
     environment,
   }), {
     version: 3,
     surfaceId: "configured-dock",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance-1",
     processId: 4242,
     processStartedAt: "Thu Sep  4 08:00:00 2026",
@@ -60,11 +60,11 @@ test("cmux Dock control ownership is keyed by its own surface, not the workspace
   for (const [workspaceId, updatedAt] of [["workspace-b", 2], ["workspace-c", 3], ["workspace-d", 4]]) {
     await register(workspaceId, updatedAt);
   }
-  assert.deepEqual(await fs.readdir(path.dirname(statePath)), ["configured-dock-git-rail.json"]);
+  assert.deepEqual(await fs.readdir(path.dirname(statePath)), ["configured-dock-siderail.json"]);
 });
 
 test("cmux Dock control registration rejects incomplete, missing, malformed, and mismatched ownership", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-control-invalid-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-control-invalid-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   const marker = { readStartMarker: async () => "start-marker" };
@@ -82,11 +82,11 @@ test("cmux Dock control registration rejects incomplete, missing, malformed, and
     workspaceId: "workspace", surfaceIds: ["surface"], environment,
   }), null);
   for (const invalid of [
-    { version: 3, controlId: "git-rail", instanceId: "i", processId: 1 },
+    { version: 3, controlId: "siderail", instanceId: "i", processId: 1 },
     { version: 3, surfaceId: "surface", controlId: "other", instanceId: "i", processId: 1 },
-    { version: 3, surfaceId: "surface", controlId: "git-rail", instanceId: "", processId: 1 },
-    { version: 3, surfaceId: "surface", controlId: "git-rail", instanceId: "i", processId: 0 },
-    { version: 4, surfaceId: "surface", controlId: "git-rail", instanceId: "i", processId: 1 },
+    { version: 3, surfaceId: "surface", controlId: "siderail", instanceId: "", processId: 1 },
+    { version: 3, surfaceId: "surface", controlId: "siderail", instanceId: "i", processId: 0 },
+    { version: 4, surfaceId: "surface", controlId: "siderail", instanceId: "i", processId: 1 },
   ]) {
     await fs.writeFile(surfacePath, JSON.stringify(invalid));
     assert.equal(await readCmuxDockControlRegistration({
@@ -99,10 +99,10 @@ test("cmux Dock control registration rejects incomplete, missing, malformed, and
   await fs.writeFile(legacyPath, "not json");
   assert.equal(await readCmuxDockControlRegistration({ workspaceId: "workspace", environment }), null);
   for (const invalid of [
-    { version: 2, workspaceId: "workspace", controlId: "git-rail", surfaceId: "surface" },
-    { version: 1, workspaceId: "other", controlId: "git-rail", surfaceId: "surface" },
+    { version: 2, workspaceId: "workspace", controlId: "siderail", surfaceId: "surface" },
+    { version: 1, workspaceId: "other", controlId: "siderail", surfaceId: "surface" },
     { version: 1, workspaceId: "workspace", controlId: "other", surfaceId: "surface" },
-    { version: 1, workspaceId: "workspace", controlId: "git-rail", surfaceId: "" },
+    { version: 1, workspaceId: "workspace", controlId: "siderail", surfaceId: "" },
   ]) {
     await fs.writeFile(legacyPath, JSON.stringify(invalid));
     assert.equal(await readCmuxDockControlRegistration({ workspaceId: "workspace", environment }), null);
@@ -110,13 +110,13 @@ test("cmux Dock control registration rejects incomplete, missing, malformed, and
 });
 
 test("cmux Dock control registration follows a live surface across workspace changes", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-control-workspace-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-control-workspace-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   await registerCmuxDockControl({
     workspaceId: "workspace-a",
     surfaceId: "configured-dock",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance-a",
     processId: 4242,
     environment,
@@ -125,13 +125,13 @@ test("cmux Dock control registration follows a live surface across workspace cha
   });
   assert.deepEqual(await readCmuxDockControlRegistration({
     workspaceId: "workspace-b",
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: ["configured-dock", "unrelated-dock"],
     environment,
   }), {
     version: 3,
     surfaceId: "configured-dock",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance-a",
     processId: 4242,
     processStartedAt: "start-a",
@@ -145,7 +145,7 @@ test("cmux Dock registration liveness requires the recorded process", async () =
     version: 2,
     workspaceId: "workspace",
     surfaceId: "surface",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance",
     processId: 4242,
     updatedAt: 1234,
@@ -159,7 +159,7 @@ test("a reused process id cannot revive a version 3 registration", async () => {
   const registration = {
     version: 3,
     surfaceId: "surface",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance",
     processId: 4242,
     processStartedAt: "Thu Sep  4 08:00:00 2026",
@@ -183,7 +183,7 @@ test("a markerless version 3 record is invalid rather than silently process-id o
   const registration = {
     version: 3,
     surfaceId: "surface",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance",
     processStartedAt: "",
     processId: 4242,
@@ -192,7 +192,7 @@ test("a markerless version 3 record is invalid rather than silently process-id o
   };
   assert.equal(await cmuxDockControlRegistrationIsActive(registration, () => true, async () => "marker"), false);
 
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-markerless-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-markerless-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   const statePath = cmuxDockControlSurfaceStatePath({ surfaceId: "surface", environment });
@@ -204,7 +204,7 @@ test("a markerless version 3 record is invalid rather than silently process-id o
 });
 
 test("registration fails rather than writing a version 3 record without a start marker", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-no-marker-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-no-marker-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   assert.equal(await registerCmuxDockControl({
@@ -248,7 +248,7 @@ test("the process start marker rejects a row that belongs to another process", a
   assert.equal(await cmuxProcessStartMarker(4242, { run: async () => { throw new Error("ps missing"); } }), "");
 });
 
-test("main workspace selection never treats the GitRail Dock surface as its source surface", () => {
+test("main workspace selection never treats the SideRail Dock surface as its source surface", () => {
   assert.deepEqual(selectedMainWorkspace({
     focused: { workspace_id: "main-workspace", window_id: "window-1", surface_id: "dock-surface" },
   }, {
@@ -266,9 +266,9 @@ test("cmux context resolves live main-area cwd while preserving every Dock ident
   const environment = {
     CMUX_WORKSPACE_ID: "dock-owner-window",
     CMUX_SURFACE_ID: "dock-surface",
-    CMUX_DOCK_CONTROL_ID: "git-rail",
-    CMUX_DOCK_CONTROL_TITLE: "GitRail",
-    GIT_RAIL_PROJECT_CWD: "/repo/configured",
+    CMUX_DOCK_CONTROL_ID: "siderail",
+    CMUX_DOCK_CONTROL_TITLE: "SideRail",
+    SIDERAIL_PROJECT_CWD: "/repo/configured",
   };
   const run = async (command, args, options) => {
     calls.push({ command, args, options });
@@ -285,8 +285,8 @@ test("cmux context resolves live main-area cwd while preserving every Dock ident
     mainSurfaceId: "main-surface",
     dockSurfaceId: "dock-surface",
     dockWorkspaceId: "dock-owner-window",
-    dockControlId: "git-rail",
-    dockControlTitle: "GitRail",
+    dockControlId: "siderail",
+    dockControlTitle: "SideRail",
     warning: "",
   });
   assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
@@ -299,7 +299,7 @@ test("cmux context resolves live main-area cwd while preserving every Dock ident
 });
 
 test("cmux context falls back to the configured project cwd when discovery fails", async () => {
-  const environment = { GIT_RAIL_PROJECT_CWD: "relative/project", CMUX_SURFACE_ID: "dock" };
+  const environment = { SIDERAIL_PROJECT_CWD: "relative/project", CMUX_SURFACE_ID: "dock" };
   const result = await resolveCmuxProjectContext({
     run: async () => { throw new Error("socket offline"); },
     cmux: "cmux-test",
@@ -328,7 +328,7 @@ test("cmux context can resolve an older caller-scoped workspace without a window
 test("cmux context remains anchored to its owner window when global focus moves", async () => {
   const calls = [];
   const environment = {
-    GIT_RAIL_WINDOW_ID: "window-owner",
+    SIDERAIL_WINDOW_ID: "window-owner",
     CMUX_SURFACE_ID: "dock-surface",
   };
   const run = async (_command, args) => {
@@ -357,7 +357,7 @@ test("cmux context remains anchored to its owner window when global focus moves"
 test("cmux context recovers the selected project from the focused surface when workspace cwd is stale", async () => {
   const environment = {
     CMUX_SURFACE_ID: "dock-surface",
-    GIT_RAIL_PROJECT_CWD: "/integration/checkout",
+    SIDERAIL_PROJECT_CWD: "/integration/checkout",
   };
   const run = async (_command, args) => {
     if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
@@ -419,7 +419,7 @@ test("cmux context pins a valid main-surface launch folder when Dock activity co
   assert.equal(result.mainSurfaceId, "main-surface");
 });
 
-test("cmux context never substitutes the GitRail Dock cwd for a missing selected project", async () => {
+test("cmux context never substitutes the SideRail Dock cwd for a missing selected project", async () => {
   const run = async (_command, args) => {
     if (args.includes("identify")) return { stdout: JSON.stringify({ focused: {
       workspace_id: "workspace-1", surface_id: "dock-surface",
@@ -433,7 +433,7 @@ test("cmux context never substitutes the GitRail Dock cwd for a missing selected
   };
   const result = await resolveCmuxProjectContext({
     run,
-    environment: { CMUX_SURFACE_ID: "dock-surface", GIT_RAIL_PROJECT_CWD: "/integration/checkout" },
+    environment: { CMUX_SURFACE_ID: "dock-surface", SIDERAIL_PROJECT_CWD: "/integration/checkout" },
     isDirectory: async (candidate) => candidate === "/integration/checkout",
   });
   assert.equal(result.cwd, "/missing/selected/project");
@@ -468,7 +468,7 @@ test("Dock owner window discovery is skipped without a surface of its own", asyn
   let calls = 0;
   assert.equal(await resolveCmuxOwnerWindowId({
     run: async () => { calls += 1; return { stdout: "{}" }; },
-    environment: { GIT_RAIL_WINDOW_ID: "window-hint" },
+    environment: { SIDERAIL_WINDOW_ID: "window-hint" },
   }), "");
   assert.equal(calls, 0);
 });
@@ -479,15 +479,15 @@ test("Dock owner window falls back to a live window hint before the global-Dock 
     : { stdout: JSON.stringify({ surfaces: [{ id: "unrelated" }] }) });
   assert.equal(await resolveCmuxOwnerWindowId({
     run: listWindows,
-    environment: { CMUX_SURFACE_ID: "missing-dock", GIT_RAIL_WINDOW_ID: "window-b", CMUX_WORKSPACE_ID: "window-a" },
+    environment: { CMUX_SURFACE_ID: "missing-dock", SIDERAIL_WINDOW_ID: "window-b", CMUX_WORKSPACE_ID: "window-a" },
   }), "window-b");
   assert.equal(await resolveCmuxOwnerWindowId({
     run: listWindows,
-    environment: { CMUX_SURFACE_ID: "missing-dock", GIT_RAIL_WINDOW_ID: "closed-window", CMUX_WORKSPACE_ID: "window-a" },
+    environment: { CMUX_SURFACE_ID: "missing-dock", SIDERAIL_WINDOW_ID: "closed-window", CMUX_WORKSPACE_ID: "window-a" },
   }), "window-a");
   assert.equal(await resolveCmuxOwnerWindowId({
     run: listWindows,
-    environment: { CMUX_SURFACE_ID: "missing-dock", GIT_RAIL_WINDOW_ID: "closed-window", CMUX_WORKSPACE_ID: "closed-workspace" },
+    environment: { CMUX_SURFACE_ID: "missing-dock", SIDERAIL_WINDOW_ID: "closed-window", CMUX_WORKSPACE_ID: "closed-workspace" },
   }), "");
 });
 
@@ -496,7 +496,7 @@ test("cmux context resolves the Dock-owning window when identify has no caller a
   const environment = {
     CMUX_SURFACE_ID: "dock-surface",
     CMUX_WORKSPACE_ID: "window-owner",
-    CMUX_DOCK_CONTROL_ID: "git-rail",
+    CMUX_DOCK_CONTROL_ID: "siderail",
   };
   const run = async (_command, args) => {
     calls.push(args);
@@ -609,7 +609,7 @@ test("cmux context still resolves a project when Dock owner discovery fails outr
   };
   const result = await resolveCmuxProjectContext({
     run,
-    environment: { CMUX_SURFACE_ID: "dock-surface", GIT_RAIL_WINDOW_ID: "window-hint" },
+    environment: { CMUX_SURFACE_ID: "dock-surface", SIDERAIL_WINDOW_ID: "window-hint" },
     isDirectory: async () => true,
   });
   assert.equal(result.warning, "");
@@ -631,7 +631,7 @@ test("a checked-out candidate outranks an existing but unversioned directory", a
   };
   const result = await resolveCmuxProjectContext({
     run,
-    environment: { CMUX_SURFACE_ID: "dock-surface", GIT_RAIL_PROJECT_CWD: "/Users/operator" },
+    environment: { CMUX_SURFACE_ID: "dock-surface", SIDERAIL_PROJECT_CWD: "/Users/operator" },
     ownerWindowId: "window-1",
     isDirectory: async () => true,
     isRepository: async (candidate) => candidate === "/worktrees/branding-options",
@@ -657,7 +657,7 @@ test("no checked-out candidate keeps the first existing directory rather than an
 });
 
 test("repository detection accepts a linked worktree whose .git is a file", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-worktree-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-worktree-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const worktree = path.join(root, "worktree");
   const nested = path.join(worktree, "src", "deep");
@@ -678,11 +678,11 @@ test("repository detection accepts a linked worktree whose .git is a file", asyn
   assert.equal(await resolveFor(path.join(root, "missing")), bare);
 });
 
-test("cmux Dock control state paths cannot escape the GitRail cache directory", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-control-token-"));
+test("cmux Dock control state paths cannot escape the SideRail cache directory", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-control-token-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
-  const directory = path.join(root, "herdr-gitrail", "cmux-controls");
+  const directory = path.join(root, "siderail", "cmux-controls");
   for (const hostile of ["../../escape", "a/b", "..", "with spaces"]) {
     const statePath = cmuxDockControlStatePath({ workspaceId: hostile, environment });
     assert.equal(path.dirname(statePath), directory);
@@ -696,11 +696,11 @@ test("cmux Dock control state paths cannot escape the GitRail cache directory", 
     environment,
     readStartMarker: async () => "start-marker",
   }), true);
-  assert.deepEqual((await fs.readdir(root)), ["herdr-gitrail"]);
+  assert.deepEqual((await fs.readdir(root)), ["siderail"]);
 });
 
 test("cmux Dock control lookup ignores another control's record for the same surface", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-control-foreign-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-control-foreign-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   await registerCmuxDockControl({
@@ -714,14 +714,14 @@ test("cmux Dock control lookup ignores another control's record for the same sur
   });
   assert.equal(await readCmuxDockControlRegistration({
     workspaceId: "workspace-a",
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: ["shared-surface"],
     environment,
   }), null);
   await registerCmuxDockControl({
     workspaceId: "workspace-a",
     surfaceId: "shared-surface",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance-rail",
     processId: 4242,
     environment,
@@ -729,14 +729,14 @@ test("cmux Dock control lookup ignores another control's record for the same sur
   });
   assert.equal((await readCmuxDockControlRegistration({
     workspaceId: "workspace-a",
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: ["shared-surface"],
     environment,
   })).instanceId, "instance-rail");
 });
 
 test("cmux Dock control lookup prefers the current workspace and then the newest record", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-control-order-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-control-order-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   await registerCmuxDockControl({
@@ -780,7 +780,7 @@ test("a main surface launched from home does not outrank the workspace's checked
   };
   const result = await resolveCmuxProjectContext({
     run,
-    environment: { CMUX_SURFACE_ID: "dock-surface", CMUX_DOCK_CONTROL_ID: "git-rail" },
+    environment: { CMUX_SURFACE_ID: "dock-surface", CMUX_DOCK_CONTROL_ID: "siderail" },
     fallbackCwd: "/Users/operator",
     isDirectory: async () => true,
     isRepository: async (candidate) => candidate === "/worktrees/branding-options",
@@ -791,16 +791,16 @@ test("a main surface launched from home does not outrank the workspace's checked
 });
 
 async function writeLegacyRecord(environment, { workspaceId, surfaceId, instanceId, processId = 4242, updatedAt = 1 }) {
-  const statePath = cmuxDockControlStatePath({ workspaceId, controlId: "git-rail", environment });
+  const statePath = cmuxDockControlStatePath({ workspaceId, controlId: "siderail", environment });
   await fs.mkdir(path.dirname(statePath), { recursive: true });
   await fs.writeFile(statePath, JSON.stringify({
-    version: 2, workspaceId, surfaceId, controlId: "git-rail", instanceId, processId, updatedAt,
+    version: 2, workspaceId, surfaceId, controlId: "siderail", instanceId, processId, updatedAt,
   }));
   return statePath;
 }
 
 test("a legacy record is migrated forward and its duplicates for the same surface are removed", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-migrate-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-migrate-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   const paths = [];
@@ -814,7 +814,7 @@ test("a legacy record is migrated forward and its duplicates for the same surfac
   });
 
   const lookup = (readStartMarker) => readCmuxDockControlRegistration({
-    workspaceId: "ws-c", controlId: "git-rail", surfaceIds: ["dock-surface"], environment, readStartMarker,
+    workspaceId: "ws-c", controlId: "siderail", surfaceIds: ["dock-surface"], environment, readStartMarker,
   });
 
   // Without a marker for the recorded process, promotion is refused and the
@@ -838,7 +838,7 @@ test("a legacy record is migrated forward and its duplicates for the same surfac
   assert.deepEqual(migrated, {
     version: 3,
     surfaceId: "dock-surface",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "instance-1",
     processId: 4242,
     processStartedAt: "start-marker",
@@ -848,7 +848,7 @@ test("a legacy record is migrated forward and its duplicates for the same surfac
 });
 
 test("a version 3 record is preferred without ever scanning legacy records", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-prefer-v3-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-prefer-v3-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   const legacy = await writeLegacyRecord(environment, {
@@ -864,7 +864,7 @@ test("a version 3 record is preferred without ever scanning legacy records", asy
     readStartMarker: async () => "start",
   });
   const found = await readCmuxDockControlRegistration({
-    workspaceId: "ws-b", controlId: "git-rail", surfaceIds: ["dock-surface"], environment,
+    workspaceId: "ws-b", controlId: "siderail", surfaceIds: ["dock-surface"], environment,
   });
   assert.equal(found.instanceId, "live-instance");
   // The legacy record is left alone because no scan was needed to find the control.
@@ -872,9 +872,9 @@ test("a version 3 record is preferred without ever scanning legacy records", asy
 });
 
 test("a failed migration still returns the legacy record rather than losing the control", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-migrate-fail-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-migrate-fail-"));
   t.after(async () => {
-    await fs.chmod(path.join(root, "herdr-gitrail", "cmux-controls"), 0o700).catch(() => {});
+    await fs.chmod(path.join(root, "siderail", "cmux-controls"), 0o700).catch(() => {});
     await fs.rm(root, { recursive: true, force: true });
   });
   const environment = { XDG_CACHE_HOME: root };
@@ -885,7 +885,7 @@ test("a failed migration still returns the legacy record rather than losing the 
   await fs.chmod(path.dirname(legacy), 0o500);
 
   const found = await readCmuxDockControlRegistration({
-    workspaceId: "ws-a", controlId: "git-rail", surfaceIds: ["dock-surface"], environment,
+    workspaceId: "ws-a", controlId: "siderail", surfaceIds: ["dock-surface"], environment,
     readStartMarker: async () => "start-marker",
   });
   assert.equal(found.version, 2);
@@ -899,7 +899,7 @@ test("a failed migration still returns the legacy record rather than losing the 
 test("legacy selection prefers the current workspace and then the newest record", async (t) => {
   // Each lookup migrates what it selects, so every case needs its own store.
   const select = async (workspaceId) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-legacy-order-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-legacy-order-"));
     t.after(() => fs.rm(root, { recursive: true, force: true }));
     const environment = { XDG_CACHE_HOME: root };
     await writeLegacyRecord(environment, {
@@ -909,7 +909,7 @@ test("legacy selection prefers the current workspace and then the newest record"
       workspaceId: "ws-new", surfaceId: "dock-b", instanceId: "new", updatedAt: 20,
     });
     return (await readCmuxDockControlRegistration({
-      workspaceId, controlId: "git-rail", surfaceIds: ["dock-a", "dock-b"], environment,
+      workspaceId, controlId: "siderail", surfaceIds: ["dock-a", "dock-b"], environment,
     })).instanceId;
   };
   assert.equal(await select("ws-old"), "old");
@@ -917,7 +917,7 @@ test("legacy selection prefers the current workspace and then the newest record"
 });
 
 test("a dead process never causes a record to be pruned, so relaunch can still find its Dock", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-dead-pid-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-dead-pid-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   await registerCmuxDockControl({
@@ -930,7 +930,7 @@ test("a dead process never causes a record to be pruned, so relaunch can still f
     readStartMarker: async () => "start",
   });
   const found = await readCmuxDockControlRegistration({
-    workspaceId: "ws-a", controlId: "git-rail", surfaceIds: ["dock-surface"], environment,
+    workspaceId: "ws-a", controlId: "siderail", surfaceIds: ["dock-surface"], environment,
   });
   assert.equal(found.instanceId, "exited-instance");
   assert.equal(await cmuxDockControlRegistrationIsActive(found, () => false), false);
@@ -938,7 +938,7 @@ test("a dead process never causes a record to be pruned, so relaunch can still f
 });
 
 test("a registration landing mid-migration is never clobbered by the legacy record", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-race-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-race-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   const legacy = await writeLegacyRecord(environment, {
@@ -946,10 +946,10 @@ test("a registration landing mid-migration is never clobbered by the legacy reco
   });
 
   // The marker read sits between the version 3 miss and the legacy publish, so
-  // registering here reproduces a GitRail starting inside that exact window.
+  // registering here reproduces a SideRail starting inside that exact window.
   const found = await readCmuxDockControlRegistration({
     workspaceId: "ws-a",
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: ["dock-surface"],
     environment,
     readStartMarker: async () => {
@@ -970,7 +970,7 @@ test("a registration landing mid-migration is never clobbered by the legacy reco
   assert.deepEqual(found, {
     version: 3,
     surfaceId: "dock-surface",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "fresh-instance",
     processId: 9999,
     processStartedAt: "fresh-marker",
@@ -986,7 +986,7 @@ test("a registration landing mid-migration is never clobbered by the legacy reco
 });
 
 test("concurrent migrations of one legacy record agree on a single canonical winner", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-race-many-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-race-many-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: root };
   for (const workspaceId of ["ws-a", "ws-b", "ws-c", "ws-d"]) {
@@ -996,7 +996,7 @@ test("concurrent migrations of one legacy record agree on a single canonical win
   }
   const lookup = () => readCmuxDockControlRegistration({
     workspaceId: "ws-a",
-    controlId: "git-rail",
+    controlId: "siderail",
     surfaceIds: ["dock-surface"],
     environment,
     readStartMarker: async () => "start-marker",
@@ -1004,5 +1004,5 @@ test("concurrent migrations of one legacy record agree on a single canonical win
   const results = await Promise.all(Array.from({ length: 8 }, lookup));
   assert.equal(results.every((result) => result?.surfaceId === "dock-surface"), true);
   assert.equal(new Set(results.map((result) => JSON.stringify(result))).size, 1);
-  assert.deepEqual(await fs.readdir(path.join(root, "herdr-gitrail", "cmux-controls")), ["surfaces"]);
+  assert.deepEqual(await fs.readdir(path.join(root, "siderail", "cmux-controls")), ["surfaces"]);
 });

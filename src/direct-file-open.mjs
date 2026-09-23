@@ -30,7 +30,7 @@ export async function openExternalFile({
     let sourcePath;
     if (needsMaterializedRevision(descriptor, metadata, temporarySource)) {
       const raw = await loadRawBytes({ repoRoot, filePath, descriptor, metadata, maxFileBytes });
-      temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
+      temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-preview-"));
       await fs.chmod(temporaryDirectory, 0o700);
       sourcePath = path.join(temporaryDirectory, path.basename(filePath) || "preview.md");
       await fs.writeFile(sourcePath, raw.bytes, { mode: 0o600 });

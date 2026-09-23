@@ -9,19 +9,19 @@ test("security policy directs reports to the repository's private reporting chan
   assert.ok(policy.includes(`](${repositoryUrl}/security/advisories/new)`));
   assert.doesNotMatch(policy, /security@|within \d+ (?:hours|days)|acknowledge within/i);
   assert.doesNotMatch(policy, /private pre-release repository|does not currently advertise a security/i);
-  assert.match(policy, /Repository contents never control GitRail configuration/);
+  assert.match(policy, /Repository contents never control SideRail configuration/);
 });
 
 test("documentation states the eventual refresh and user-only configuration contracts", async () => {
   const readme = await fs.readFile("README.md", "utf8");
   assert.match(readme, /refresh is intentionally eventually consistent/);
   assert.match(readme, /built-in defaults/);
-  assert.match(readme, /~\/\.config\/git-rail\/config\.json/);
-  assert.match(readme, /GIT_RAIL_\*/);
-  assert.match(readme, /git config --local 'branch\.feature\/my-work\.gitrail-base'/);
-  assert.match(readme, /git config --worktree --unset-all 'branch\.feature\/my-work\.gitrail-base'/);
+  assert.match(readme, /~\/\.config\/siderail\/config\.json/);
+  assert.match(readme, /SIDERAIL_\*/);
+  assert.match(readme, /git config --local 'branch\.feature\/my-work\.siderail-base'/);
+  assert.match(readme, /git config --worktree --unset-all 'branch\.feature\/my-work\.siderail-base'/);
   assert.match(readme, /Untracked is a separate section/);
-  await assert.rejects(() => fs.access("schema/v1/git-rail.schema.json"), (error) => error.code === "ENOENT");
+  await assert.rejects(() => fs.access("schema/v1/siderail.schema.json"), (error) => error.code === "ENOENT");
 });
 
 test("public installation and release evidence instructions enforce the candidate gates", async () => {
@@ -70,10 +70,10 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /`cmux open` as a native file tab/);
   assert.match(guide, /ambient\s+`CMUX_SURFACE_ID` is cleared/);
   assert.match(guide, /process-backed active\s+instance and stable control\/surface identity/);
-  assert.match(guide, /relaunches GitRail in the same verified Dock terminal/);
+  assert.match(guide, /relaunches SideRail in the same verified Dock terminal/);
   assert.match(guide, /Staged · Index · read-only/);
   assert.match(guide, /before deletion/);
-  assert.match(guide, /stable GitRail\s+Dock control identity/);
+  assert.match(guide, /stable SideRail\s+Dock control identity/);
   assert.match(guide, /Opening file B never closes or\s+reuses the tab previously opened for file A/);
   assert.match(guide, /retried on the next\s+preview open/);
   assert.match(guide, /migrates surface-keyed and replacement-era ownership records/);
@@ -92,10 +92,10 @@ test("cmux documentation and project Dock config describe the supported right-si
   assert.match(guide, /legacy records are removed only when this migration published the\s+record that is now canonical/);
   assert.match(guide, /falls back\s+to the bounded refresh poll/);
   assert.deepEqual(dock.controls.map(({ id, title, cwd }) => ({ id, title, cwd })), [
-    { id: "git-rail", title: "GitRail", cwd: "." },
+    { id: "siderail", title: "SideRail", cwd: "." },
   ]);
   assert.match(dock.controls[0].command, /scripts\/cmux-node-launcher\.sh/);
-  assert.match(dock.controls[0].command, /scripts\/cmux-git-rail\.mjs/);
+  assert.match(dock.controls[0].command, /scripts\/cmux-siderail\.mjs/);
   assert.match(packageJson.scripts["cmux:launch"], /open-cmux-dock\.mjs/);
 });
 
@@ -104,8 +104,8 @@ test("live release cleanup is isolated from the operator's Herdr installation", 
   assert.match(wrapper, /unset HERDR_ENV HERDR_WORKSPACE_ID HERDR_TAB_ID HERDR_PANE_ID/);
   assert.match(wrapper, /XDG_CONFIG_HOME="\$mode_root\/c"/);
   assert.match(wrapper, /HERDR_SESSION="gr\$\{mode_key\}\$\{\$\}"/);
-  assert.match(wrapper, /GIT_RAIL_LIVE_GIT_SHIM="\$release_bin\/git"/);
-  assert.doesNotMatch(wrapper, /GIT_RAIL_LIVE_GIT_SHIM=\$git_bin/);
+  assert.match(wrapper, /SIDERAIL_LIVE_GIT_SHIM="\$release_bin\/git"/);
+  assert.doesNotMatch(wrapper, /SIDERAIL_LIVE_GIT_SHIM=\$git_bin/);
 });
 
 test("sealed release logs are not hidden by the general log ignore", async () => {

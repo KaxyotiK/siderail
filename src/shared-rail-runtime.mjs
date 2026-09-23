@@ -30,11 +30,11 @@ function codedError(code, message, cause) {
 }
 
 export function resolveRailStateMode(environment = process.env) {
-  const value = String(environment.GIT_RAIL_STATE_MODE || "shared").trim();
+  const value = String(environment.SIDERAIL_STATE_MODE || "shared").trim();
   if (value === "shared" || value === "in-process") return value;
   throw codedError(
     "GIT_STATE_MODE_UNSUPPORTED",
-    `GIT_RAIL_STATE_MODE must be shared or in-process, received ${JSON.stringify(value)}`,
+    `SIDERAIL_STATE_MODE must be shared or in-process, received ${JSON.stringify(value)}`,
   );
 }
 
@@ -42,11 +42,11 @@ export function resolveSharedRuntimeSemantics(environment = process.env, {
   loadConfiguration = loadConfig,
 } = {}) {
   const { config, errors } = loadConfiguration(environment);
-  const watchMode = String(environment.GIT_RAIL_WATCH_MODE || "watch-and-poll").trim();
+  const watchMode = String(environment.SIDERAIL_WATCH_MODE || "watch-and-poll").trim();
   if (!WATCH_MODES.has(watchMode)) {
     throw codedError(
       "GIT_STATE_WATCH_MODE_UNSUPPORTED",
-      `GIT_RAIL_WATCH_MODE must be watch-and-poll, watch-only, or poll-only, received ${JSON.stringify(watchMode)}`,
+      `SIDERAIL_WATCH_MODE must be watch-and-poll, watch-only, or poll-only, received ${JSON.stringify(watchMode)}`,
     );
   }
   const providerConfig = Object.freeze({
@@ -286,7 +286,7 @@ export async function createSharedRailRuntime({
 } = {}) {
   const mode = resolveRailStateMode(environment);
   if (mode === "in-process") {
-    throw codedError("GIT_STATE_IN_PROCESS_REQUESTED", "Shared Git state is disabled by GIT_RAIL_STATE_MODE=in-process");
+    throw codedError("GIT_STATE_IN_PROCESS_REQUESTED", "Shared Git state is disabled by SIDERAIL_STATE_MODE=in-process");
   }
   const semantics = resolveSharedRuntimeSemantics(environment, { loadConfiguration });
   const runtime = await resolveRuntime({ environment });

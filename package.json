@@ -1,17 +1,17 @@
 {
-  "name": "git-railgun",
+  "name": "siderail",
   "version": "0.1.0",
   "description": "A compact, read-only Files and Git sidebar for Herdr and cmux",
   "type": "module",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/KaxyotiK/git-railgun.git"
+    "url": "git+https://github.com/KaxyotiK/siderail.git"
   },
   "bugs": {
-    "url": "https://github.com/KaxyotiK/git-railgun/issues"
+    "url": "https://github.com/KaxyotiK/siderail/issues"
   },
-  "homepage": "https://github.com/KaxyotiK/git-railgun#readme",
+  "homepage": "https://github.com/KaxyotiK/siderail#readme",
   "engines": {
     "node": ">=22"
   },
@@ -19,7 +19,7 @@
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "lint": "node scripts/lint.mjs && eslint . && knip --include exports",
     "format:check": "node scripts/lint.mjs",
-    "snapshot": "node scripts/git-rail.mjs --demo --snapshot --width 52 --height 46",
+    "snapshot": "node scripts/siderail.mjs --demo --snapshot --width 52 --height 46",
     "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='src/**/*.mjs' --test-coverage-lines=95 --test-coverage-branches=86 --test-coverage-functions=95 test/*.test.mjs",
     "artifact:verify": "node scripts/verify-artifact.mjs",
     "screenshots:verify": "node scripts/verify-screenshots.mjs",

@@ -48,14 +48,14 @@ function extractCommit(commit, destination) {
 function snapshot(checkout, width, environmentRoot) {
   const environment = { ...process.env };
   for (const key of Object.keys(environment)) {
-    if (key.startsWith("GIT_RAIL_") || key.startsWith("HERDR_")) delete environment[key];
+    if (key.startsWith("SIDERAIL_") || key.startsWith("HERDR_")) delete environment[key];
   }
   environment.HOME = path.join(environmentRoot, "home");
   environment.XDG_CONFIG_HOME = path.join(environmentRoot, "config");
   environment.XDG_CACHE_HOME = path.join(environmentRoot, "cache");
   environment.XDG_STATE_HOME = path.join(environmentRoot, "state");
   return execFileSync(process.execPath, [
-    "scripts/git-rail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "46",
+    "scripts/siderail.mjs", "--demo", "--snapshot", "--width", String(width), "--height", "46",
   ], { cwd: checkout, env: environment });
 }
 
@@ -70,7 +70,7 @@ export function verifyScreenshotMetadata({ candidate = "HEAD", resolveCommits = 
   const visualSourceSha = resolveCommits ? fullCommit(visualSource, "visual source") : visualSource;
   const captureSourceSha = resolveCommits ? fullCommit(captureSource, "capture source") : captureSource;
   for (const [width, expected] of expectedImages) {
-    const file = path.join(repositoryRoot, "docs", "screenshots", `gitrail-${width}.png`);
+    const file = path.join(repositoryRoot, "docs", "screenshots", `siderail-${width}.png`);
     const bytes = fs.readFileSync(file);
     assert.ok(bytes.length > 10_000, `${path.basename(file)} is unexpectedly small`);
     assert.deepEqual(pngDimensions(bytes), expected, `${path.basename(file)} dimensions changed`);
@@ -80,7 +80,7 @@ export function verifyScreenshotMetadata({ candidate = "HEAD", resolveCommits = 
 
 export function verifyScreenshotSnapshots({ candidate = "HEAD" } = {}) {
   const metadata = verifyScreenshotMetadata({ candidate, resolveCommits: true });
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-screenshot-proof-"));
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-screenshot-proof-"));
   try {
     const sourceRoot = path.join(temporaryRoot, "source");
     const captureRoot = path.join(temporaryRoot, "capture");
@@ -89,7 +89,7 @@ export function verifyScreenshotSnapshots({ candidate = "HEAD" } = {}) {
     extractCommit(metadata.captureSourceSha, captureRoot);
     extractCommit(metadata.candidateSha, candidateRoot);
     for (const width of expectedImages.keys()) {
-      const screenshotPath = path.join("docs", "screenshots", `gitrail-${width}.png`);
+      const screenshotPath = path.join("docs", "screenshots", `siderail-${width}.png`);
       assert.deepEqual(
         fs.readFileSync(path.join(candidateRoot, screenshotPath)),
         fs.readFileSync(path.join(captureRoot, screenshotPath)),

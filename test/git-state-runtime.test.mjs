@@ -7,10 +7,10 @@ import test from "node:test";
 import { readProcessStartIdentity, resolveGitStateRuntime, runGitStateCoordinator } from "../src/git-state-runtime.mjs";
 
 test("runtime namespace follows immutable env overrides while config-file edits stay in one namespace", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-runtime-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-runtime-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const configRoot = path.join(root, "config");
-  const configDirectory = path.join(configRoot, "git-rail");
+  const configDirectory = path.join(configRoot, "siderail");
   const hostSocketPath = path.join(root, "herdr.sock");
   await fs.mkdir(configDirectory, { recursive: true });
   await fs.writeFile(hostSocketPath, "fixture");
@@ -29,7 +29,7 @@ test("runtime namespace follows immutable env overrides while config-file edits 
   await writeConfig(20_000);
   const changedFile = await resolveGitStateRuntime({ environment });
   const changedEnvironment = await resolveGitStateRuntime({
-    environment: { ...environment, GIT_RAIL_POLL_INTERVAL_MS: "20000" },
+    environment: { ...environment, SIDERAIL_POLL_INTERVAL_MS: "20000" },
   });
   assert.equal(first.identity.namespaceId, changedFile.identity.namespaceId);
   assert.notEqual(first.schedulerConfig.pollIntervalMs, changedFile.schedulerConfig.pollIntervalMs);
@@ -53,7 +53,7 @@ test("process start identity uses an absolute system command independent of PATH
 });
 
 test("runtime rejects mismatched identity and lost launch leases before binding", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-runtime-guard-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-runtime-guard-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const paths = { socketPath: path.join(root, "state.sock"), leasePath: path.join(root, "owner.json") };
   const resolved = {
@@ -79,7 +79,7 @@ test("runtime rejects mismatched identity and lost launch leases before binding"
 });
 
 test("runtime owns signal, coordinator, socket, owner, and lease cleanup", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-runtime-owner-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-runtime-owner-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const paths = { socketPath: path.join(root, "state.sock"), leasePath: path.join(root, "owner.json") };
   const nonce = "owner-nonce";

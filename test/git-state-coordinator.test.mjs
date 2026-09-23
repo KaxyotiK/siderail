@@ -42,7 +42,7 @@ async function waitFor(predicate, timeoutMs = 3_000) {
 }
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-coordinator-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-coordinator-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return { root, socketPath: path.join(root, "coordinator.sock") };
 }
@@ -479,7 +479,7 @@ test("the thin launcher starts one real daemon and records its complete lifecycl
     ...process.env,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: os.devNull,
-    GIT_RAIL_PERFORMANCE_LOG: performanceLog,
+    SIDERAIL_PERFORMANCE_LOG: performanceLog,
     HERDR_SOCKET_PATH: hostSocketPath,
     XDG_RUNTIME_DIR: root,
   };

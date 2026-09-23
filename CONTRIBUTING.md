@@ -1,4 +1,4 @@
-# Contributing to GitRail
+# Contributing to SideRail
 
 Use Node.js 22 or newer. For host integration, use Herdr 0.8.x or a supported
 cmux build as described in the [cmux guide](docs/CMUX.md). Create a focused

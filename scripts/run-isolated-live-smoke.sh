@@ -17,7 +17,7 @@ server_pid=""
 cleanup() {
   set +e
   if [[ -n ${HERDR_SESSION:-} ]]; then
-    "$herdr_bin" plugin unlink local.git-rail >/dev/null 2>&1
+    "$herdr_bin" plugin unlink siderail >/dev/null 2>&1
     "$herdr_bin" session stop "$HERDR_SESSION" --json >/dev/null 2>&1
   fi
   if [[ -n $server_pid ]]; then wait "$server_pid" >/dev/null 2>&1; fi
@@ -36,9 +36,9 @@ ln -s "$herdr_bin" "$release_bin/herdr"
 ln -s /bin/bash "$release_bin/bash"
 ln -s "$(command -v dirname)" "$release_bin/dirname"
 export HERDR_BIN_PATH=$herdr_bin
-export GIT_RAIL_NODE_PATH=$node_bin
-export GIT_RAIL_LIVE_GIT_SHIM="$release_bin/git"
-export GIT_RAIL_POLL_INTERVAL_MS=1000
+export SIDERAIL_NODE_PATH=$node_bin
+export SIDERAIL_LIVE_GIT_SHIM="$release_bin/git"
+export SIDERAIL_POLL_INTERVAL_MS=1000
 
 start_server() {
   env PATH="$release_bin" "$herdr_bin" server &
@@ -57,7 +57,7 @@ stop_server() {
 }
 
 verify_coordinator_cleanup() {
-  "$node_bin" --input-type=module - "$GIT_RAIL_PERFORMANCE_LOG" "$XDG_RUNTIME_DIR" <<'NODE'
+  "$node_bin" --input-type=module - "$SIDERAIL_PERFORMANCE_LOG" "$XDG_RUNTIME_DIR" <<'NODE'
 import fs from 'node:fs';
 import path from 'node:path';
 const [log, root] = process.argv.slice(2);
@@ -73,7 +73,7 @@ function runtimeFiles(directory) {
     return entry.isDirectory() ? runtimeFiles(file) : [file];
   });
 }
-while (owners.some((owner) => alive(owner.pid)) || runtimeFiles(path.join(root, 'git-railgun')).length) {
+while (owners.some((owner) => alive(owner.pid)) || runtimeFiles(path.join(root, 'siderail')).length) {
   if (Date.now() >= deadline) throw new Error('candidate coordinator process or owned socket/lease survived uninstall');
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
@@ -88,9 +88,9 @@ for watch_mode in watch-only poll-only; do
   export XDG_CACHE_HOME="$mode_root/k"
   export XDG_STATE_HOME="$mode_root/s"
   export XDG_RUNTIME_DIR="$mode_root/r"
-  export GIT_RAIL_PERFORMANCE_LOG="$mode_root/components.jsonl"
+  export SIDERAIL_PERFORMANCE_LOG="$mode_root/components.jsonl"
   export HERDR_SESSION="gr${mode_key}${$}"
-  export GIT_RAIL_WATCH_MODE=$watch_mode
+  export SIDERAIL_WATCH_MODE=$watch_mode
   mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
   mkdir -m 700 "$XDG_RUNTIME_DIR"
 
@@ -104,11 +104,11 @@ for watch_mode in watch-only poll-only; do
 
   start_server
   test "$("$herdr_bin" plugin list)" = "No plugins installed."
-  unlink_proof=$("$herdr_bin" workspace create --cwd "$candidate_root" --label "GitRail unlink proof" --no-focus)
+  unlink_proof=$("$herdr_bin" workspace create --cwd "$candidate_root" --label "SideRail unlink proof" --no-focus)
   unlink_tab=$("$node_bin" -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).result.tab.tab_id)' <<<"$unlink_proof")
   sleep 1
   panes=$("$herdr_bin" pane list)
-  "$node_bin" -e 'const fs=require("node:fs");const [tab]=process.argv.slice(1);const panes=JSON.parse(fs.readFileSync(0,"utf8")).result.panes;if(panes.some((pane)=>pane.tab_id===tab&&["HERDR GITRAIL","HERDER GITRAIL"].includes(pane.label)))process.exit(1)' "$unlink_tab" <<<"$panes"
+  "$node_bin" -e 'const fs=require("node:fs");const [tab]=process.argv.slice(1);const panes=JSON.parse(fs.readFileSync(0,"utf8")).result.panes;if(panes.some((pane)=>pane.tab_id===tab&&["SIDERAIL","HERDER SIDERAIL"].includes(pane.label)))process.exit(1)' "$unlink_tab" <<<"$panes"
   stop_server
 done
 

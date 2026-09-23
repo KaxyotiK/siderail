@@ -13,7 +13,7 @@ function safeToken(value) {
 
 function paneStateDirectory(environment = process.env) {
   const cacheRoot = environment.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(cacheRoot, "herdr-gitrail", "panes");
+  return path.join(cacheRoot, "siderail", "panes");
 }
 
 export function paneStatePath({ workspaceId, tabId, entrypoint, environment = process.env }) {
@@ -148,7 +148,7 @@ export async function acquirePaneStateLock(statePath, {
       await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
     }
   }
-  throw new Error("GitRail pane creation is already in progress for this tab");
+  throw new Error("SideRail pane creation is already in progress for this tab");
 }
 
 export async function removeLegacyPaneState(options) {

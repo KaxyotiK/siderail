@@ -61,11 +61,11 @@ import { resolvePalette } from "../src/theme.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
-const HOST = process.env.GIT_RAIL_HOST === "cmux" ? "cmux" : "herdr";
+const HOST = process.env.SIDERAIL_HOST === "cmux" ? "cmux" : "herdr";
 const C = resolvePalette(process.env, { host: HOST });
 const cliArgs = new Set(process.argv.slice(2));
 const snapshotMode = cliArgs.has("--snapshot");
-const demoMode = cliArgs.has("--demo") || process.env.GIT_RAIL_DEMO === "1";
+const demoMode = cliArgs.has("--demo") || process.env.SIDERAIL_DEMO === "1";
 const forcedWidth = numberArg("--width");
 const forcedHeight = numberArg("--height");
 const initialSearch = stringArg("--search");
@@ -102,14 +102,14 @@ let sourcePaneId = hostIdentity.sourcePaneId;
 let cmuxDockSurfaceId = hostIdentity.dockSurfaceId;
 let cmuxMainSurfaceId = "";
 // Discovered from CMUX_SURFACE_ID on the first resolution. Left empty so live
-// Dock ownership outranks a GIT_RAIL_WINDOW_ID inherited from another window.
+// Dock ownership outranks a SIDERAIL_WINDOW_ID inherited from another window.
 let cmuxOwnerWindowId = "";
 let fixtureRoot = demoMode ? await createFixtureRepository() : "";
 let snapshotEnvironmentRoot = "";
 if (snapshotMode && demoMode) {
-  snapshotEnvironmentRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gitrail-snapshot-env-"));
+  snapshotEnvironmentRoot = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-snapshot-env-"));
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith("GIT_RAIL_")) delete process.env[key];
+    if (key.startsWith("SIDERAIL_")) delete process.env[key];
   }
   process.env.HOME = path.join(snapshotEnvironmentRoot, "home");
   process.env.XDG_CONFIG_HOME = path.join(snapshotEnvironmentRoot, "config");
@@ -151,7 +151,7 @@ async function liveProviderCwd() {
     if (resolved.warning) cmuxOwnerWindowId = "";
     else if (resolved.windowId) {
       cmuxOwnerWindowId = resolved.windowId;
-      process.env.GIT_RAIL_WINDOW_ID = resolved.windowId;
+      process.env.SIDERAIL_WINDOW_ID = resolved.windowId;
     }
     currentWorkspaceId = resolved.workspaceId || currentWorkspaceId;
     cmuxDockSurfaceId = resolved.dockSurfaceId || cmuxDockSurfaceId;
@@ -264,7 +264,7 @@ if (snapshotMode || demoMode) {
   await applyHostContext(hostContext || { cwd: currentProviderCwd, hasContent: !socketContext, visible: true });
   state ||= startupFailureState(currentProviderCwd, new Error(socketContext ? "Waiting for a content pane or host connection" : "Initial Git state unavailable"));
 }
-if (demoMode) state.repository = "gitrail-fixture";
+if (demoMode) state.repository = "siderail-fixture";
 if (viewportFixtureCount) {
   state.files = Array.from({ length: viewportFixtureCount }, (_value, index) => ({
     path: `folder-${String(index % 100).padStart(3, "0")}/file-${String(index).padStart(5, "0")}.txt`,
@@ -730,7 +730,7 @@ function helpRows(width) {
     " g           Tree / Folders",
     " r           Refresh",
     " Esc         Clear selection / close",
-    " q           Close GitRail",
+    " q           Close SideRail",
   ];
   const states = [
     helpEntry("⊡", "Modified", C.amber),
@@ -984,8 +984,8 @@ async function openPreview(file) {
   const sourceTabId = currentSourceTabId;
   const descriptor = Buffer.from(JSON.stringify(previewDescriptor)).toString("base64url");
   const metadata = Buffer.from(JSON.stringify(previewMetadata)).toString("base64url");
-  const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "local.git-rail", "--entrypoint", "file-preview", "--placement", "tab",
-    "--env", `GIT_RAIL_PREVIEW_PATH=${file.path}`, "--env", `GIT_RAIL_PREVIEW_REPO=${state.repoRoot || state.cwd}`, "--env", `GIT_RAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `GIT_RAIL_PREVIEW_METADATA=${metadata}`, "--env", `GIT_RAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
+  const openArgs = ["plugin", "pane", "open", "--plugin", process.env.HERDR_PLUGIN_ID || "siderail", "--entrypoint", "file-preview", "--placement", "tab",
+    "--env", `SIDERAIL_PREVIEW_PATH=${file.path}`, "--env", `SIDERAIL_PREVIEW_REPO=${state.repoRoot || state.cwd}`, "--env", `SIDERAIL_PREVIEW_DESCRIPTOR=${descriptor}`, "--env", `SIDERAIL_PREVIEW_METADATA=${metadata}`, "--env", `SIDERAIL_PREVIEW_TEMPORARY=${demoMode ? "1" : "0"}`, "--focus"];
   if (workspaceId) openArgs.push("--workspace", workspaceId);
   try {
     const opened = await openOwnedPreview({
@@ -1043,7 +1043,7 @@ function applyHostContext(context) {
 function applyRepositoryState(next) {
   const previousRepoRoot = state.repoRoot;
   const previousCwd = state.cwd;
-  if (demoMode) next.repository = "gitrail-fixture";
+  if (demoMode) next.repository = "siderail-fixture";
   state = next;
   filesViewGeneration += 1;
   filesViewModels.invalidate();
@@ -1122,7 +1122,7 @@ async function cleanup() {
 async function quit() { await cleanup(); process.exit(0); }
 async function fatal(error) {
   await cleanup();
-  process.stderr.write(`GitRail fatal error: ${safe(error?.stack || error?.message || error)}\n`);
+  process.stderr.write(`SideRail fatal error: ${safe(error?.stack || error?.message || error)}\n`);
   process.exit(1);
 }
 
@@ -1232,6 +1232,6 @@ uiReady = true;
 draw();
 startCmuxInvalidation();
 startContextFallback();
-if (process.env.NODE_ENV === "test" && process.env.GIT_RAIL_TEST_FATAL === "1") {
+if (process.env.NODE_ENV === "test" && process.env.SIDERAIL_TEST_FATAL === "1") {
   queueMicrotask(() => { throw new Error("injected fatal error"); });
 }

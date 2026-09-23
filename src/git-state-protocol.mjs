@@ -5,7 +5,7 @@ export const MAX_QUEUED_CONTROL_MESSAGES = 128;
 export const MAX_QUEUED_CONTROL_BYTES = 1024 * 1024;
 export const MAX_BLOCKED_WRITE_MS = 5_000;
 
-const SNAPSHOT_SCHEMA = "git-railgun.repository-snapshot.v1";
+const SNAPSHOT_SCHEMA = "siderail.repository-snapshot.v1";
 const MAX_ID_LENGTH = 128;
 const MAX_PATH_LENGTH = 32 * 1024;
 const MAX_MESSAGE_LENGTH = 4 * 1024;

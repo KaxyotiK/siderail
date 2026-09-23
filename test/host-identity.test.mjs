@@ -21,11 +21,11 @@ test("a cmux Dock never inherits Herdr workspace, pane, or tab identity", () => 
     host: "cmux",
     environment: {
       ...herdrEnvironment,
-      GIT_RAIL_SOURCE_PANE_ID: "herdr-source-pane",
-      GIT_RAIL_SOURCE_TAB_ID: "herdr-source-tab",
-      GIT_RAIL_PROJECT_CWD: "/worktrees/branding-options",
+      SIDERAIL_SOURCE_PANE_ID: "herdr-source-pane",
+      SIDERAIL_SOURCE_TAB_ID: "herdr-source-tab",
+      SIDERAIL_PROJECT_CWD: "/worktrees/branding-options",
       CMUX_SURFACE_ID: "dock-surface",
-      CMUX_DOCK_CONTROL_ID: "git-rail",
+      CMUX_DOCK_CONTROL_ID: "siderail",
     },
     fallbackCwd: "/fallback",
   });
@@ -35,7 +35,7 @@ test("a cmux Dock never inherits Herdr workspace, pane, or tab identity", () => 
     sourceTabId: "",
     workspaceId: "",
     dockSurfaceId: "dock-surface",
-    dockControlId: "git-rail",
+    dockControlId: "siderail",
   });
 });
 
@@ -47,7 +47,7 @@ test("a cmux Dock without a project cwd falls back to its own directory, never a
   });
   assert.equal(identity.cwd, "/Users/operator");
   assert.equal(identity.workspaceId, "");
-  assert.equal(identity.dockControlId, "git-rail");
+  assert.equal(identity.dockControlId, "siderail");
 });
 
 test("a Herdr pane never inherits cmux Dock identity", () => {
@@ -57,8 +57,8 @@ test("a Herdr pane never inherits cmux Dock identity", () => {
       ...herdrEnvironment,
       CMUX_SURFACE_ID: "dock-surface",
       CMUX_WORKSPACE_ID: "cmux-window",
-      CMUX_DOCK_CONTROL_ID: "git-rail",
-      GIT_RAIL_PROJECT_CWD: "/cmux/project",
+      CMUX_DOCK_CONTROL_ID: "siderail",
+      SIDERAIL_PROJECT_CWD: "/cmux/project",
     },
     fallbackCwd: "/fallback",
   });
@@ -73,7 +73,7 @@ test("a Herdr pane never inherits cmux Dock identity", () => {
 test("Herdr identity prefers explicit overrides, then plugin context, then ambient variables", () => {
   assert.equal(resolveHostIdentity({
     host: "herdr",
-    environment: { ...herdrEnvironment, GIT_RAIL_REPO_ROOT: "/explicit/root" },
+    environment: { ...herdrEnvironment, SIDERAIL_REPO_ROOT: "/explicit/root" },
   }).cwd, "/explicit/root");
   assert.equal(resolveHostIdentity({
     host: "herdr",
@@ -87,14 +87,14 @@ test("Herdr identity prefers explicit overrides, then plugin context, then ambie
   }).cwd, "/fallback");
   assert.equal(resolveHostIdentity({
     host: "herdr",
-    environment: { ...herdrEnvironment, GIT_RAIL_SOURCE_PANE_ID: "override-pane" },
+    environment: { ...herdrEnvironment, SIDERAIL_SOURCE_PANE_ID: "override-pane" },
   }).sourcePaneId, "override-pane");
 });
 
 test("an explicit repo root still overrides a cmux Dock project directory", () => {
   assert.equal(resolveHostIdentity({
     host: "cmux",
-    environment: { GIT_RAIL_REPO_ROOT: "/explicit/root", GIT_RAIL_PROJECT_CWD: "/dock/project" },
+    environment: { SIDERAIL_REPO_ROOT: "/explicit/root", SIDERAIL_PROJECT_CWD: "/dock/project" },
   }).cwd, "/explicit/root");
 });
 
@@ -114,7 +114,7 @@ test("blank and whitespace-only host variables are treated as absent", () => {
   const identity = resolveHostIdentity({
     host: "cmux",
     environment: {
-      GIT_RAIL_PROJECT_CWD: "   ",
+      SIDERAIL_PROJECT_CWD: "   ",
       CMUX_SURFACE_ID: "  ",
       CMUX_DOCK_CONTROL_ID: "   ",
     },
@@ -122,7 +122,7 @@ test("blank and whitespace-only host variables are treated as absent", () => {
   });
   assert.equal(identity.cwd, "/fallback");
   assert.equal(identity.dockSurfaceId, "");
-  assert.equal(identity.dockControlId, "git-rail");
+  assert.equal(identity.dockControlId, "siderail");
 });
 
 test("an unknown host is treated as Herdr rather than granting Dock identity", () => {

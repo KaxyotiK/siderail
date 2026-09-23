@@ -2,7 +2,7 @@
 
 These captures show the same deterministic production-provider demo at 36, 52,
 and 100 terminal columns. Each one renders the exact bytes
-`scripts/git-rail.mjs --demo --snapshot` writes at that width, with its complete
+`scripts/siderail.mjs --demo --snapshot` writes at that width, with its complete
 boundary and footer; the content is not cropped or hand-edited.
 
 - Visual source: `a1046a00386620c74315b93bdd92c8ffe19e1df3`
@@ -12,17 +12,17 @@ boundary and footer; the content is not cropped or hand-edited.
 
 | Narrow (36) | Standard (52) | Wide (100) |
 | --- | --- | --- |
-| [gitrail-36.png](gitrail-36.png) | [gitrail-52.png](gitrail-52.png) | [gitrail-100.png](gitrail-100.png) |
+| [siderail-36.png](siderail-36.png) | [siderail-52.png](siderail-52.png) | [siderail-100.png](siderail-100.png) |
 
 The fixture intentionally uses `feature/sidebar` and includes Against-base,
 commit, staged, unstaged, untracked text, and untracked binary states. Folders
 start collapsed, so the captures show section rows rather than expanded files.
 Never hand-edit totals or diff statistics.
 
-GitRail pins no 24-bit colors of its own; see [Colors and glyphs](../THEMING.md).
+SideRail pins no 24-bit colors of its own; see [Colors and glyphs](../THEMING.md).
 The captures therefore resolve its indexed colors through the reference dark
 palette in `scripts/render-screenshots.py`, which is what a conventional dark
-terminal theme shows. Menlo carries every glyph GitRail draws, so the captures need no font
+terminal theme shows. Menlo carries every glyph SideRail draws, so the captures need no font
 fallback; see the glyph-coverage note in that document.
 
 ## Regenerating

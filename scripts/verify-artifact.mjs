@@ -13,7 +13,7 @@ const requiredReleaseFiles = [
 ];
 missing.push(...requiredReleaseFiles.filter((file) => !fs.existsSync(file)));
 if (missing.length) throw new Error(`manifest references missing runtime files: ${missing.join(", ")}`);
-if (fs.existsSync("schema") || manifest.includes(".git-rail.json")) {
+if (fs.existsSync("schema") || manifest.includes(".siderail.json")) {
   throw new Error("removed schema or repository configuration leaked into the release contract");
 }
 for (const file of references) {

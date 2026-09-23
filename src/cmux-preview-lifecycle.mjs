@@ -21,7 +21,7 @@ function surfaceRows(payload) {
 
 function cacheDirectory(environment) {
   const root = environment.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(root, "herdr-gitrail", "cmux-previews");
+  return path.join(root, "siderail", "cmux-previews");
 }
 
 export function cmuxPreviewStatePath({ workspaceId, ownerControlId, ownerSurfaceId, sourceSurfaceId, environment = process.env }) {

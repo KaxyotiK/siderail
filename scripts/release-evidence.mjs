@@ -306,7 +306,7 @@ export function createTagMessage({
     return `- ${cell}: ${blobRoot}/${evidence.path}#sha256=${evidence.sha256}`;
   });
   return [
-    `Herdr GitRail ${manifest.release}`,
+    `SideRail ${manifest.release}`,
     "",
     `Validated candidate: ${candidateSha}`,
     `Evidence commit: ${evidenceCommit}`,

@@ -20,36 +20,36 @@ test("manifest routes every runtime entrypoint through an absolute shell and lau
 });
 
 test("launcher accepts an absolute Node executable whose path contains spaces", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail node path "));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail node path "));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const linkedNode = path.join(root, "node executable");
   await fs.symlink(process.execPath, linkedNode);
   const result = await execFileAsync("/bin/bash", [launcher, "-e", "process.stdout.write('ok')"], {
-    env: { GIT_RAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
+    env: { SIDERAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
   });
   assert.equal(result.stdout, "ok");
 });
 
 test("cmux bootstrap preserves an explicit Node executable through a restricted Dock PATH", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail cmux node path "));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail cmux node path "));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const linkedNode = path.join(root, "node executable");
   await fs.symlink(process.execPath, linkedNode);
-  const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write(process.env.GIT_RAIL_NODE_PATH)"], {
-    env: { GIT_RAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
+  const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write(process.env.SIDERAIL_NODE_PATH)"], {
+    env: { SIDERAIL_NODE_PATH: linkedNode, PATH: "/untrusted" },
   });
   assert.equal(result.stdout, linkedNode);
 });
 
-test("direct cmux bootstrap enters a login shell after GitRail exits", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail cmux shell "));
+test("direct cmux bootstrap enters a login shell after SideRail exits", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail cmux shell "));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const fakeShell = path.join(root, "login shell");
   await fs.writeFile(fakeShell, "#!/bin/bash\nprintf '|shell:%s' \"$1\"\n", { mode: 0o700 });
   const result = await execFileAsync("/bin/bash", [cmuxLauncher, "-e", "process.stdout.write('tui')"], {
     env: {
-      GIT_RAIL_NODE_PATH: process.execPath,
-      GIT_RAIL_STAY_OPEN: "1",
+      SIDERAIL_NODE_PATH: process.execPath,
+      SIDERAIL_STAY_OPEN: "1",
       SHELL: fakeShell,
       PATH: "/untrusted",
     },
@@ -58,19 +58,19 @@ test("direct cmux bootstrap enters a login shell after GitRail exits", async (t)
 });
 
 test("launcher rejects missing and unsupported Node before running the target", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-launcher-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-launcher-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const fake = path.join(root, "node");
   const marker = path.join(root, "ran");
   await fs.writeFile(fake, "#!/bin/bash\nif [[ \"$1\" == \"-p\" ]]; then echo 21; else touch \"$MARKER\"; fi\n", { mode: 0o700 });
   await assert.rejects(
-    () => execFileAsync("/bin/bash", [launcher, "target.mjs"], { env: { GIT_RAIL_NODE_PATH: fake, MARKER: marker } }),
+    () => execFileAsync("/bin/bash", [launcher, "target.mjs"], { env: { SIDERAIL_NODE_PATH: fake, MARKER: marker } }),
     (error) => /requires Node\.js 22/.test(error.stderr),
   );
   await assert.rejects(() => fs.access(marker), (error) => error.code === "ENOENT");
   await assert.rejects(
     () => execFileAsync("/bin/bash", [launcher, "target.mjs"], { env: { PATH: "/missing" } }),
-    (error) => /install Node or set GIT_RAIL_NODE_PATH/.test(error.stderr),
+    (error) => /install Node or set SIDERAIL_NODE_PATH/.test(error.stderr),
   );
 });
 

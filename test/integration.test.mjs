@@ -55,7 +55,7 @@ test("worktree presence validation checks only candidates and stops at its budge
 });
 
 async function traceGitCommands(t, run) {
-  const traceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-command-trace-"));
+  const traceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-command-trace-"));
   t.after(() => fs.rm(traceRoot, { recursive: true, force: true }));
   const tracePath = path.join(traceRoot, "trace.jsonl");
   await fs.writeFile(tracePath, "");
@@ -93,7 +93,7 @@ test("fixture state is derived by the production provider", async (t) => {
 });
 
 test("linked worktrees report the common repository name separately from the branch", async (t) => {
-  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-linked-worktree-name-"));
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-linked-worktree-name-"));
   t.after(() => fs.rm(container, { recursive: true, force: true }));
   const repository = path.join(container, "skillshare");
   const linkedWorktree = path.join(container, "worktrees", "plan-template-autonomy");
@@ -112,7 +112,7 @@ test("linked worktrees report the common repository name separately from the bra
 });
 
 test("provider resolves branch Git config after explicit bases and validates it as a commit", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-branch-base-provider-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-branch-base-provider-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -131,7 +131,7 @@ test("provider resolves branch Git config after explicit bases and validates it 
   const globalConfigPath = path.join(globalConfigEnvironment.home, ".gitconfig");
   await runGit(root, [
     "config", "--file", globalConfigPath,
-    "branch.feature/configured.gitrail-base", "release-base",
+    "branch.feature/configured.siderail-base", "release-base",
   ]);
   const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL;
   process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
@@ -145,15 +145,15 @@ test("provider resolves branch Git config after explicit bases and validates it 
   assert.equal(state.baseRef, "main");
   assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
 
-  await runGit(root, ["config", "--local", "branch.feature/configured.gitrail-base", "release-base"]);
+  await runGit(root, ["config", "--local", "branch.feature/configured.siderail-base", "release-base"]);
 
   state = await repositoryState(t, root);
   assert.equal(state.baseRef, "release-base");
   assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt", "main.txt"]);
 
   const { environment, config } = hermeticEnvironment(t);
-  await fs.mkdir(path.join(config, "git-rail"));
-  await fs.writeFile(path.join(config, "git-rail", "config.json"), JSON.stringify({
+  await fs.mkdir(path.join(config, "siderail"));
+  await fs.writeFile(path.join(config, "siderail", "config.json"), JSON.stringify({
     version: 1,
     baseRef: "main",
   }));
@@ -162,27 +162,27 @@ test("provider resolves branch Git config after explicit bases and validates it 
   assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
 
   state = await getRepositoryState(root, {
-    env: { ...environment, GIT_RAIL_BASE: "release-base" },
+    env: { ...environment, SIDERAIL_BASE: "release-base" },
   });
   assert.equal(state.baseRef, "release-base");
 
   await runGit(root, ["config", "--local", "extensions.worktreeConfig", "true"]);
-  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", "main"]);
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.siderail-base", "main"]);
   state = await repositoryState(t, root);
   assert.equal(state.baseRef, "main");
 
-  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", "HEAD:README.md"]);
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.siderail-base", "HEAD:README.md"]);
   state = await repositoryState(t, root);
   assert.equal(state.baseRef, "");
   assert.deepEqual(state.againstBase, []);
-  assert.match(state.error, /branch\.feature\/configured\.gitrail-base does not resolve to a commit: HEAD:README\.md/i);
+  assert.match(state.error, /branch\.feature\/configured\.siderail-base does not resolve to a commit: HEAD:README\.md/i);
 
-  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", ""]);
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.siderail-base", ""]);
   state = await repositoryState(t, root);
   assert.equal(state.baseRef, "");
-  assert.match(state.error, /branch\.feature\/configured\.gitrail-base does not resolve to a commit: \(empty\)/i);
+  assert.match(state.error, /branch\.feature\/configured\.siderail-base does not resolve to a commit: \(empty\)/i);
 
-  await runGit(root, ["config", "--worktree", "branch.feature/configured.gitrail-base", "main\nmissing"]);
+  await runGit(root, ["config", "--worktree", "branch.feature/configured.siderail-base", "main\nmissing"]);
   state = await repositoryState(t, root);
   assert.equal(state.baseRef, "");
   assert.match(state.error, /does not resolve to a commit: main\nmissing/i);
@@ -195,7 +195,7 @@ test("provider resolves branch Git config after explicit bases and validates it 
 });
 
 test("live branch switches reload configured bases and keep stale local main clean", async (t) => {
-  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-branch-switch-"));
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-branch-switch-"));
   t.after(() => fs.rm(container, { recursive: true, force: true }));
   const root = path.join(container, "worktree");
   const remote = path.join(container, "origin.git");
@@ -237,7 +237,7 @@ test("live branch switches reload configured bases and keep stale local main cle
   assert.deepEqual(state.commits.map((commit) => commit.hash), [featureCommit]);
   assert.deepEqual(state.againstBase.map((file) => file.path), ["feature.txt"]);
 
-  await runGit(root, ["config", "--local", "branch.feature/branch-switch.gitrail-base", "origin/main"]);
+  await runGit(root, ["config", "--local", "branch.feature/branch-switch.siderail-base", "origin/main"]);
 
   state = await repositoryState(t, root);
   assert.equal(state.branch, "feature/branch-switch");
@@ -264,7 +264,7 @@ test("live branch switches reload configured bases and keep stale local main cle
 });
 
 test("Files projection follows real committed, staged, unstaged, untracked, and recreated paths", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-files-current-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-files-current-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -289,7 +289,7 @@ test("Files projection follows real committed, staged, unstaged, untracked, and 
   await fs.rm(path.join(root, "skip-missing.txt"));
   await fs.writeFile(path.join(root, "untracked.txt"), "untracked\n");
 
-  let state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  let state = await repositoryState(t, root, { env: { SIDERAIL_BASE: "main" } });
   let projected = new Map(filesAgainstBase(state.files, state.workspaceChanges, state.workspaceDescriptor)
     .map((file) => [file.path, file]));
   assert.equal(state.againstBase.find((file) => file.path === "committed-delete.txt").status, "deleted");
@@ -307,13 +307,13 @@ test("Files projection follows real committed, staged, unstaged, untracked, and 
   assert.equal(projected.get("untracked.txt").descriptor.kind, "untracked");
 
   await fs.rm(path.join(root, "untracked.txt"));
-  state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  state = await repositoryState(t, root, { env: { SIDERAIL_BASE: "main" } });
   projected = new Map(filesAgainstBase(state.files, state.workspaceChanges, state.workspaceDescriptor)
     .map((file) => [file.path, file]));
   assert.equal(projected.has("untracked.txt"), false);
 
   await fs.writeFile(path.join(root, "committed-delete.txt"), "recreated but untracked\n");
-  state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  state = await repositoryState(t, root, { env: { SIDERAIL_BASE: "main" } });
   projected = new Map(filesAgainstBase(state.files, state.workspaceChanges, state.workspaceDescriptor)
     .map((file) => [file.path, file]));
   assert.equal(projected.get("committed-delete.txt").descriptor.kind, "untracked");
@@ -375,7 +375,7 @@ test("refresh and commit details use one exact-copy diff scan per comparison", a
 });
 
 test("non-repository directories provide a bounded filesystem Files state", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-directory-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-directory-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.mkdir(path.join(root, "docs"));
   await fs.mkdir(path.join(root, ".git"));
@@ -415,7 +415,7 @@ test("non-repository directories provide a bounded filesystem Files state", asyn
 });
 
 test("configured bases must resolve to commits and never silently fall back", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-base-validation-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-base-validation-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -424,7 +424,7 @@ test("configured bases must resolve to commits and never silently fall back", as
   await runGit(root, ["commit", "-m", "base"], { env: identity });
 
   for (const requested of ["HEAD:README.md", "refs/heads/definitely-missing"]) {
-    const state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: requested } });
+    const state = await repositoryState(t, root, { env: { SIDERAIL_BASE: requested } });
     assert.equal(state.baseRef, "");
     assert.equal(state.againstBase.length, 0);
     assert.match(state.configErrors.join("\n"), new RegExp(`does not resolve to a commit: ${requested.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
@@ -432,7 +432,7 @@ test("configured bases must resolve to commits and never silently fall back", as
 });
 
 test("a configured base with unrelated history never masquerades as a merge base", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-unrelated-base-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-unrelated-base-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -443,7 +443,7 @@ test("a configured base with unrelated history never masquerades as a merge base
   const unrelatedCommit = (await runGit(root, ["commit-tree", emptyTree, "-m", "unrelated root"], { env: identity })).stdout.trim();
   await runGit(root, ["update-ref", "refs/heads/unrelated", unrelatedCommit]);
 
-  const state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "unrelated" } });
+  const state = await repositoryState(t, root, { env: { SIDERAIL_BASE: "unrelated" } });
   assert.equal(state.baseRef, "unrelated");
   assert.equal(state.workspaceDescriptor, null);
   assert.deepEqual(state.workspaceChanges, []);
@@ -452,7 +452,7 @@ test("a configured base with unrelated history never masquerades as a merge base
 });
 
 test("invalid UTF-8 in display-only commit metadata does not hide repository state", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-commit-metadata-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-commit-metadata-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -470,7 +470,7 @@ test("invalid UTF-8 in display-only commit metadata does not hide repository sta
   })).stdout.trim();
   await runGit(root, ["update-ref", "HEAD", commit]);
 
-  const state = await repositoryState(t, root, { env: { GIT_RAIL_BASE: "main" } });
+  const state = await repositoryState(t, root, { env: { SIDERAIL_BASE: "main" } });
   assert.equal(state.commits.length, 1);
   assert.equal(state.commits[0].hash, commit);
   assert.notEqual(state.commits[0].message, "");
@@ -478,7 +478,7 @@ test("invalid UTF-8 in display-only commit metadata does not hide repository sta
 });
 
 test("non-UTF-8 Git paths fail visibly instead of collapsing identities", { skip: process.platform !== "linux" }, async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-non-utf8-paths-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-non-utf8-paths-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -491,7 +491,7 @@ test("non-UTF-8 Git paths fail visibly instead of collapsing identities", { skip
 });
 
 test("Against Raw uses the same merge base as its diff after branches diverge", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-against-merge-base-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-against-merge-base-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -519,7 +519,7 @@ test("Against Raw uses the same merge base as its diff after branches diverge", 
 });
 
 test("staged copy identity and colon-prefixed index paths remain exact", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-staged-identity-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-staged-identity-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -542,7 +542,7 @@ test("staged copy identity and colon-prefixed index paths remain exact", async (
 });
 
 test("exact-revision materialization preserves bounded binary bytes for viewers", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-binary-materialization-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-binary-materialization-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   const expected = Buffer.from([0, 1, 2, 3, 255]);
@@ -584,7 +584,7 @@ test("raw preview identifies revisions and rejects escaping symlinks", async (t)
   t.after(() => removeFixtureRepository(root));
   const raw = await loadRaw({ repoRoot: root, filePath: "README.md", descriptor: { kind: "clean" }, maxFileBytes: 1024 * 1024 });
   assert.equal(raw.revision, "worktree");
-  assert.match(raw.text, /GitRail fixture/);
+  assert.match(raw.text, /SideRail fixture/);
   const outside = path.join(path.dirname(root), "outside-secret.txt");
   await fs.writeFile(outside, "secret");
   t.after(() => fs.rm(outside, { force: true }));
@@ -595,7 +595,7 @@ test("raw preview identifies revisions and rejects escaping symlinks", async (t)
 });
 
 test("missing worktree content never falls back unless the selected state is deleted", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-missing-raw-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-missing-raw-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -628,7 +628,7 @@ test("missing worktree content never falls back unless the selected state is del
 });
 
 test("provider handles unborn and detached repositories plus unusual renamed paths", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-matrix-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-matrix-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=trunk"]);
   const unborn = await repositoryState(t, root);
@@ -660,7 +660,7 @@ test("rename pathspecs preserve identity in every diff scope", () => {
 });
 
 test("rename and copy previews retain Git identity across against, workspace, commit, and staged views", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-preview-identity-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-preview-identity-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -696,7 +696,7 @@ test("rename and copy previews retain Git identity across against, workspace, co
 });
 
 test("commit history and file details use one explicit first-parent comparison", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-first-parent-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-first-parent-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -731,7 +731,7 @@ test("commit history and file details use one explicit first-parent comparison",
 });
 
 test("untracked text line counts match Git numstat semantics", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-untracked-lines-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-untracked-lines-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -760,7 +760,7 @@ test("untracked text line counts match Git numstat semantics", async (t) => {
 });
 
 test("untracked statistics stop at an aggregate inspection budget", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-untracked-budget-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-untracked-budget-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await Promise.all(Array.from({ length: 260 }, (_, index) => fs.writeFile(path.join(root, `file-${String(index).padStart(3, "0")}.txt`), "")));
@@ -771,7 +771,7 @@ test("untracked statistics stop at an aggregate inspection budget", async (t) =>
 });
 
 test("clean tracked files retain symlink and executable metadata", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-clean-modes-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-clean-modes-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -790,7 +790,7 @@ test("clean tracked files retain symlink and executable metadata", async (t) => 
 });
 
 test("unstaged type changes use worktree mode rather than index mode", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-type-mode-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-type-mode-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -818,7 +818,7 @@ test("unstaged type changes use worktree mode rather than index mode", async (t)
 });
 
 test("against-base model retains deletion, rename, copy, executable, and symlink metadata", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-statuses-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-statuses-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await fs.writeFile(path.join(root, "delete.txt"), "delete me\n");
@@ -859,7 +859,7 @@ test("against-base model retains deletion, rename, copy, executable, and symlink
 });
 
 test("unmerged porcelain state remains an explicit conflict in both scopes", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-conflict-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-conflict-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -895,7 +895,7 @@ test("raw content limits fail safely before reading unbounded data", async (t) =
 });
 
 test("historical and index blobs receive bounded binary and UTF-8 validation without fallback", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-blob-validation-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-blob-validation-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -938,7 +938,7 @@ test("historical and index blobs receive bounded binary and UTF-8 validation wit
 });
 
 test("non-regular worktree entries are rejected without opening a blocking stream", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-fifo-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-fifo-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init", "--initial-branch=main"]);
   await runCommand("mkfifo", [path.join(root, "pipe")]);
@@ -953,7 +953,7 @@ test("non-regular worktree entries are rejected without opening a blocking strea
 });
 
 test("commit history is bounded while retaining an exact total", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-history-limit-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-history-limit-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   await runGit(root, ["init", "--initial-branch=main"]);
@@ -975,7 +975,7 @@ test("commit history is bounded while retaining an exact total", async (t) => {
 });
 
 test("submodule gitlinks remain first-class canonical metadata", async (t) => {
-  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-submodule-"));
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-submodule-"));
   t.after(() => fs.rm(container, { recursive: true, force: true }));
   const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   const sub = path.join(container, "source");

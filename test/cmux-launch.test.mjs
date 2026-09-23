@@ -4,7 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { cmuxDockRelaunchCommand, launchCmuxDock } from "../scripts/open-cmux-dock.mjs";
 
-const CMUX_ENTRYPOINT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "scripts", "cmux-git-rail.mjs");
+const CMUX_ENTRYPOINT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "scripts", "cmux-siderail.mjs");
 const noRegistration = async () => null;
 const launchTest = (options) => launchCmuxDock({ wait: async () => {}, ...options });
 
@@ -27,7 +27,7 @@ function runner({ existing = false } = {}) {
 
 test("manual launch creates one unfocused Dock terminal and reveals Dock without stealing focus", async () => {
   const mocked = runner();
-  const environment = { GIT_RAIL_CMUX_BIN: "cmux-test" };
+  const environment = { SIDERAIL_CMUX_BIN: "cmux-test" };
   const result = await launchTest({ run: mocked.run, readRegistration: noRegistration, environment, fallbackCwd: "/repo" });
   assert.equal(result.created, true);
   assert.equal(result.surfaceId, "new-dock");
@@ -38,18 +38,18 @@ test("manual launch creates one unfocused Dock terminal and reveals Dock without
   assert.equal(params.type, "terminal");
   assert.equal(params.focus, false);
   assert.equal(params.working_directory, "/repo");
-  assert.equal(params.startup_environment.CMUX_DOCK_CONTROL_ID, "git-rail");
-  assert.equal(params.startup_environment.CMUX_DOCK_CONTROL_TITLE, "GitRail");
-  assert.equal(params.startup_environment.GIT_RAIL_NODE_PATH, process.execPath);
-  assert.equal(params.startup_environment.GIT_RAIL_STAY_OPEN, "1");
-  assert.equal(params.startup_environment.GIT_RAIL_WINDOW_ID, "window-1");
-  assert.match(params.initial_command, /cmux-git-rail\.mjs/);
+  assert.equal(params.startup_environment.CMUX_DOCK_CONTROL_ID, "siderail");
+  assert.equal(params.startup_environment.CMUX_DOCK_CONTROL_TITLE, "SideRail");
+  assert.equal(params.startup_environment.SIDERAIL_NODE_PATH, process.execPath);
+  assert.equal(params.startup_environment.SIDERAIL_STAY_OPEN, "1");
+  assert.equal(params.startup_environment.SIDERAIL_WINDOW_ID, "window-1");
+  assert.match(params.initial_command, /cmux-siderail\.mjs/);
   assert.match(params.initial_command, /cmux-node-launcher\.sh/);
   assert.ok(mocked.calls.some((call) => call.args.join(" ") === "right-sidebar set dock --workspace main-workspace --no-focus"));
   assert.ok(mocked.calls.some((call) => call.args.includes("rename-tab") && call.args.includes("new-dock")));
 });
 
-test("manual launch adopts an existing GitRail Dock surface instead of duplicating it", async () => {
+test("manual launch adopts an existing SideRail Dock surface instead of duplicating it", async () => {
   const mocked = runner({ existing: true });
   const result = await launchTest({ run: mocked.run, readRegistration: noRegistration, environment: {}, fallbackCwd: "/repo" });
   assert.deepEqual({ created: result.created, surfaceId: result.surfaceId }, { created: false, surfaceId: "existing-dock" });
@@ -60,7 +60,7 @@ test("manual launch adopts an existing GitRail Dock surface instead of duplicati
 test("manual launch recognizes its configured Dock caller identity even with cmux's startup wrapper", async () => {
   const calls = [];
   const environment = {
-    CMUX_DOCK_CONTROL_ID: "git-rail",
+    CMUX_DOCK_CONTROL_ID: "siderail",
     CMUX_SURFACE_ID: "configured-dock",
   };
   const run = async (_command, args) => {
@@ -96,7 +96,7 @@ test("manual launch can coexist with an unrelated configured Dock control", asyn
   assert.equal(calls.filter((args) => args[0] === "rpc").length, 1);
 });
 
-test("manual launch adopts a registered configured GitRail control", async () => {
+test("manual launch adopts a registered configured SideRail control", async () => {
   const mocked = runner();
   const baseRun = mocked.run;
   mocked.run = async (command, args, options) => {
@@ -112,7 +112,7 @@ test("manual launch adopts a registered configured GitRail control", async () =>
       version: 2,
       workspaceId: "main-workspace",
       surfaceId: "configured-dock",
-      controlId: "git-rail",
+      controlId: "siderail",
       instanceId: "active-instance",
       processId: process.pid,
       updatedAt: Date.now(),
@@ -142,7 +142,7 @@ test("manual launch finds an active configured control after the main workspace 
         version: 2,
         workspaceId: "workspace-a",
         surfaceId: "configured-dock",
-        controlId: "git-rail",
+        controlId: "siderail",
         instanceId: "active-instance",
         processId: process.pid,
         updatedAt: Date.now(),
@@ -178,7 +178,7 @@ test("manual launch reuses a registered post-q login shell", async () => {
       version: 2,
       workspaceId: "main-workspace",
       surfaceId: "post-q-shell",
-      controlId: "git-rail",
+      controlId: "siderail",
       instanceId: "exited-instance",
       processId: 4242,
       updatedAt: 1234,
@@ -193,7 +193,7 @@ test("manual launch reuses a registered post-q login shell", async () => {
   assert.deepEqual(calls.filter((args) => args[0] === "send-key" || args[0] === "send").map((args) => args[0]), [
     "send-key", "send", "send-key",
   ]);
-  assert.ok(calls.some((args) => args[0] === "send" && args.includes("post-q-shell") && args.at(-1).includes("cmux-git-rail.mjs")));
+  assert.ok(calls.some((args) => args[0] === "send" && args.includes("post-q-shell") && args.at(-1).includes("cmux-siderail.mjs")));
   assert.equal(calls.some((args) => args[0] === "rpc"), false);
 });
 
@@ -218,7 +218,7 @@ test("manual launch waits for a starting configured control to register", async 
       version: 2,
       workspaceId: "main-workspace",
       surfaceId: "starting-control",
-      controlId: "git-rail",
+      controlId: "siderail",
       instanceId: "starting-instance",
       processId: process.pid,
       updatedAt: Date.now(),
@@ -235,13 +235,13 @@ test("manual launch waits for a starting configured control to register", async 
   assert.equal(calls.some((args) => args[0] === "rpc"), false);
 });
 
-test("manual launch adopts a Dock surface with an exposed GitRail control id", async () => {
+test("manual launch adopts a Dock surface with an exposed SideRail control id", async () => {
   const mocked = runner();
   const baseRun = mocked.run;
   mocked.run = async (command, args, options) => {
     if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [{
       id: "configured-dock", dock_scope: "global", initial_command: "/tmp/cmux-dock-control-31d9.sh",
-      dock_control_id: "git-rail",
+      dock_control_id: "siderail",
     }] }) };
     return baseRun(command, args, options);
   };
@@ -268,12 +268,12 @@ test("manual launch fails closed without a selected main workspace or Dock respo
 test("Dock relaunch command restates variables and quotes shell metacharacters", () => {
   assert.equal(
     cmuxDockRelaunchCommand("/bin/bash launcher", {
-      GIT_RAIL_PROJECT_CWD: "/repo with ' quote",
-      GIT_RAIL_WINDOW_ID: "window-1",
-      GIT_RAIL_NODE_PATH: "",
+      SIDERAIL_PROJECT_CWD: "/repo with ' quote",
+      SIDERAIL_WINDOW_ID: "window-1",
+      SIDERAIL_NODE_PATH: "",
       CMUX_DOCK_CONTROL_TITLE: "   ",
     }),
-    "env GIT_RAIL_PROJECT_CWD='/repo with '\\'' quote' GIT_RAIL_WINDOW_ID='window-1' /bin/bash launcher",
+    "env SIDERAIL_PROJECT_CWD='/repo with '\\'' quote' SIDERAIL_WINDOW_ID='window-1' /bin/bash launcher",
   );
   assert.equal(cmuxDockRelaunchCommand("/bin/bash launcher", {}), "/bin/bash launcher");
   assert.equal(cmuxDockRelaunchCommand("/bin/bash launcher", { A: undefined, B: null }), "/bin/bash launcher");
@@ -300,7 +300,7 @@ test("relaunching an existing Dock surface restores the owner window and project
       version: 2,
       workspaceId: "main-workspace",
       surfaceId: "stale-dock",
-      controlId: "git-rail",
+      controlId: "siderail",
       instanceId: "exited-instance",
       processId: 4242,
       updatedAt: 1234,
@@ -312,12 +312,12 @@ test("relaunching an existing Dock surface restores the owner window and project
   assert.equal(result.relaunched, true);
   const sent = calls.find((args) => args[0] === "send").at(-1);
   assert.match(sent, /^env /);
-  assert.match(sent, /GIT_RAIL_WINDOW_ID='window-owner'/);
-  assert.match(sent, /GIT_RAIL_PROJECT_CWD='\/worktrees\/branding-options'/);
-  assert.match(sent, /GIT_RAIL_HOST='cmux'/);
-  assert.match(sent, /GIT_RAIL_STAY_OPEN='1'/);
-  assert.match(sent, /CMUX_DOCK_CONTROL_ID='git-rail'/);
-  assert.match(sent, /cmux-git-rail\.mjs'$/);
+  assert.match(sent, /SIDERAIL_WINDOW_ID='window-owner'/);
+  assert.match(sent, /SIDERAIL_PROJECT_CWD='\/worktrees\/branding-options'/);
+  assert.match(sent, /SIDERAIL_HOST='cmux'/);
+  assert.match(sent, /SIDERAIL_STAY_OPEN='1'/);
+  assert.match(sent, /CMUX_DOCK_CONTROL_ID='siderail'/);
+  assert.match(sent, /cmux-siderail\.mjs'$/);
 });
 
 test("a relaunched Dock surface receives exactly the environment a created one does", async () => {
@@ -344,7 +344,7 @@ test("a relaunched Dock surface receives exactly the environment a created one d
         version: 2,
         workspaceId: "main-workspace",
         surfaceId: "stale-dock",
-        controlId: "git-rail",
+        controlId: "siderail",
         instanceId: "instance",
         processId: 4242,
         updatedAt: 1234,
@@ -379,7 +379,7 @@ test("a Dock launch without a resolvable owner window omits the window variable 
   });
   assert.equal(result.created, true);
   const params = JSON.parse(calls.find((args) => args[0] === "rpc")[2]);
-  assert.equal(Object.hasOwn(params.startup_environment, "GIT_RAIL_WINDOW_ID"), false);
+  assert.equal(Object.hasOwn(params.startup_environment, "SIDERAIL_WINDOW_ID"), false);
   assert.equal(calls.find((args) => args[0] === "rename-tab").includes("--window"), false);
 });
 
@@ -399,7 +399,7 @@ test("a relaunch decision awaits an asynchronous liveness verdict", async () => 
   const registration = {
     version: 3,
     surfaceId: "reused-pid-dock",
-    controlId: "git-rail",
+    controlId: "siderail",
     instanceId: "exited-instance",
     processId: 4242,
     processStartedAt: "Thu Sep  4 08:00:00 2026",
@@ -416,7 +416,7 @@ test("a relaunch decision awaits an asynchronous liveness verdict", async () => 
     fallbackCwd: "/repo",
   });
   assert.equal(result.relaunched, true);
-  assert.ok(calls.some((args) => args[0] === "send" && args.at(-1).includes("GIT_RAIL_PROJECT_CWD")));
+  assert.ok(calls.some((args) => args[0] === "send" && args.at(-1).includes("SIDERAIL_PROJECT_CWD")));
 });
 
 test("an active registration is still adopted rather than relaunched", async () => {
@@ -426,7 +426,7 @@ test("an active registration is still adopted rather than relaunched", async () 
     readRegistration: async () => ({
       version: 3,
       surfaceId: "existing-dock",
-      controlId: "git-rail",
+      controlId: "siderail",
       instanceId: "live-instance",
       processId: process.pid,
       processStartedAt: "marker",

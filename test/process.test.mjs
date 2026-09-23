@@ -6,7 +6,7 @@ import test from "node:test";
 import { runCommand, runGit, withGitProcessContext } from "../src/process.mjs";
 
 test("Git status never refreshes the index even when caller options enable optional locks", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-no-locks-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-no-locks-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const options = { env: { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, GIT_OPTIONAL_LOCKS: "1" } };
   await runGit(root, ["init"], options);
@@ -34,7 +34,7 @@ test("Git status never refreshes the index even when caller options enable optio
 });
 
 test("concurrent Git process contexts keep config and index environments isolated", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-process-context-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-process-context-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await runGit(root, ["init"]);
   const indexA = path.join(root, "index-a");
@@ -48,7 +48,7 @@ test("concurrent Git process contexts keep config and index environments isolate
     environment: {
       ...base,
       GIT_CONFIG_COUNT: "1",
-      GIT_CONFIG_KEY_0: "gitrail.marker",
+      GIT_CONFIG_KEY_0: "siderail.marker",
       GIT_CONFIG_VALUE_0: marker,
       GIT_INDEX_FILE: indexPath,
     },
@@ -56,7 +56,7 @@ test("concurrent Git process contexts keep config and index environments isolate
   const inspect = (marker, indexPath, delay) => withGitProcessContext(context(marker, indexPath), async () => {
     await new Promise((resolve) => setTimeout(resolve, delay));
     const [configured, selectedIndex] = await Promise.all([
-      runGit(root, ["config", "--get", "gitrail.marker"]),
+      runGit(root, ["config", "--get", "siderail.marker"]),
       runGit(root, ["rev-parse", "--git-path", "index"]),
     ]);
     return [configured.stdout.trim(), path.resolve(root, selectedIndex.stdout.trim())];
@@ -110,7 +110,7 @@ test("timeouts settle without waiting for descendants that inherited output pipe
 });
 
 test("timeouts terminate descendants in the command process group", async (t) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-process-tree-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-process-tree-"));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const marker = path.join(directory, "survived");
   const descendant = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'alive'), 300)`;
@@ -129,7 +129,7 @@ test("timeouts terminate descendants in the command process group", async (t) =>
 });
 
 test("abort signals terminate and await the command process group", async (t) => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-process-abort-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-process-abort-"));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const marker = path.join(directory, "survived");
   const descendant = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'alive'), 300)`;

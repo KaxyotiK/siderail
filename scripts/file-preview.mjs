@@ -34,11 +34,11 @@ const MAX_PREVIEW_LINES = 100_000;
 const MAX_WRAPPED_LINE_COLUMNS = 100_000;
 const forcedWidth = numberArg("--width");
 const forcedHeight = numberArg("--height");
-const filePath = process.env.GIT_RAIL_PREVIEW_PATH || "";
-const repoRoot = process.env.GIT_RAIL_PREVIEW_REPO || process.cwd();
-const descriptor = decode("GIT_RAIL_PREVIEW_DESCRIPTOR", { kind: "clean" });
-const metadata = decode("GIT_RAIL_PREVIEW_METADATA", {});
-const temporarySource = process.env.GIT_RAIL_PREVIEW_TEMPORARY === "1";
+const filePath = process.env.SIDERAIL_PREVIEW_PATH || "";
+const repoRoot = process.env.SIDERAIL_PREVIEW_REPO || process.cwd();
+const descriptor = decode("SIDERAIL_PREVIEW_DESCRIPTOR", { kind: "clean" });
+const metadata = decode("SIDERAIL_PREVIEW_METADATA", {});
+const temporarySource = process.env.SIDERAIL_PREVIEW_TEMPORARY === "1";
 const { config, errors: configErrors } = loadConfig();
 const viewerActions = resolveViewerActions(config, filePath);
 let activeMode = previewInitialMode(descriptor, metadata);
@@ -282,7 +282,7 @@ function launch(configValue, sourcePath, label) {
   return { mode, message: statusMessage };
 }
 async function materializedRawSource() {
-  if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
+  if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-preview-"));
   fs.chmodSync(temporaryDirectory, 0o700);
   const copy = path.join(temporaryDirectory, path.basename(filePath) || "preview.txt");
   const raw = await loadRawBytes({ repoRoot, filePath, descriptor, metadata, maxFileBytes: config.limits.maxFileBytes });
@@ -296,7 +296,7 @@ async function sourceForLaunch(copyForDemo = false, exactRevision = false) {
   if (materialize) return materializedRawSource();
   const source = await safeWorktreePath(repoRoot, filePath);
   if (!copyForDemo || !temporarySource) return source;
-  if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-gitrail-preview-"));
+  if (!temporaryDirectory) temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-preview-"));
   fs.chmodSync(temporaryDirectory, 0o700);
   const copy = path.join(temporaryDirectory, path.basename(filePath) || "preview.txt");
   fs.copyFileSync(source, copy);
@@ -447,7 +447,7 @@ function render() {
   const horizontal = !wrapping() && maximumContentWidth > viewportWidth ? `↔ col ${horizontalOffset + 1} · ` : "";
   const search = searchActive ? `⌕ ${safe(searchQuery)}▏  ${matchLabel()}` : `${horizontal}${loading ? `${descriptorLabel()} · loading` : activeMode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel || "ready"}`}`;
   const header = [
-    `${C.gold}${C.bold}◆ HERDR GITRAIL PREVIEW${C.reset}  ${C.dim}read-only${C.reset}`,
+    `${C.gold}${C.bold}◆ SIDERAIL PREVIEW${C.reset}  ${C.dim}read-only${C.reset}`,
     fit(`${C.bold}${safe(filePath) || "No file selected"}${C.reset}`, width),
     fit(`${C.dim}${search}${C.reset}`, width),
     ...renderTabs(width),

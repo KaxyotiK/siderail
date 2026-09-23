@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 export function validateArchiveMembers(text) {
   const members = text.split(/\r?\n/).filter(Boolean).map((member) => member.replace(/^\.\//, ""));
-  const forbidden = members.filter((member) => member === ".git-rail.json"
+  const forbidden = members.filter((member) => member === ".siderail.json"
     || member === "schema" || member.startsWith("schema/")
     || member === "node_modules" || member.startsWith("node_modules/"));
   if (forbidden.length) throw new Error(`forbidden release archive members: ${forbidden.join(", ")}`);

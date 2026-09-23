@@ -10,7 +10,7 @@ import {
 } from "../src/cmux-preview-lifecycle.mjs";
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-preview-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-preview-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return { root, environment: { XDG_CACHE_HOME: root, CMUX_SURFACE_ID: "ambient-dock" } };
 }
@@ -212,9 +212,9 @@ test("each open adds a new native tab and stable ownership survives Dock surface
     if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [{ id: "preview-1", type: "markdown" }] }) };
     return { stdout: "{}" };
   };
-  const stable = { ownerControlId: "git-rail" };
+  const stable = { ownerControlId: "siderail" };
   await openCmuxPreview(previewOptions(environment, run, { ...stable, ownerSurfaceId: "dock-old" }));
-  const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerControlId: "git-rail", environment });
+  const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerControlId: "siderail", environment });
   const oldDirectory = JSON.parse(await fs.readFile(statePath, "utf8")).open[0].materializedDirectory;
 
   await openCmuxPreview(previewOptions(environment, run, { ...stable, ownerSurfaceId: "dock-new" }));
@@ -233,7 +233,7 @@ test("stable control ownership migrates legacy surface-keyed preview state", asy
     workspaceId: "main-workspace", ownerSurfaceId: "dock-legacy", environment,
   });
   const stablePath = cmuxPreviewStatePath({
-    workspaceId: "main-workspace", ownerControlId: "git-rail", environment,
+    workspaceId: "main-workspace", ownerControlId: "siderail", environment,
   });
   const legacyDirectory = path.join(path.dirname(legacyPath), "legacy-materialization");
   await fs.mkdir(legacyDirectory, { recursive: true });
@@ -251,7 +251,7 @@ test("stable control ownership migrates legacy surface-keyed preview state", asy
     if (args.includes("open")) return nativeFileResponse("current-preview", "filepreview");
     if (args.includes("list-panels")) return { stdout: JSON.stringify({ surfaces: [{ id: "legacy-preview", type: "filepreview" }] }) };
     return { stdout: "{}" };
-  }, { ownerControlId: "git-rail", ownerSurfaceId: "dock-current" }));
+  }, { ownerControlId: "siderail", ownerSurfaceId: "dock-current" }));
   assert.equal(calls.some((args) => args[0] === "close-surface"), false);
   await fs.access(legacyDirectory);
   await assert.rejects(fs.access(legacyPath), (error) => error.code === "ENOENT");
@@ -263,7 +263,7 @@ test("stable control ownership migrates legacy surface-keyed preview state", asy
 test("replacement-era ownership migrates without closing its native tabs", async (t) => {
   const { environment } = await fixture(t);
   const statePath = cmuxPreviewStatePath({
-    workspaceId: "main-workspace", ownerControlId: "git-rail", environment,
+    workspaceId: "main-workspace", ownerControlId: "siderail", environment,
   });
   await fs.mkdir(path.dirname(statePath), { recursive: true });
   await fs.writeFile(statePath, JSON.stringify({
@@ -280,7 +280,7 @@ test("replacement-era ownership migrates without closing its native tabs", async
       { id: "pending-preview", type: "markdown" },
     ] }) };
     return { stdout: "{}" };
-  }, { ownerControlId: "git-rail" }));
+  }, { ownerControlId: "siderail" }));
 
   assert.equal(calls.some((args) => args[0] === "close-surface"), false);
   const registry = JSON.parse(await fs.readFile(statePath, "utf8"));
@@ -293,13 +293,13 @@ test("replacement-era ownership migrates without closing its native tabs", async
 test("unreadable legacy ownership is reported without blocking a new preview", async (t) => {
   const { environment } = await fixture(t);
   const stablePath = cmuxPreviewStatePath({
-    workspaceId: "main-workspace", ownerControlId: "git-rail", environment,
+    workspaceId: "main-workspace", ownerControlId: "siderail", environment,
   });
   const unreadableLegacyPath = path.join(path.dirname(stablePath), "main-workspace-unreadable.json");
   await fs.mkdir(unreadableLegacyPath, { recursive: true });
   const result = await openCmuxPreview(previewOptions(environment, async (_command, args) => (
     args.includes("open") ? nativeFileResponse() : { stdout: "{}" }
-  ), { ownerControlId: "git-rail" }));
+  ), { ownerControlId: "siderail" }));
   assert.match(result.cleanupWarning, /legacy preview ownership unavailable/);
   assert.equal(result.surfaceId, "new-file");
 });
@@ -404,9 +404,9 @@ test("transient discovery failures retain open tabs and later prune only closed 
     }
     return { stdout: "{}" };
   };
-  const stable = { ownerControlId: "git-rail" };
+  const stable = { ownerControlId: "siderail" };
   await openCmuxPreview(previewOptions(environment, run, stable));
-  const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerControlId: "git-rail", environment });
+  const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerControlId: "siderail", environment });
   const firstDirectory = JSON.parse(await fs.readFile(statePath, "utf8")).open[0].materializedDirectory;
   const second = await openCmuxPreview(previewOptions(environment, run, stable));
   assert.match(second.cleanupWarning, /surface discovery offline/);
@@ -561,7 +561,7 @@ test("a cleanup-state rewrite failure remains a warning after verified cleanup",
   assert.match(result.cleanupWarning, /preview cleanup state could not be updated: rewrite offline/);
 });
 
-test("stale state can never remove a materialization outside GitRail's cache", async (t) => {
+test("stale state can never remove a materialization outside SideRail's cache", async (t) => {
   const { root, environment } = await fixture(t);
   const statePath = cmuxPreviewStatePath({ workspaceId: "main-workspace", ownerSurfaceId: "dock-source", environment });
   const outside = path.join(root, "outside-cache");
@@ -633,7 +633,7 @@ test("an unreadable materialization target is cleaned up rather than left half w
 });
 
 test("preview ownership survives a cache directory that does not exist yet", async (t) => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-cmux-preview-missing-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-cmux-preview-missing-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const environment = { XDG_CACHE_HOME: path.join(root, "absent"), CMUX_SURFACE_ID: "ambient-dock" };
   const run = async (_command, args) => (args.includes("open") ? nativeFileResponse() : { stdout: "{}" });
@@ -642,7 +642,7 @@ test("preview ownership survives a cache directory that does not exist yet", asy
   assert.equal(opened.cleanupWarning || "", "");
 });
 
-test("a preview state path is confined to the GitRail cache for hostile identities", async (t) => {
+test("a preview state path is confined to the SideRail cache for hostile identities", async (t) => {
   const { environment } = await fixture(t);
   const cacheRoot = environment.XDG_CACHE_HOME;
   for (const hostile of ["../../escape", "a/b", ".."]) {

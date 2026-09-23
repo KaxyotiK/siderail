@@ -24,19 +24,19 @@ const gitEnvironment = {
   GIT_CONFIG_GLOBAL: os.devNull,
 };
 
-test("effective Git environment is deterministic, conservative, and excludes resolved GitRail inputs", () => {
+test("effective Git environment is deterministic, conservative, and excludes resolved SideRail inputs", () => {
   const first = {
     PATH: "/one:/two",
     HOME: "/home/example",
     LANG: "en_US.UTF-8",
     LC_TIME: "C",
     GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "gitrail.marker",
+    GIT_CONFIG_KEY_0: "siderail.marker",
     GIT_CONFIG_VALUE_0: "alpha",
     GIT_INDEX_FILE: "/repo/index-a",
     GIT_OPTIONAL_LOCKS: "1",
-    GIT_RAIL_CLIENT: "code",
-    GIT_RAIL_REPO_ROOT: "/selected",
+    SIDERAIL_CLIENT: "code",
+    SIDERAIL_REPO_ROOT: "/selected",
   };
   const reordered = Object.fromEntries(Object.entries(first).reverse());
   assert.equal(digestEffectiveGitEnvironment(first, { platform: "darwin", uid: 501 }), digestEffectiveGitEnvironment(reordered, { platform: "darwin", uid: 501 }));
@@ -44,10 +44,10 @@ test("effective Git environment is deterministic, conservative, and excludes res
   const collected = collectEffectiveGitEnvironment(first, { platform: "darwin", uid: 501 });
   const variables = new Map(collected.variables);
   assert.equal(variables.get("GIT_OPTIONAL_LOCKS"), "0");
-  assert.equal(variables.get("GIT_CONFIG_KEY_0"), "gitrail.marker");
+  assert.equal(variables.get("GIT_CONFIG_KEY_0"), "siderail.marker");
   assert.equal(variables.get("LC_TIME"), "C");
-  assert.equal(variables.has("GIT_RAIL_CLIENT"), false);
-  assert.equal(variables.has("GIT_RAIL_REPO_ROOT"), false);
+  assert.equal(variables.has("SIDERAIL_CLIENT"), false);
+  assert.equal(variables.has("SIDERAIL_REPO_ROOT"), false);
   assert.equal(variables.get("XDG_CONFIG_HOME"), null);
 
   assert.notEqual(
@@ -56,11 +56,11 @@ test("effective Git environment is deterministic, conservative, and excludes res
   );
   assert.equal(
     digestEffectiveGitEnvironment(first, { platform: "darwin", uid: 501 }),
-    digestEffectiveGitEnvironment({ ...first, GIT_RAIL_CLIENT: "vim" }, { platform: "darwin", uid: 501 }),
+    digestEffectiveGitEnvironment({ ...first, SIDERAIL_CLIENT: "vim" }, { platform: "darwin", uid: 501 }),
   );
   assert.notEqual(
     digestEffectiveGitEnvironment(first, { platform: "darwin", uid: 501 }),
-    digestEffectiveGitEnvironment({ ...first, GIT_RAIL_UNKNOWN_PROVIDER_INPUT: "future" }, { platform: "darwin", uid: 501 }),
+    digestEffectiveGitEnvironment({ ...first, SIDERAIL_UNKNOWN_PROVIDER_INPUT: "future" }, { platform: "darwin", uid: 501 }),
   );
 });
 
@@ -146,9 +146,9 @@ test("effective runtime semantics include immutable environment overrides only",
   const base = collectEffectiveRuntimeSemantics({ CONFIG_FILE_CONTENT: "one" });
   const first = digestEffectiveRuntimeSemantics(base);
   assert.equal(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ CONFIG_FILE_CONTENT: "two" })));
-  assert.notEqual(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ GIT_RAIL_BASE: "release" })));
-  assert.notEqual(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ GIT_RAIL_WATCH_MODE: "poll-only" })));
-  assert.notEqual(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ GIT_RAIL_BASE: undefined })));
+  assert.notEqual(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ SIDERAIL_BASE: "release" })));
+  assert.notEqual(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ SIDERAIL_WATCH_MODE: "poll-only" })));
+  assert.notEqual(first, digestEffectiveRuntimeSemantics(collectEffectiveRuntimeSemantics({ SIDERAIL_BASE: undefined })));
 });
 
 test("private runtime paths are mode 0700, short, stable, and do not claim the lease", async (t) => {

@@ -1,6 +1,6 @@
 # Releasing
 
-GitRail does not use GitHub Actions. Release validation runs locally against one
+SideRail does not use GitHub Actions. Release validation runs locally against one
 immutable candidate commit and records hashed logs. Any change to code,
 documentation, screenshots, dependencies, the manifest, or packaged files
 creates a new candidate and invalidates all evidence.
@@ -29,7 +29,7 @@ coordinator blocks:
 set -euo pipefail
 candidate_sha=$(git rev-parse HEAD)
 test -z "$(git status --porcelain)"
-evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-gitrail/releases/0.1.0/$candidate_sha"
+evidence_root="${XDG_STATE_HOME:-$HOME/.local/state}/siderail/releases/0.1.0/$candidate_sha"
 evidence_file="$evidence_root/evidence.json"
 mkdir -p "$evidence_root"
 test ! -e "$evidence_file"
@@ -78,7 +78,7 @@ This proves the test helpers cannot inherit a live Herdr pane or executable.
 
 ```bash
 set -euo pipefail
-poison_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-poison.XXXXXX")
+poison_root=$(mktemp -d "${TMPDIR:-/tmp}/siderail-poison.XXXXXX")
 trap 'rm -rf -- "$poison_root"' EXIT
 printf '%s\n' '#!/bin/sh' 'echo "poisoned Herdr escaped the test helper" >&2' 'exit 97' > "$poison_root/herdr"
 chmod 700 "$poison_root/herdr"
@@ -101,7 +101,7 @@ Validate only files committed in the candidate:
 
 ```bash
 set -euo pipefail
-archive_root=$(mktemp -d "${TMPDIR:-/tmp}/gitrail-archive.XXXXXX")
+archive_root=$(mktemp -d "${TMPDIR:-/tmp}/siderail-archive.XXXXXX")
 trap 'rm -rf -- "$archive_root"' EXIT
 archive_log="$evidence_root/archive.log"
 {
@@ -262,7 +262,7 @@ evidence_commit=$(git rev-parse HEAD)
 test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
 npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
   --evidence-commit "$evidence_commit" \
-  --repository-url "https://github.com/KaxyotiK/git-railgun" \
+  --repository-url "https://github.com/KaxyotiK/siderail" \
   --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
 ```
 

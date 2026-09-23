@@ -11,12 +11,12 @@ import { runCommand } from "../src/process.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 
-const RAIL_LABELS = new Set(["HERDR GITRAIL", "HERDER GITRAIL"]);
+const RAIL_LABELS = new Set(["SIDERAIL", "HERDER SIDERAIL"]);
 assertSupportedNode();
 const LEGACY_RAIL_LABEL = "Grove Git Rail";
-const DEMO_LABEL = "GitRail Demo";
-const PREVIEW_LABEL = "GitRail Preview";
-const LEGACY_STAGING_LABEL = "GitRail Layout Staging";
+const DEMO_LABEL = "SideRail Demo";
+const PREVIEW_LABEL = "SideRail Preview";
+const LEGACY_STAGING_LABEL = "SideRail Layout Staging";
 
 function responseItems(payload, key) {
   const parsed = typeof payload === "string" ? JSON.parse(payload) : payload;
@@ -44,7 +44,7 @@ export function collectTabTargets(workspacePayload, tabPayload, panePayload, onl
     if (only.tabId && tab.tab_id !== only.tabId) return [];
     const tabPanes = panes.filter((pane) => pane.tab_id === tab.tab_id);
     // File previews are deliberately full tabs; adding a rail beside them would
-    // turn one GitRail-owned pane into another auto-open cycle.
+    // turn one SideRail-owned pane into another auto-open cycle.
     if (tabPanes.some((pane) => pane.label === PREVIEW_LABEL || pane.label === DEMO_LABEL)) return [];
     const usablePanes = tabPanes.filter((pane) => (
       !RAIL_LABELS.has(pane.label) && pane.label !== LEGACY_RAIL_LABEL && pane.label !== DEMO_LABEL
@@ -97,7 +97,7 @@ export async function openAutoOpenTarget(target, {
   if (!enabled) return false;
   const remainingMs = Math.floor(timeoutMs - (now() - startedAt));
   if (remainingMs <= 0) {
-    const error = new Error("GitRail auto-open deadline expired while detecting the repository");
+    const error = new Error("SideRail auto-open deadline expired while detecting the repository");
     error.kind = "timeout";
     throw error;
   }
@@ -110,8 +110,8 @@ export async function openAutoOpenTarget(target, {
       HERDR_PANE_ID: target.paneId,
       HERDR_TARGET_PANE_ID: "",
       HERDR_PLUGIN_CONTEXT_JSON: "",
-      GIT_RAIL_WORKSPACE_CWD: target.cwd,
-      GIT_RAIL_NODE_PATH: process.execPath,
+      SIDERAIL_WORKSPACE_CWD: target.cwd,
+      SIDERAIL_NODE_PATH: process.execPath,
     },
     timeoutMs: remainingMs,
     killGraceMs: 5_000,
@@ -220,7 +220,7 @@ export async function autoOpenHerdrTabs(environment = process.env, dependencies 
   if (summary.failed.length || summary.deadlineCancelled.length) {
     const failed = summary.failed.map((item) => `${item.tabId}: ${item.message}`).join("; ");
     const cancelled = summary.deadlineCancelled.join(", ");
-    console.error(`GitRail auto-open partial result (opened ${summary.opened.length}, skipped ${summary.skipped.length})${failed ? `; failed ${failed}` : ""}${cancelled ? `; deadline-cancelled ${cancelled}` : ""}`);
+    console.error(`SideRail auto-open partial result (opened ${summary.opened.length}, skipped ${summary.skipped.length})${failed ? `; failed ${failed}` : ""}${cancelled ? `; deadline-cancelled ${cancelled}` : ""}`);
   }
   return summary;
 }

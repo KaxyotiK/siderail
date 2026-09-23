@@ -16,9 +16,9 @@ const FAKE_HERDR = path.join(HERE, "lib", "refresh-fake-herdr.mjs");
 const DEFAULT_BASELINE_REVISION = "6603d33c61b6646b4a54806b028961c8fd1379e2";
 const FIXED_GIT_ENV = {
   GIT_AUTHOR_NAME: "Git Rail performance fixture",
-  GIT_AUTHOR_EMAIL: "fixture@git-rail.invalid",
+  GIT_AUTHOR_EMAIL: "fixture@siderail.invalid",
   GIT_COMMITTER_NAME: "Git Rail performance fixture",
-  GIT_COMMITTER_EMAIL: "fixture@git-rail.invalid",
+  GIT_COMMITTER_EMAIL: "fixture@siderail.invalid",
   GIT_AUTHOR_DATE: "2024-01-02T03:04:05Z",
   GIT_COMMITTER_DATE: "2024-01-02T03:04:05Z",
 };
@@ -194,7 +194,7 @@ async function prepareCandidateSource(tempRoot) {
     snapshotSha256: sha256(JSON.stringify(snapshotFiles)),
     snapshotFileCount: snapshotFiles.length,
     runtimeHashes: snapshotFiles.filter(([relative]) => relative.startsWith("src/") && relative.endsWith(".mjs")
-      || ["scripts/git-rail.mjs", "scripts/git-state-coordinator.mjs", "scripts/node-launcher.sh"].includes(relative))
+      || ["scripts/siderail.mjs", "scripts/git-state-coordinator.mjs", "scripts/node-launcher.sh"].includes(relative))
       .map(([relative, _mode, hash]) => [relative, hash]),
     sourceRoot,
   };
@@ -370,10 +370,10 @@ function startRail({ sourceRoot, fixture, runDirectory, clientIndex, workload, h
     XDG_RUNTIME_DIR: path.join(environmentRoot, "runtime"),
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_OPTIONAL_LOCKS: "0",
-    GIT_RAIL_REPO_ROOT: fixture.primary,
-    GIT_RAIL_SOURCE_PANE_ID: `content-${clientIndex}`,
-    GIT_RAIL_DEBUG_LOG: debug,
-    GIT_RAIL_PERFORMANCE_LOG: performance,
+    SIDERAIL_REPO_ROOT: fixture.primary,
+    SIDERAIL_SOURCE_PANE_ID: `content-${clientIndex}`,
+    SIDERAIL_DEBUG_LOG: debug,
+    SIDERAIL_PERFORMANCE_LOG: performance,
     GIT_TRACE2_EVENT: trace,
     HERDR_BIN_PATH: FAKE_HERDR,
     HERDR_PANE_ID: `rail-${clientIndex}`,
@@ -384,8 +384,8 @@ function startRail({ sourceRoot, fixture, runDirectory, clientIndex, workload, h
     TERM: "dumb",
   };
   if (hostSocket) env.HERDR_SOCKET_PATH = hostSocket;
-  if (workload === "recovery") env.GIT_RAIL_WATCH_MODE = "poll-only";
-  const child = spawn(process.execPath, [path.join(sourceRoot, "scripts", "git-rail.mjs")], {
+  if (workload === "recovery") env.SIDERAIL_WATCH_MODE = "poll-only";
+  const child = spawn(process.execPath, [path.join(sourceRoot, "scripts", "siderail.mjs")], {
     cwd: fixture.primary,
     env,
     shell: false,
@@ -416,7 +416,7 @@ async function startSocketHost({ fixture, runDirectory, clientCount }) {
     const railPaneId = `rail-${index}`;
     panes.push(
       { pane_id: contentPaneId, terminal_id: `content-terminal-${index}`, workspace_id: workspaceId, tab_id: tabId, foreground_cwd: fixture.primary, cwd: fixture.primary },
-      { pane_id: railPaneId, terminal_id: `rail-terminal-${index}`, workspace_id: workspaceId, tab_id: tabId, label: "HERDR GITRAIL", cwd: fixture.primary },
+      { pane_id: railPaneId, terminal_id: `rail-terminal-${index}`, workspace_id: workspaceId, tab_id: tabId, label: "SIDERAIL", cwd: fixture.primary },
     );
     layouts.push({ workspace_id: workspaceId, tab_id: tabId, focused_pane_id: contentPaneId, zoomed: false });
   }
@@ -431,7 +431,7 @@ async function startSocketHost({ fixture, runDirectory, clientCount }) {
     env: {
       ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(?:HERDR_|CMUX_|GIT_|REFRESH_)/.test(key))),
       REFRESH_HERDR_LOG: herdrLog,
-      GIT_RAIL_PERFORMANCE_LOG: performanceLog,
+      SIDERAIL_PERFORMANCE_LOG: performanceLog,
     },
     shell: false,
     stdio: ["pipe", "pipe", "pipe"],
@@ -996,7 +996,7 @@ async function runPackagedSmoke({ source, sampler, tempRoot, output, options }) 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
   await prepareOutput(options.output);
-  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "git-rail-refresh-performance-"));
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "siderail-refresh-performance-"));
   let source;
   try {
     source = options.mode === "baseline"
@@ -1026,7 +1026,7 @@ async function main() {
         gitLaunches: "exact Git Trace2 start events written by each rail",
         herdrLaunches: "legacy field name: exact host requests; see per-run hostAccounting to distinguish socket requests from CLI subprocesses",
         cpu: sampler.method,
-        futureComponents: "candidate processes append {event:'component',phase:'started'|'ready'|'stopped',role,pid,owner?} JSON lines to the shared GIT_RAIL_PERFORMANCE_LOG; active unique PIDs are sampled once, including coordinator and host-source processes",
+        futureComponents: "candidate processes append {event:'component',phase:'started'|'ready'|'stopped',role,pid,owner?} JSON lines to the shared SIDERAIL_PERFORMANCE_LOG; active unique PIDs are sampled once, including coordinator and host-source processes",
         pathsSharedAcrossClients: true,
         hashes: instrumentationHashes,
       },
