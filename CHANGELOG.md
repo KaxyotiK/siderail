@@ -3,101 +3,58 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-09-23
 
-### Highlights
+Initial release.
 
-- Adds a compact, read-only Files and Git sidebar scoped independently to each
-  Herdr tab, with exact Against-base, Commit, Staged, Unstaged, Untracked, and
-  clean-file preview semantics.
-- Adds descriptor-aware Diff and Raw views plus bounded in-preview search.
-  In Herdr, Markdown files open exact revision bytes directly in the operating
-  system's default application, bypassing the generic file preview entirely.
-- Separates Untracked from Unstaged with Git's `?` marker and makes all file
-  rows keyboard reachable while materializing only the visible viewport.
-- Auto-opens one unfocused rail per Git-backed tab. Automatic and manual opening
-  skip layouts that cannot accept a safe outer-right split without reconstruction.
-- Resolves the rail and preview palette from the terminal's ANSI indexed colors
-  instead of pinned 24-bit values, so a light terminal theme is readable, then
-  adopts Herdr's `accent`, `red`, `green`, and `selection_bg` tokens when the
-  user has set them. See [Colors and glyphs](docs/THEMING.md).
-- Measures East Asian Ambiguous characters according to the terminal's own
-  setting. `SIDERAIL_AMBIGUOUS_WIDTH=wide` keeps tree guides, rules, and
-  accented filenames aligned on terminals that render them double width.
-- Draws the branch mark as `↱` and the copied mark as `◫`. The previous `⑂` and
-  `⧉` are absent from Menlo, so they rendered as empty boxes in Terminal.app.
+### Features
+
+- A compact, read-only Files and Git sidebar for each Herdr tab and for cmux's
+  right-sidebar Dock, with exact Against-base, Commit, Staged, Unstaged,
+  Untracked, and clean-file semantics. Untracked is a separate section with
+  Git's `?` marker.
+- Descriptor-aware Diff and Raw previews of the exact selected revision, with
+  bounded in-preview search. In Herdr, Markdown files open in the operating
+  system's default application; in cmux, selections open as native file tabs.
+- Tree and Folders layouts, keyboard navigation of every commit and file row,
+  and search across changes, commit metadata, and files. Only the visible
+  viewport is materialized, so very large repositories stay responsive.
+- One unfocused sidebar opens automatically in each Git-backed Herdr tab, and
+  `siderail.toggle-siderail` opens or closes it. Opening never reconstructs a
+  user's pane layout; unsafe layouts are skipped.
+- Event-driven refresh shared across Herdr tabs through one on-demand Git-state
+  coordinator, with a recovery poll where native watching is unavailable.
+- Colors follow the terminal's ANSI palette and Herdr's theme tokens. See
+  [Colors and glyphs](docs/THEMING.md).
+
+### Install and update
+
+- Published as the `siderail` npm package. `siderail setup` links it as Herdr
+  plugin `siderail` and adds a SideRail control to cmux's
+  `~/.config/cmux/dock.json`; `siderail status` and `siderail uninstall` report
+  and remove only this install's registrations.
+- `npm install -g siderail@latest` updates in place: open sidebars detect the
+  replaced install and restart on the new version.
 
 ### Security
 
-- Repository contents never control SideRail configuration or select editor or
-  viewer executables. Branch-specific comparison refs may come from uncommitted
-  local or worktree Git config; all executable settings remain limited to
-  built-in defaults, the user configuration file, and explicit process
-  environment overrides.
-- Verifies workspace, label, and process identity before closing a cached rail
-  or preview pane. SideRail never stages or reconstructs a user's pane layout.
-- Bounds Git commands, preview bytes, output, search memory, directory scans,
-  and auto-open work; sanitizes terminal control sequences and avoids shells for
-  repository-derived arguments.
+- Repository contents never control SideRail configuration or select an
+  executable. See the [security policy](SECURITY.md).
+- SideRail never stages, commits, or otherwise changes repository content, and
+  closes a pane only after verifying that it owns it.
+- Git commands, preview bytes, search memory, directory scans, and background
+  work are bounded; terminal control sequences are sanitized.
 
-### Fixed
+### Requirements
 
-- Derives repository labels from the shared Git directory so linked worktrees
-  show the repository name separately from the checked-out branch.
-- Prefers the local default branch over its remote-tracking ref so commits
-  already on local `main` never reappear as Against-base files or branch commits
-  merely because `origin/main` is stale.
-- Starts folders collapsed in both Tree and Folders layouts while automatically
-  expanding matching search paths so nested files remain keyboard-accessible.
-- Distinguishes provider failures from an ordinary non-Git directory and keeps
-  the last usable state after transient refresh failures.
-- Resolves per-worktree and shared Git directories for filesystem invalidation,
-  retaining a jittered recovery poll when recursive watching is unavailable.
-- Keeps automatic filesystem and recovery-poll refreshes visually silent while
-  retaining toolbar progress and confirmation for user-requested refreshes.
-- Restores terminal modes and removes temporary demo data after fatal errors.
-- Preserves source-tab-scoped preview replacement and prevents stale pane ids
-  from authorizing destructive closes.
-- Uses one global 35-second, four-worker auto-open sweep with process-group
-  cancellation and partial-result diagnostics.
-- Caches Markdown-preview search positions with prefix candidates, eliminating
-  the repeated full-result grapheme pass on every rendered search frame.
-- Binds documentation PNG bytes to their capture commit and keeps screenshot
-  regeneration explicit through a maintainer-only Pillow renderer.
+- Node.js 22 or newer and Git 2.35 or newer on macOS or Linux, with Herdr 0.8.x,
+  cmux with right-sidebar Dock support, or both. Release validation covers
+  Node.js 22 and 24.
 
-### Configuration
+### Migrating from a pre-release checkout
 
-- Adds `branch.<checked-out-branch>.siderail-base` in local or worktree Git config
-  for uncommitted per-branch comparison bases, below explicit environment/user
-  bases and above automatic local/remote default-branch resolution.
-- Removes pre-release repository-level `.siderail.json` configuration. Move any
-  desired settings to `~/.config/siderail/config.json`.
-- Removes the unused JSON Schema/editor-integration artifact. Existing
-  development configuration must remove `$schema`; runtime validation is the
-  sole configuration authority.
-- Viewer keys accept exactly `*`, a dot-prefixed suffix, or an exact basename.
-  Glob-shaped and path-containing keys are rejected explicitly. Use
-  `{ "client": "none" }` on a viewer key to disable an inherited action.
-
-### Installation and upgrade
-
-- Publishes as the `siderail` npm package with a `siderail` command:
-  `siderail setup` links the install as Herdr plugin `siderail` and adds a
-  SideRail control to cmux's global `~/.config/cmux/dock.json`;
-  `siderail status` reports each host's registration and flags stale ones;
-  `siderail uninstall` removes only this install's registrations.
-- Updates with `npm install -g siderail@latest`. Open sidebars detect the
-  replaced install and restart on the new version in place.
-- Renames the pre-release project from GitRail to SideRail: plugin id
-  `siderail`, `~/.config/siderail/`, `SIDERAIL_*` environment variables, and
-  the `branch.<name>.siderail-base` Git config key.
-- Validates Node.js 22/24, Git 2.35+, and Herdr 0.8.x on macOS and Linux through
-  reproducible local release checks. The project does not use GitHub Actions.
-- Keeps owner-only exact-revision copies available to detached external viewers
-  for 15 minutes before automatic cleanup.
-- Routes all manifest entrypoints through a launcher that resolves an absolute
-  Node executable and rejects unsupported versions before layout or terminal
-  mutation.
-- This is the first release, so no upgrade or migration path from earlier
-  versions exists. Remove a pre-release checkout's link (plugin
-  `local.git-rail`) and Dock control, then install the package.
+- The pre-release project was named GitRail. Unlink its plugin
+  (`herdr plugin unlink local.git-rail`), remove its `git-rail` Dock control,
+  move `~/.config/git-rail/` to `~/.config/siderail/`, rename `GIT_RAIL_*`
+  variables to `SIDERAIL_*` and `branch.<name>.gitrail-base` Git config keys to
+  `siderail-base`, then install the package.

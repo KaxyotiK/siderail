@@ -9,12 +9,6 @@ Committed evidence is not part of the distributable archive. Its terminal logs
 are byte-preserved evidence and are exempt from source-code whitespace checks;
 the manifest and bundle verifier authenticate every log instead.
 
-The sole post-validation exception is a follow-up commit that changes only the
-completion status and evidence references in `PRODUCTION-HARDENING.md` and
-`PRODUCTION-READINESS.md`. That record does not change the candidate or enter
-the release archive. Any behavioral documentation edit still creates a new
-candidate.
-
 Run every coordinator command block below in the same Bash shell. The two live
 worker blocks run separately on their named platforms and never mutate the
 coordinator's evidence manifest. Each block enables strict mode so an
@@ -312,17 +306,16 @@ git diff --cached --check
 git commit -m "Archive v0.1.0 candidate evidence"
 evidence_commit=$(git rev-parse HEAD)
 test "$(git rev-parse "$evidence_commit^")" = "$candidate_sha"
-npm run release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
+npm run --silent release:evidence -- tag-message --bundle "$bundle_path" --sha "$candidate_sha" \
   --evidence-commit "$evidence_commit" \
   --repository-url "https://github.com/KaxyotiK/siderail" \
   --bundle-repository-path "$bundle_path" > "$evidence_root/tag-message.txt"
 ```
 
 The evidence-only direct-child commit contains the manifest and all nine hashed
-logs. L2b is complete only after that commit is reviewed and retained in the
-repository. A subsequent status-only documentation commit may mark L2b and the
-readiness rows complete while naming both immutable SHAs. Creating or pushing
-`v0.1.0` requires separate explicit authorization:
+logs. Push it and merge it into `main` with a merge commit, never a squash or
+rebase, so it stays the candidate's direct child and the tag message's links
+resolve. Creating or pushing `v0.1.0` requires separate explicit authorization:
 
 ```bash
 set -euo pipefail

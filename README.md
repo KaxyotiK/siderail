@@ -439,7 +439,6 @@ coverage floors locally. This repository does not use GitHub Actions.
 - [Colors and glyphs](docs/THEMING.md)
 - [cmux Dock host](docs/CMUX.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Production readiness](PRODUCTION-READINESS.md)
 - [Releasing](docs/RELEASING.md)
 - [Screenshot verification](docs/screenshots/README.md)
 - [Security policy](SECURITY.md)
