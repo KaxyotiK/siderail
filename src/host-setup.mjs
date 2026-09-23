@@ -80,10 +80,25 @@ export function dockControl(root) {
   };
 }
 
+// The exact inverse of dockControl's command: two single-quoted absolute
+// paths, where a quote inside a path is written '\'', naming the launcher and
+// entrypoint of one install root. Anything else is not a SideRail control.
+function parseDockCommand(command) {
+  if (typeof command !== "string") return null;
+  const quoted = "'((?:[^']|'\\\\'')*)'";
+  const match = new RegExp(`^/bin/bash ${quoted} ${quoted}$`).exec(command);
+  if (!match) return null;
+  const [launcher, entrypoint] = [match[1], match[2]].map((value) => value.replaceAll("'\\''", "'"));
+  const launcherSuffix = `/${DOCK_LAUNCHER}`;
+  const entrypointSuffix = `/${DOCK_ENTRYPOINT}`;
+  if (!launcher.endsWith(launcherSuffix) || !entrypoint.endsWith(entrypointSuffix)) return null;
+  const root = launcher.slice(0, -launcherSuffix.length);
+  if (!path.isAbsolute(root) || entrypoint.slice(0, -entrypointSuffix.length) !== root) return null;
+  return dockControl(root).command === command ? root : null;
+}
+
 function isOwnedDockControl(control) {
-  return control?.id === DOCK_CONTROL_ID
-    && typeof control.command === "string"
-    && control.command.includes(DOCK_ENTRYPOINT);
+  return control?.id === DOCK_CONTROL_ID && parseDockCommand(control.command) !== null;
 }
 
 function readDockConfig(configPath) {
@@ -155,7 +170,5 @@ export function uninstallCmux({ environment = process.env, configPath = dockConf
 }
 
 export function dockControlRoot(control) {
-  if (!isOwnedDockControl(control)) return null;
-  const match = /'([^']*)\/scripts\/cmux-node-launcher\.sh'/.exec(control.command);
-  return match ? match[1] : null;
+  return control?.id === DOCK_CONTROL_ID ? parseDockCommand(control.command) : null;
 }

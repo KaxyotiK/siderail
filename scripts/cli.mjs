@@ -119,13 +119,17 @@ async function commandUninstall(hosts, context) {
         continue;
       }
       await assertHerdrLinkedHere(context);
-      const result = await context.uninstallHerdr({ environment: context.environment, run: context.run, pluginRoot: root });
+      const result = await context.uninstallHerdr({
+        environment: context.environment,
+        run: context.run,
+        pluginRoot: root,
+        pluginId: PLUGIN_ID,
+      });
       write(`Herdr: unlinked ${result.pluginId}; closed ${result.closedPaneIds.length} verified SideRail pane(s)\n`);
     } else {
       const { control } = findDockControl(context);
-      const controlRoot = dockControlRoot(control);
-      if (!explicit && control && (!controlRoot || path.resolve(controlRoot) !== path.resolve(root))) {
-        write(`cmux: Dock control belongs to ${describeRoot(controlRoot, root)}, left in place\n`);
+      if (!explicit && control && control.command !== dockControl(root).command) {
+        write(`cmux: Dock control belongs to ${dockControlRoot(control) || "another command"}, left in place\n`);
         continue;
       }
       const result = uninstallCmux(context);

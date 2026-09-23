@@ -79,42 +79,74 @@ test("in-process Node version guard rejects unsupported majors", () => {
   assert.equal(assertSupportedNode("24.1.0"), 24);
 });
 
-async function restartFixture(t, scriptName) {
+async function restartFixture(t, scriptName, exits) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-restart-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.mkdir(path.join(root, "scripts"));
-  // Exits 75 on the first run, as a rail does after its install is swapped.
+  // Exits with the next status in the sequence on each run; 75 is the status a
+  // rail uses after its install is swapped, and "TERM" dies from a signal.
   await fs.writeFile(path.join(root, "scripts", scriptName), [
     "const fs = await import('node:fs');",
     "const runs = Number(fs.existsSync('runs') ? fs.readFileSync('runs', 'utf8') : 0) + 1;",
     "fs.writeFileSync('runs', String(runs));",
     "process.stdout.write(`run ${runs} in ${process.cwd()}\\n`);",
-    "process.exit(runs === 1 ? 75 : 3);",
+    `const exits = ${JSON.stringify(exits)};`,
+    "const next = exits[Math.min(runs, exits.length) - 1];",
+    "if (next === 'TERM') process.kill(process.pid, 'SIGTERM');",
+    "else process.exit(next);",
     "",
   ].join("\n"));
   return root;
 }
 
-test("launcher reruns a rail from its launch directory after an install-swap restart", async (t) => {
-  const root = await restartFixture(t, "siderail.mjs");
-  const realRoot = await fs.realpath(root);
-  await assert.rejects(
-    execFileAsync("/bin/bash", [launcher, "scripts/siderail.mjs"], {
+async function launch(root, script) {
+  try {
+    const result = await execFileAsync("/bin/bash", [launcher, script], {
       cwd: root,
       env: { SIDERAIL_NODE_PATH: process.execPath, PATH: "/untrusted" },
-    }),
-    (error) => error.code === 3
-      && error.stdout === `run 1 in ${realRoot}\nrun 2 in ${realRoot}\n`,
-  );
+    });
+    return { code: 0, ...result };
+  } catch (error) {
+    return error;
+  }
+}
+
+test("launcher reruns a rail from its launch directory after an install-swap restart", async (t) => {
+  const root = await restartFixture(t, "siderail.mjs", [75, 0]);
+  const realRoot = await fs.realpath(root);
+  const result = await launch(root, "scripts/siderail.mjs");
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout, `run 1 in ${realRoot}\nrun 2 in ${realRoot}\n`);
+});
+
+test("a restart that fails while the new install settles is retried until it starts", async (t) => {
+  const root = await restartFixture(t, "cmux-siderail.mjs", [75, 1, 1, 0]);
+  const result = await launch(root, "scripts/cmux-siderail.mjs");
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout.trim().split("\n").length, 4);
+  assert.match(result.stderr, /retrying \(2 of 5\)/);
+});
+
+test("a restart that keeps failing stops after five retries with its own status", async (t) => {
+  const root = await restartFixture(t, "siderail.mjs", [75, 4]);
+  const result = await launch(root, "scripts/siderail.mjs");
+  assert.equal(result.code, 4);
+  assert.equal(result.stdout.trim().split("\n").length, 7);
+  assert.match(result.stderr, /retrying \(5 of 5\)/);
+});
+
+test("a first-run failure and a signal after a restart are never retried", async (t) => {
+  const fatal = await launch(await restartFixture(t, "siderail.mjs", [1]), "scripts/siderail.mjs");
+  assert.equal(fatal.code, 1);
+  assert.equal(fatal.stdout.trim().split("\n").length, 1);
+  const signalled = await launch(await restartFixture(t, "siderail.mjs", [75, "TERM"]), "scripts/siderail.mjs");
+  assert.equal(signalled.code, 143);
+  assert.equal(signalled.stdout.trim().split("\n").length, 2);
 });
 
 test("launcher does not rerun non-rail entrypoints that exit with the restart status", async (t) => {
-  const root = await restartFixture(t, "file-preview.mjs");
-  await assert.rejects(
-    execFileAsync("/bin/bash", [launcher, "scripts/file-preview.mjs"], {
-      cwd: root,
-      env: { SIDERAIL_NODE_PATH: process.execPath, PATH: "/untrusted" },
-    }),
-    (error) => error.code === 75 && /^run 1 in /.test(error.stdout) && !error.stdout.includes("run 2"),
-  );
+  const root = await restartFixture(t, "file-preview.mjs", [75, 0]);
+  const result = await launch(root, "scripts/file-preview.mjs");
+  assert.equal(result.code, 75);
+  assert.equal(result.stdout.trim().split("\n").length, 1);
 });

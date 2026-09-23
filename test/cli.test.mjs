@@ -235,3 +235,37 @@ test("the bin exits cleanly when its reader closes the pipe early", (t) => {
   assert.match(result.stdout, /status=0/);
   assert.doesNotMatch(result.stderr, /EPIPE/);
 });
+
+test("uninstall unlinks only the plugin id it verified, whatever HERDR_PLUGIN_ID says", async (t) => {
+  const herdr = fakeHerdr({ plugins: [{ plugin_id: "siderail", plugin_root: ROOT, source: { kind: "local" } }] });
+  const run = harness(t, { herdr });
+  run.options.environment.HERDR_PLUGIN_ID = "another-plugin";
+  run.options.environment.HERDR_BIN_PATH = "herdr-test";
+  const calls = [];
+  run.options.run = async (command, args, options) => {
+    calls.push(args.join(" "));
+    if (args.join(" ") === "pane list") return { stdout: JSON.stringify({ result: { panes: [] } }) };
+    return herdr.run(command, args, options);
+  };
+  delete run.options.uninstallHerdr;
+  await main(["uninstall", "herdr"], run.options);
+  assert.deepEqual(calls.filter((call) => call.startsWith("plugin unlink")), ["plugin unlink siderail"]);
+  assert.match(run.text(), /Herdr: unlinked siderail/);
+});
+
+test("default uninstall recognizes this install's control at a quoted path and leaves a quoted foreign one", async (t) => {
+  const quotedRoot = "/Users/o'neil/lib/node_modules/siderail";
+  const own = harness(t, { root: quotedRoot, herdr: fakeHerdr({ missing: true }) });
+  fs.mkdirSync(path.dirname(own.dockPath), { recursive: true });
+  fs.writeFileSync(own.dockPath, JSON.stringify({ controls: [dockControl(quotedRoot)] }));
+  await main(["uninstall"], own.options);
+  assert.match(own.text(), /cmux: removed the SideRail Dock control/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(own.dockPath, "utf8")).controls, []);
+
+  const foreign = harness(t, { herdr: fakeHerdr({ missing: true }) });
+  fs.mkdirSync(path.dirname(foreign.dockPath), { recursive: true });
+  fs.writeFileSync(foreign.dockPath, JSON.stringify({ controls: [dockControl(quotedRoot)] }));
+  await main(["uninstall"], foreign.options);
+  assert.match(foreign.text(), /Dock control belongs to \/Users\/o'neil\/lib\/node_modules\/siderail, left in place/);
+  assert.equal(JSON.parse(fs.readFileSync(foreign.dockPath, "utf8")).controls.length, 1);
+});

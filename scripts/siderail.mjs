@@ -58,7 +58,7 @@ import {
 } from "../src/terminal-ui.mjs";
 import { commitAge } from "../src/tui-format.mjs";
 import { resolvePalette } from "../src/theme.mjs";
-import { INSTALL_ROOT, RESTART_EXIT_CODE, launchInstallIdentity, watchInstallReplacement } from "../src/install-watch.mjs";
+import { INSTALL_ROOT, RESTART_EXIT_CODE, launchInstallContext, watchInstallReplacement } from "../src/install-watch.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
@@ -1143,10 +1143,18 @@ if (snapshotMode) {
   process.exit(0);
 }
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
+const launchContext = launchInstallContext();
 installWatcher = watchInstallReplacement({
   root: INSTALL_ROOT,
-  original: launchInstallIdentity(),
+  original: launchContext.installIdentity,
+  entrypoints: launchContext.entrypoints,
+  parentPid: launchContext.parentPid,
   onReplaced: () => { restartOnReplacedInstall().catch(fatal); },
+  // A launcher killed on its own leaves this rail reparented; do not linger.
+  onOrphaned: () => {
+    debugLog("install-watch", { outcome: "orphaned" });
+    quit();
+  },
 });
 process.stdin.setEncoding("utf8");
 process.stdin.setRawMode?.(true);

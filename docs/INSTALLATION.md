@@ -102,11 +102,17 @@ npm install -g siderail@latest
 
 npm replaces the install directory at the same path, so Herdr's link and the
 Dock control stay valid without running setup again. Each open sidebar checks
-its install every two seconds; when the path resolves to a new directory with
-a complete entrypoint, it restores the terminal and exits with status 75, and
-the Node launcher starts it again from the same path on the new code. The pane
-and its identity are unchanged. Rails left on an older coordinator release it
-when they restart, and that coordinator exits.
+its install every two seconds. Once the path resolves to a new directory that
+holds the script the sidebar was launched from (for cmux, the Dock bootstrap and
+the rail it imports) and `package.json`, `src/`, and `scripts/` look the same on
+two consecutive checks, the sidebar restores the terminal and exits with status
+75. The Node launcher then starts it again from the same path on the new code,
+in the same pane. Two matching checks mean extraction has paused, not that it
+has finished, so a restarted sidebar that fails within 10 seconds is retried up
+to five times before the launcher gives up and exits with its status. Rails left
+on an older coordinator release it when they restart, and that coordinator
+exits. A sidebar whose launcher process dies on its own exits rather than
+lingering.
 
 Node version managers such as nvm, fnm, and Volta keep a separate global
 prefix per Node version. After switching versions, reinstall SideRail under

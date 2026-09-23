@@ -171,3 +171,37 @@ test("cmux config read errors other than a missing file surface", (t) => {
   fs.mkdirSync(configPath, { recursive: true });
   assert.throws(() => findDockControl({ environment }), /EISDIR/);
 });
+
+test("only the exact generated command is recognized as a SideRail control", (t) => {
+  const { environment, home } = hermeticEnvironment(t);
+  const configPath = path.join(home, ".config", "cmux", "dock.json");
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  const lookalikes = [
+    "/bin/bash /pkg/scripts/cmux-node-launcher.sh /pkg/scripts/cmux-siderail.mjs",
+    "/bin/bash '/a/scripts/cmux-node-launcher.sh' '/b/scripts/cmux-siderail.mjs'",
+    "/bin/bash 'pkg/scripts/cmux-node-launcher.sh' 'pkg/scripts/cmux-siderail.mjs'",
+    "/bin/bash '/pkg/scripts/other.sh' '/pkg/scripts/cmux-siderail.mjs'",
+    `${dockControl("/pkg").command}; curl example.invalid`,
+  ];
+  for (const command of lookalikes) {
+    assert.equal(dockControlRoot({ id: "siderail", command }), null, command);
+    fs.writeFileSync(configPath, JSON.stringify({ controls: [{ id: "siderail", command }] }));
+    assert.throws(() => setupCmux({ root: "/pkg", environment }), /does not launch SideRail/, command);
+    assert.throws(() => uninstallCmux({ environment }), /does not launch SideRail/, command);
+  }
+  assert.equal(dockControlRoot({ id: "siderail", command: 7 }), null);
+});
+
+test("an install path containing a quote round-trips through setup and uninstall", (t) => {
+  const { environment, home } = hermeticEnvironment(t);
+  const root = "/Users/o'neil/lib/node_modules/siderail";
+  const configPath = path.join(home, ".config", "cmux", "dock.json");
+  assert.equal(setupCmux({ root, environment }).action, "added");
+  const { control } = findDockControl({ environment });
+  assert.equal(dockControlRoot(control), root);
+  assert.equal(setupCmux({ root, environment }).action, "unchanged");
+  assert.equal(setupCmux({ root: "/Users/o'neil/other", environment }).action, "updated");
+  assert.equal(dockControlRoot(findDockControl({ environment }).control), "/Users/o'neil/other");
+  assert.equal(uninstallCmux({ environment }).action, "removed");
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath, "utf8")).controls, []);
+});

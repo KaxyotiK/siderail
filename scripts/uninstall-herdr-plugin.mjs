@@ -63,9 +63,11 @@ export async function uninstallSideRail({
   environment = process.env,
   run = runCommand,
   pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url))),
+  // Callers that have verified ownership pass the id they checked; only the
+  // checkout's standalone entry honors a host-provided override.
+  pluginId = environment.HERDR_PLUGIN_ID || "siderail",
 } = {}) {
   const herdr = environment.HERDR_BIN_PATH || "herdr";
-  const pluginId = environment.HERDR_PLUGIN_ID || "siderail";
   const listed = await run(herdr, ["pane", "list"], {
     timeoutMs: 8_000,
     maxOutputBytes: 16 * 1_024 * 1_024,
