@@ -3,6 +3,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureCmuxDockResume } from "../src/cmux-resume.mjs";
+// Loaded before the resume registration below awaits, so the rail's install
+// identity is captured at launch.
+import "../src/install-watch.mjs";
 
 process.env.SIDERAIL_HOST = "cmux";
 process.env.SIDERAIL_PROJECT_CWD ||= process.cwd();

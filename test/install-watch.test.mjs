@@ -59,3 +59,28 @@ test("the default timer is real and unreferenced", (t) => {
   watcher.close();
   watcher.close();
 });
+
+test("the launch identity is the package root's identity when the module loaded", async () => {
+  const { INSTALL_ROOT, launchInstallIdentity } = await import("../src/install-watch.mjs");
+  assert.equal(INSTALL_ROOT, path.resolve(import.meta.dirname, ".."));
+  const stat = fs.statSync(INSTALL_ROOT);
+  assert.equal(launchInstallIdentity(), `${stat.dev}:${stat.ino}`);
+});
+
+test("an explicit launch identity is the baseline, so an early swap is still detected", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-install-watch-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "scripts"));
+  fs.writeFileSync(path.join(root, "scripts", "siderail.mjs"), "");
+  const { setTimer, clearTimer } = manualTimer();
+  let replaced = false;
+  const watcher = watchInstallReplacement({
+    root,
+    original: "0:0",
+    onReplaced: () => { replaced = true; },
+    setTimer,
+    clearTimer,
+  });
+  assert.equal(watcher.check(), true);
+  assert.equal(replaced, true);
+});

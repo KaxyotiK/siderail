@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import { cmuxExecutable, registerCmuxDockControl, resolveCmuxProjectContext } from "../src/cmux-context.mjs";
 import { startCmuxContextWatcher } from "../src/cmux-context-watch.mjs";
 import { resolveHostIdentity } from "../src/host-identity.mjs";
@@ -59,7 +58,7 @@ import {
 } from "../src/terminal-ui.mjs";
 import { commitAge } from "../src/tui-format.mjs";
 import { resolvePalette } from "../src/theme.mjs";
-import { RESTART_EXIT_CODE, watchInstallReplacement } from "../src/install-watch.mjs";
+import { INSTALL_ROOT, RESTART_EXIT_CODE, launchInstallIdentity, watchInstallReplacement } from "../src/install-watch.mjs";
 
 const ESC = "\u001b[";
 assertSupportedNode();
@@ -1145,7 +1144,8 @@ if (snapshotMode) {
 }
 process.stdout.write(`${ESC}?1049h${ESC}?25l${ESC}?1000h${ESC}?1006h`);
 installWatcher = watchInstallReplacement({
-  root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+  root: INSTALL_ROOT,
+  original: launchInstallIdentity(),
   onReplaced: () => { restartOnReplacedInstall().catch(fatal); },
 });
 process.stdin.setEncoding("utf8");
