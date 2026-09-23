@@ -553,3 +553,44 @@ test("the thin launcher starts one real daemon and records its complete lifecycl
   ]);
   assert.ok(records.every(({ owner }) => owner === namespaceId));
 });
+
+test("a client that disconnects while its repository identity resolves leaves the coordinator idle", async (t) => {
+  let resolveLookup;
+  let engineClosed = false;
+  let idle = 0;
+  const { coordinator, accept } = await fakeCoordinatorServer(t, {
+    resolveIdentity: () => new Promise((resolve) => { resolveLookup = resolve; }),
+    engineFactory: () => ({
+      ready: Promise.resolve(),
+      subscribe: () => () => {},
+      close: async () => { engineClosed = true; },
+    }),
+    onIdle: () => { idle += 1; },
+  });
+  const socket = new CoordinatorFixtureSocket();
+  socket.allowWrites = true;
+  accept(socket);
+  socket.feed({
+    type: "hello",
+    protocolVersion: PROTOCOL_VERSION,
+    namespaceId: "transport-namespace",
+    clientId: "short-lived-rail",
+  });
+  socket.feed({
+    type: "repository_subscribe",
+    requestId: "subscribe-1",
+    subscriptionId: "repository-1",
+    cwd: "/fixture",
+    namespaceId: "transport-namespace",
+  });
+  await waitFor(() => resolveLookup);
+  socket.destroy();
+  resolveLookup(identity);
+  await waitFor(() => engineClosed && coordinator.status.engines === 0);
+  assert.deepEqual(
+    { sessions: coordinator.status.sessions, subscriptions: coordinator.status.repositorySubscriptions },
+    { sessions: 0, subscriptions: 0 },
+  );
+  assert.ok(idle > 0);
+  assert.equal(socket.messages.some((message) => message.type === "response"), false);
+});

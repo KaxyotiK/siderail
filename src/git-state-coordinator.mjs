@@ -288,6 +288,12 @@ export function createGitStateCoordinator({
       }
       removeRepository(message.subscriptionId);
       const entry = await acquireEngine(message.cwd);
+      // The client may disconnect while its identity resolves; its close
+      // handler has already run, so never register on the closed session.
+      if (sessionClosed) {
+        releaseEngineLater(entry);
+        return;
+      }
       const subscription = { entry, unsubscribe: () => {} };
       entry.subscribers.add(subscription);
       repositorySubscriptions.set(message.subscriptionId, subscription);
