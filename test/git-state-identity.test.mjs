@@ -16,7 +16,7 @@ import {
   resolveRepositoryIdentity,
   validateOwnedRuntimeDirectory,
 } from "../src/git-state-identity.mjs";
-import { runCommand, runGit } from "../src/process.mjs";
+import { ProcessError, runCommand, runGit } from "../src/process.mjs";
 
 const gitEnvironment = {
   ...process.env,
@@ -369,4 +369,21 @@ test("ambiguous repository responses fail before a potentially incorrect shared 
     throw new Error("metadata unavailable");
   } }), { code: "AMBIGUOUS_REPOSITORY" });
   await assert.rejects(resolveRepositoryIdentity({ cwd: "" }), TypeError);
+});
+
+test("only Git's own exit marks a directory as outside Git", async (t) => {
+  const root = await fs.mkdtemp("/tmp/gri-busy-");
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const executableIdentity = await resolveGitExecutableIdentity({ environment: gitEnvironment });
+  const resolveWith = (error) => resolveRepositoryIdentity({
+    cwd: root,
+    environment: gitEnvironment,
+    executableIdentity,
+    runGit: async () => { throw error; },
+  });
+  // A slow machine must not turn a repository into plain files.
+  for (const kind of ["timeout", "aborted", "spawn"]) {
+    await assert.rejects(resolveWith(new ProcessError(`git ${kind}`, { kind })), { kind });
+  }
+  assert.equal((await resolveWith(new ProcessError("not a git repository", { kind: "exit", exitCode: 128 }))).kind, "filesystem");
 });

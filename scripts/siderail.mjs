@@ -15,7 +15,19 @@ import { createRepositoryWatcher } from "../src/git-invalidation.mjs";
 import { createRepositoryEngine } from "../src/repository-engine.mjs";
 import { createRepositoryClient, openEngineSubscription } from "../src/repository-client.mjs";
 import { createRailStateClient } from "../src/rail-state-client.mjs";
-import { createHerdrContextSource } from "../src/herdr-context-watch.mjs";
+import { createHerdrContextSource, readHerdrSessionSnapshot } from "../src/herdr-context-watch.mjs";
+import {
+  applyRailTarget,
+  clearRailTarget,
+  describeCheckout,
+  listSiblingWorktrees,
+  railTargetPath,
+  readRailTarget,
+  sameCheckout,
+  watchRailTarget,
+  withWorktreeBranches,
+  writeRailTarget,
+} from "../src/rail-target.mjs";
 import { classifySharedRuntimeFallback, createSharedRailRuntime, resolveRailStateMode } from "../src/shared-rail-runtime.mjs";
 import {
   FilesViewModelCache,
@@ -188,6 +200,17 @@ let contextTimer;
 let contextRefresh;
 let sharedRuntime;
 let initialRuntimeStatus = "";
+// The worktree this rail's tab is pinned to, or null while it follows the
+// focused pane. Kept in a per-tab file shared with `siderail target`.
+let railTarget = null;
+let railTargetFile = "";
+let railTargetWatcher;
+let worktreePicker = null;
+// The checkout the tab's pane is in: undefined until known or when Git could
+// not say, null outside Git. Shown beside a pin so both are always visible.
+let paneCheckout;
+let paneCheckoutCwd = "";
+let paneCheckoutRequest = Promise.resolve();
 const socketContext = !demoMode && !snapshotMode && HOST === "herdr" && process.env.HERDR_PANE_ID && process.env.HERDR_SOCKET_PATH;
 if (socketContext) {
   if (resolveRailStateMode(process.env) === "shared") {
@@ -730,6 +753,7 @@ function helpRows(width) {
     " /           Search current view",
     " g           Tree / Folders",
     " r           Refresh",
+    " w · click ▾ Choose worktree (Herdr)",
     " Esc         Clear selection / close",
     " q           Close SideRail",
   ];
@@ -772,21 +796,81 @@ function helpRows(width) {
     ` ${C.fog}?${C.reset} Statistics unavailable`,
   ];
 }
+function rightTag(left, tag, width) {
+  if (!tag) return left;
+  const gap = Math.max(1, width - 1 - visibleLength(left) - visibleLength(tag));
+  return `${left}${" ".repeat(gap)}${C.dim}${tag}${C.reset}`;
+}
+function paneLabel() {
+  if (paneCheckout) return `↱ ${paneCheckout.branch}`;
+  if (paneCheckout === null) return compactTerminalPath(hostContext?.cwd || "", 1_000);
+  return "↱ …";
+}
+// The cursor is a background only, so a highlighted row keeps its position.
+function highlightLine(line, width) {
+  return `${C.selected}${padAnsi(fitAnsi(line, width), width).replaceAll(C.reset, `${C.reset}${C.selected}`)}${C.reset}`;
+}
+// The loaded Git state can still belong to the previous checkout for a moment
+// after a switch; until it catches up, name the branch the switch recorded.
+function shownBranch() {
+  const wanted = railTarget ? railTarget.checkoutPath : paneCheckout?.root;
+  if (!wanted || !state.repoRoot || sameCheckout(state.repoRoot, wanted)) return state.branch || "—";
+  return (railTarget ? railTarget.branch || railTarget.label : paneCheckout.branch) || "…";
+}
+// The branch lines look the same whether the worktree list is open or closed:
+// what the rail shows, then the pane's checkout when a pin makes them differ.
+function branchRows(width) {
+  const branch = safe(shownBranch());
+  if (!socketContext) return [`  ${C.fog}↱ ${truncate(branch, width - 4)}${C.reset}`];
+  const togglePicker = () => { if (worktreePicker) { worktreePicker = null; scheduleDraw(); } else reportAsync(openWorktreePicker()); };
+  if (!railTarget) {
+    return [interactive(`   ${C.fog}↱${C.reset} ${truncate(branch, width - 7)} ${C.gold}▾${C.reset}`, togglePicker, "Worktrees"), ...worktreeChoiceRows(width)];
+  }
+  const paneSame = Boolean(paneCheckout) && sameCheckout(paneCheckout.root, railTarget.checkoutPath);
+  const tag = paneSame ? "pinned · tab" : "pinned";
+  const chip = `${C.selected}${C.gold}${C.bold} ↱ ${truncate(branch, width - 10 - tag.length)} ▾ ${C.reset}`;
+  const rows = [interactive(rightTag(`  ${chip}`, tag, width), togglePicker, "Worktrees")];
+  if (!paneSame) {
+    const name = paneLabel();
+    const text = `   ${C.fog}${name.slice(0, 1)}${C.reset}${truncate(safe(name.slice(1)), width - 10)}`;
+    const line = rightTag(text, "tab", width);
+    // While the list is open the pane line is its first choice, chosen in place.
+    const onCursor = worktreePicker?.items[worktreePicker.index]?.visible;
+    rows.push(interactive(onCursor ? highlightLine(line, width) : line, followPane, "Follow pane"));
+  }
+  return [...rows, ...worktreeChoiceRows(width)];
+}
+// While the list is open, worktrees not already on screen follow the branch
+// lines as rows in the same format, pushing the rest of the view down.
+function worktreeChoiceRows(width) {
+  if (!worktreePicker) return [];
+  const choices = worktreePicker.items.map((item, index) => ({ item, index })).filter(({ item }) => !item.visible);
+  if (!choices.length && !worktreePicker.items.length) return [`   ${C.dim}No other worktrees open${C.reset}`];
+  return choices.map(({ item, index }) => {
+    const line = `   ${C.fog}↱${C.reset} ${truncate(safe(item.branch || item.label), width - 5)}`;
+    return interactive(index === worktreePicker.index ? highlightLine(line, width) : line, () => chooseWorktree(item), `Worktree ${index}`);
+  });
+}
 function renderHeader(width) {
   const half = Math.floor(width / 2);
-  return { half, lines: [
+  const tabs = `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`;
+  return [
     ` ${C.bold}${truncate(safe(state.repository || "repository"), width - 1)}${C.reset}`,
-    `  ${C.fog}↱ ${truncate(safe(state.branch || "—"), width - 4)}${C.reset}`,
+    ...branchRows(width),
     rule(width),
-    `${tab("CHANGES", mainTab === "changes", half)}${tab("FILES", mainTab === "files", width - half)}`,
-  ] };
+    regions(tabs, [
+      { x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
+      { x1: half + 1, x2: width, label: "Files", action: () => { mainTab = "files"; activeSearch = ""; scrollOffset = 0; } },
+    ]),
+  ];
 }
 function renderFrame() {
   const width = Math.max(24, forcedWidth || process.stdout.columns || 52);
   const height = Math.max(18, forcedHeight || process.stdout.rows || 42);
-  const { half, lines: header } = renderHeader(width);
+  const header = renderHeader(width);
+  const overlayVisible = helpVisible;
   const body = helpVisible ? helpRows(width) : renderBody(width);
-  if (!helpVisible) {
+  if (!overlayVisible) {
     keyboardItems = body?.virtualFiles
       ? body.keyboardItems
       : body.flatMap((entry) => entry?.keyboardItem ? [entry.keyboardItem] : []);
@@ -811,8 +895,9 @@ function renderFrame() {
   }
   const controls = helpVisible
     ? "↑/↓ or j/k scroll · ?/Esc/q close help"
+    : worktreePicker ? "j/k move · Enter choose · Esc cancel"
     : activeSearch ? "type to filter · Enter done · Esc close · Ctrl-U clear" : "j/k select · Enter open · ? help · / search · q";
-  const footerMessage = helpVisible ? controls : statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
+  const footerMessage = overlayVisible || worktreePicker ? controls : statusMessage && statusMessage !== "Click a section or file" ? statusMessage : controls;
   const footer = [rule(width), `${C.dim}${fitAnsi(safe(footerMessage), width)}${C.reset}`];
   const bodyHeight = Math.max(1, height - header.length - footer.length);
   const fixedCount = helpVisible ? 3 : body?.virtualFiles ? body.fixed.length : state.repoRoot ? 3 : 0;
@@ -820,8 +905,8 @@ function renderFrame() {
   const fixed = fixedSource.slice(0, Math.min(fixedCount, bodyHeight));
   const scrollable = body?.virtualFiles ? body.rows : body.slice(fixed.length);
   const visibleHeight = Math.max(0, bodyHeight - fixed.length);
-  let activeScrollOffset = helpVisible ? helpScrollOffset : scrollOffset;
-  if (!helpVisible && revealSelected) {
+  let activeScrollOffset = overlayVisible ? helpScrollOffset : scrollOffset;
+  if (!overlayVisible && revealSelected) {
     const selectedRow = body?.virtualFiles
       ? (body.rowIndexByIdentity.get(selectedIdentity) ?? -1)
       : scrollable.findIndex((entry) => typeof entry !== "string" && entry.keyboardIdentity === selectedIdentity);
@@ -830,7 +915,7 @@ function renderFrame() {
   }
   const maxScrollOffset = Math.max(0, scrollable.length - visibleHeight);
   activeScrollOffset = Math.max(0, Math.min(activeScrollOffset, maxScrollOffset));
-  if (helpVisible) helpScrollOffset = activeScrollOffset; else scrollOffset = activeScrollOffset;
+  if (overlayVisible) helpScrollOffset = activeScrollOffset; else scrollOffset = activeScrollOffset;
   const visibleRows = body?.virtualFiles
     ? filesViewModels.materialize(
       scrollable,
@@ -845,11 +930,17 @@ function renderFrame() {
     ...visibleRows,
   ];
   while (viewport.length < bodyHeight) viewport.push("");
-  hitTargets = helpVisible ? [] : [
-    { row: 4, x1: 1, x2: half, label: "Changes", action: () => { mainTab = "changes"; activeSearch = ""; scrollOffset = 0; } },
-    { row: 4, x1: half + 1, x2: width, label: "Files", action: () => { mainTab = "files"; activeSearch = ""; scrollOffset = 0; } },
-  ];
-  viewport.forEach((entry, index) => {
+  hitTargets = [];
+  const addTargets = (entry, row) => {
+    if (typeof entry === "string") return;
+    if (entry.targets) entry.targets.forEach((target) => hitTargets.push({ row, ...target }));
+    if (entry.onClick) hitTargets.push({ row, x1: 1, x2: width, label: entry.label, action: entry.onClick, doubleAction: entry.onDoubleClick });
+  };
+  // While the worktree list is open only its rows respond; the view stays put.
+  if (!overlayVisible) header.forEach((entry, index) => {
+    if (!worktreePicker || (index >= 1 && index < header.length - 2)) addTargets(entry, index + 1);
+  });
+  if (!overlayVisible && !worktreePicker) viewport.forEach((entry, index) => {
     if (typeof entry === "string") return;
     const row = header.length + index + 1;
     if (entry.targets) entry.targets.forEach((target) => hitTargets.push({ row, ...target }));
@@ -1037,9 +1128,85 @@ function updateContextIdentity(context) {
   if (context.tabId !== undefined) currentSourceTabId = context.tabId;
   if (context.sourcePaneId !== undefined) sourcePaneId = context.sourcePaneId;
 }
+function targetedContext(context) {
+  if (!socketContext || !context?.workspaceId || !context?.tabId) return context;
+  const file = railTargetPath({ workspaceId: context.workspaceId, tabId: context.tabId });
+  if (file !== railTargetFile) {
+    railTargetWatcher?.close();
+    railTargetFile = file;
+    railTargetWatcher = watchRailTarget(file, () => {
+      if (!uiReady || !hostContext) return;
+      contextRefresh = applyHostContext(hostContext);
+      reportAsync(contextRefresh);
+    });
+  }
+  railTargetWatcher.sync();
+  const target = readRailTarget(file);
+  debugLog("rail-target", { target: target?.label || "", cwd: context.cwd });
+  const applied = applyRailTarget(context, target);
+  if (applied.stale) {
+    clearRailTarget(file);
+    if (uiReady) statusMessage = `${safe(target.label)} is gone · following the focused pane`;
+  }
+  const nextTarget = applied.stale ? null : target;
+  // A list built for the previous pin no longer matches what is on screen.
+  if (worktreePicker && nextTarget?.checkoutPath !== railTarget?.checkoutPath) worktreePicker = null;
+  railTarget = nextTarget;
+  refreshPaneCheckout(context.cwd);
+  return applied.context;
+}
+function refreshPaneCheckout(cwd, force = false) {
+  if (!cwd || (!force && cwd === paneCheckoutCwd)) return paneCheckoutRequest;
+  if (cwd !== paneCheckoutCwd) paneCheckout = undefined;
+  paneCheckoutCwd = cwd;
+  paneCheckoutRequest = describeCheckout(cwd).then((checkout) => {
+    if (paneCheckoutCwd !== cwd) return;
+    paneCheckout = checkout;
+    if (uiReady) scheduleDraw();
+  });
+  return paneCheckoutRequest;
+}
+function followPane() {
+  worktreePicker = null;
+  if (!hostContext?.tabId) return;
+  clearRailTarget(railTargetPath({ workspaceId: hostContext.workspaceId, tabId: hostContext.tabId }));
+  showTransientStatus("Following the pane");
+  contextRefresh = applyHostContext(hostContext);
+  reportAsync(contextRefresh);
+}
 function applyHostContext(context) {
-  updateContextIdentity(context);
-  return railController?.updateContext({ ...context, environment: process.env });
+  const effective = targetedContext(context);
+  updateContextIdentity(effective);
+  const updated = railController?.updateContext({ ...effective, environment: process.env });
+  if (uiReady) scheduleDraw();
+  return updated;
+}
+async function openWorktreePicker() {
+  if (!socketContext || !hostContext?.tabId) { showTransientStatus("Worktree selection needs a Herdr tab"); draw(); return; }
+  const snapshot = await readHerdrSessionSnapshot({ socketPath: process.env.HERDR_SOCKET_PATH });
+  const [worktrees] = await Promise.all([
+    withWorktreeBranches(listSiblingWorktrees(snapshot, hostContext.workspaceId)),
+    refreshPaneCheckout(hostContext.cwd, true),
+  ]);
+  // Choices: the pane's checkout when a pin shows it on its own line (chosen
+  // in place, meaning "follow the pane"), then every worktree not on screen.
+  const all = worktrees.map((worktree) => ({ ...worktree, pane: sameCheckout(worktree.checkoutPath, paneCheckout?.root) }));
+  const shown = (item) => (railTarget ? sameCheckout(item.checkoutPath, railTarget.checkoutPath) : item.pane);
+  const paneOnScreen = Boolean(railTarget) && !(paneCheckout && sameCheckout(paneCheckout.root, railTarget.checkoutPath));
+  const items = paneOnScreen ? [{ follow: true, pane: true, visible: true }] : [];
+  items.push(...all.filter((item) => !shown(item) && !(paneOnScreen && item.pane)));
+  worktreePicker = { items, index: 0 };
+  draw();
+}
+function chooseWorktree(item) {
+  worktreePicker = null;
+  if (!hostContext?.tabId || !item) { scheduleDraw(); return; }
+  // Choosing the pane's own checkout means following the pane.
+  if (item.pane) { followPane(); return; }
+  writeRailTarget(railTargetPath({ workspaceId: hostContext.workspaceId, tabId: hostContext.tabId }), item);
+  showTransientStatus(`Showing ${safe(item.branch || item.label)}`);
+  contextRefresh = applyHostContext(hostContext);
+  reportAsync(contextRefresh);
 }
 function applyRepositoryState(next) {
   const previousRepoRoot = state.repoRoot;
@@ -1070,6 +1237,7 @@ async function refreshState(announce = false) {
       applyRepositoryState(await getRepositoryState(currentProviderCwd));
     } else {
       const generation = railController.contextGeneration;
+      if (socketContext) refreshPaneCheckout(hostContext?.cwd, true);
       await refreshContext();
       // A context switch has already built its initial snapshot through the
       // seam; the same manual request must not immediately build it again.
@@ -1113,7 +1281,7 @@ async function cleanup() {
   if (cleanupComplete) return;
   cleanupComplete = true;
   installWatcher?.close();
-  clearTimeout(contextTimer); hostSubscription?.unsubscribe?.(); hostContextSource?.close?.();
+  clearTimeout(contextTimer); hostSubscription?.unsubscribe?.(); hostContextSource?.close?.(); railTargetWatcher?.close();
   cmuxContextWatcher?.close(); cmuxContextWatcher = undefined; clearTimeout(renderTimer); clearTimeout(statusTimer);
   await railController?.close();
   await hostSubscription?.close?.();
@@ -1173,13 +1341,21 @@ function handleInput(key) {
     }
     if (!helpVisible && button === 0 && phase === "M") {
       const target = hitTargets.find((item) => item.row === row && column >= item.x1 && column <= item.x2);
-      activatePointerTarget(target, isDoubleClick, reportAsync);
+      if (worktreePicker && !target) worktreePicker = null;
+      else activatePointerTarget(target, isDoubleClick, reportAsync);
     }
     scheduleDraw();
     return;
   }
   interruptPointerClickSequence({ key }, isDoubleClick);
   if (key === "\u0003") { quit(); return; }
+  if (worktreePicker) {
+    if (key === "\u001b" || key === "q" || key === "w") worktreePicker = null;
+    else if (/^(?:j|\u001b\[B)+$/.test(key)) worktreePicker.index = Math.min(worktreePicker.items.length - 1, worktreePicker.index + key.match(/j|\u001b\[B/g).length);
+    else if (/^(?:k|\u001b\[A)+$/.test(key)) worktreePicker.index = Math.max(0, worktreePicker.index - key.match(/k|\u001b\[A/g).length);
+    else if (key === "\r" || key === "\n") chooseWorktree(worktreePicker.items[worktreePicker.index]);
+    scheduleDraw(); return;
+  }
   if (helpVisible) {
     if (key === "?" || key === "q" || key === "\u001b") helpVisible = false;
     else if (/^(?:j|\u001b\[B)+$/.test(key)) helpScrollOffset += key.match(/j|\u001b\[B/g)?.length || 1;
@@ -1237,6 +1413,7 @@ function handleInput(key) {
   else if (key === " ") expanded[sectionIds[selectedSection]] = !expanded[sectionIds[selectedSection]];
   else if (key === "g") toggleViewMode(Math.max(24, forcedWidth || process.stdout.columns || 52));
   else if (key === "r") { reportAsync(refreshState(true)); return; }
+  else if (key === "w") { reportAsync(openWorktreePicker()); return; }
   scheduleDraw();
 }
 const inputDecoder = createTerminalInputDecoder(handleInput);

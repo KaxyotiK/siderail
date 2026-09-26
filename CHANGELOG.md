@@ -3,6 +3,18 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
+## Unreleased
+
+### Features
+
+- In Herdr, a rail can show another Git worktree of the same repository that Herdr has open. Press `w` or click the branch line to choose one; the header marks a chosen worktree as pinned.
+- `siderail target <worktree>`, `--follow`, and `--list [--json]` let an agent or script make the same choice for a tab's rail.
+
+### Fixes
+
+- Switching a rail to another repository no longer fails with "One repository subscription is allowed per connection" when the previous repository was still loading.
+- A Git command that times out on a busy machine no longer makes SideRail treat a repository as plain files.
+
 ## 0.1.1 - 2026-09-23
 
 Republishes 0.1.0 with no functional changes. 0.1.0 was withdrawn from npm

@@ -67,6 +67,12 @@ function fakeFactories(environment, behavior = {}) {
   const launcherFactory = () => ({ launch: async () => { launches += 1; } });
   const clientFactory = () => ({
     openRepositorySubscription(options) {
+      // Mirrors the real client: one open repository subscription per connection.
+      if (records.some((existing) => existing.closed === 0)) {
+        throw Object.assign(new Error("Only one repository subscription is allowed per coordinator connection"), {
+          code: "GIT_STATE_SUBSCRIPTION_LIMIT",
+        });
+      }
       const record = { ...options, closed: 0, refreshes: 0 };
       records.push(record);
       const initial = behavior.initial || delivery({
@@ -337,6 +343,26 @@ test("close does not wait on a blocked ready or unbounded remote close", async (
   await handle.close();
   assert.ok(Date.now() - startedAt < 200);
   assert.equal(fake.records[0].closed, 1);
+});
+
+test("switching context closes the old subscription before opening the next", async () => {
+  const environment = { PATH: "/bin", HOME: "/home/test" };
+  const fake = fakeFactories(environment);
+  const runtime = await createSharedRailRuntime({
+    environment,
+    resolveRuntime: fake.resolveRuntime,
+    launcherFactory: fake.launcherFactory,
+    clientFactory: fake.clientFactory,
+    loadConfiguration: configuration,
+  });
+  const first = runtime.openRepositorySubscription({ context: { cwd: "/main", environment }, onDelivery() {} });
+  await first.ready;
+  // The rail releases the old handle without awaiting it, then subscribes at once.
+  first.close();
+  const second = runtime.openRepositorySubscription({ context: { cwd: "/worktree", environment }, onDelivery() {} });
+  await second.ready;
+  assert.deepEqual(fake.records.map((record) => [record.context.cwd, record.closed]), [["/main", 1], ["/worktree", 0]]);
+  await second.close();
 });
 
 test("explicit in-process mode is selected before shared runtime construction", async () => {

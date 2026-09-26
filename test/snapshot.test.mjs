@@ -485,7 +485,7 @@ test("help overlay explains keys and icons, scrolls, and returns to a highlighte
   await waitFor(() => stdout.includes("? help"), "rail did not finish its initial render");
   child.stdin.write("?");
   await waitFor(() => stdout.includes("HELP & LEGEND"), "help did not open");
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 7; index += 1) {
     child.stdin.write("J");
     await new Promise((resolve) => setTimeout(resolve, 30));
   }

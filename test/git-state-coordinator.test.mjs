@@ -594,3 +594,42 @@ test("a client that disconnects while its repository identity resolves leaves th
   assert.ok(idle > 0);
   assert.equal(socket.messages.some((message) => message.type === "response"), false);
 });
+
+test("a repository subscription closed while it starts is never registered", async (t) => {
+  let resolveFirstLookup;
+  let lookups = 0;
+  const { coordinator, accept } = await fakeCoordinatorServer(t, {
+    resolveIdentity: () => {
+      lookups += 1;
+      return lookups === 1 ? new Promise((resolve) => { resolveFirstLookup = resolve; }) : identity;
+    },
+    engineFactory: () => ({
+      ready: Promise.resolve(),
+      subscribe: () => () => {},
+      close: async () => {},
+    }),
+  });
+  const socket = new CoordinatorFixtureSocket();
+  socket.allowWrites = true;
+  accept(socket);
+  t.after(() => socket.destroy());
+  socket.feed({ type: "hello", protocolVersion: PROTOCOL_VERSION, namespaceId: "transport-namespace", clientId: "switching-rail" });
+  const subscribe = (requestId, subscriptionId, cwd) => socket.feed({
+    type: "repository_subscribe", requestId, subscriptionId, cwd, namespaceId: "transport-namespace",
+  });
+  const response = (requestId) => socket.messages.find((message) => message.type === "response" && message.requestId === requestId);
+
+  // A rail switches away while its first repository is still resolving.
+  subscribe("subscribe-1", "repository-1", "/first");
+  await waitFor(() => resolveFirstLookup);
+  socket.feed({ type: "repository_unsubscribe", requestId: "unsubscribe-1", subscriptionId: "repository-1" });
+  subscribe("subscribe-2", "repository-2", "/second");
+  await waitFor(() => response("subscribe-2"));
+  resolveFirstLookup(identity);
+  await waitFor(() => response("subscribe-1"));
+
+  assert.equal(response("subscribe-2").ok, true);
+  assert.equal(response("subscribe-1").ok, false);
+  assert.equal(response("subscribe-1").error.code, "GIT_STATE_SUBSCRIPTION_CLOSED");
+  assert.equal(coordinator.status.repositorySubscriptions, 1);
+});

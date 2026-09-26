@@ -148,7 +148,11 @@ function adaptiveRepositorySubscription({
 
   const closeBounded = async (handle) => {
     if (!handle?.close) return;
-    const closing = Promise.resolve().then(() => handle.close()).catch(() => {});
+    // Close synchronously: the client allows one repository subscription per
+    // connection, and a rail switching context subscribes again at once.
+    let closing;
+    try { closing = Promise.resolve(handle.close()).catch(() => {}); }
+    catch { closing = Promise.resolve(); }
     let timer;
     await Promise.race([
       closing,

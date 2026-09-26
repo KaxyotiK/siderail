@@ -259,6 +259,10 @@ export function createGitStateCoordinator({
       type: "host_delivery", subscriptionId, context,
     }, { delivery: true });
 
+    // Subscriptions still resolving their engine, and those the client
+    // abandoned meanwhile; an abandoned one must never be registered.
+    const pendingRepository = new Set();
+    const cancelledRepository = new Set();
     const removeRepository = (subscriptionId) => {
       const subscription = repositorySubscriptions.get(subscriptionId);
       if (!subscription) return;
@@ -287,12 +291,21 @@ export function createGitStateCoordinator({
         });
       }
       removeRepository(message.subscriptionId);
-      const entry = await acquireEngine(message.cwd);
+      pendingRepository.add(message.subscriptionId);
+      let entry;
+      try { entry = await acquireEngine(message.cwd); }
+      finally { pendingRepository.delete(message.subscriptionId); }
       // The client may disconnect while its identity resolves; its close
       // handler has already run, so never register on the closed session.
       if (sessionClosed) {
         releaseEngineLater(entry);
         return;
+      }
+      if (cancelledRepository.delete(message.subscriptionId)) {
+        releaseEngineLater(entry);
+        throw Object.assign(new Error("Repository subscription was closed while it started"), {
+          code: "GIT_STATE_SUBSCRIPTION_CLOSED",
+        });
       }
       const subscription = { entry, unsubscribe: () => {} };
       entry.subscribers.add(subscription);
@@ -369,6 +382,7 @@ export function createGitStateCoordinator({
         if (message.type === "repository_subscribe") await handleRepositorySubscribe(message);
         else if (message.type === "repository_refresh") await handleRepositoryRefresh(message);
         else if (message.type === "repository_unsubscribe") {
+          if (pendingRepository.has(message.subscriptionId)) cancelledRepository.add(message.subscriptionId);
           removeRepository(message.subscriptionId);
           sendResponse(message.requestId);
         } else if (message.type === "host_subscribe") await handleHostSubscribe(message);
