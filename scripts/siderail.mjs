@@ -827,13 +827,13 @@ function branchRows(width) {
     return [interactive(`   ${C.fog}↱${C.reset} ${truncate(branch, width - 7)} ${C.gold}▾${C.reset}`, togglePicker, "Worktrees"), ...worktreeChoiceRows(width)];
   }
   const paneSame = Boolean(paneCheckout) && sameCheckout(paneCheckout.root, railTarget.checkoutPath);
-  const tag = paneSame ? "current · pane" : "current";
+  const tag = paneSame ? "pinned · tab" : "pinned";
   const chip = `${C.selected}${C.gold}${C.bold} ↱ ${truncate(branch, width - 10 - tag.length)} ▾ ${C.reset}`;
   const rows = [interactive(rightTag(`  ${chip}`, tag, width), togglePicker, "Worktrees")];
   if (!paneSame) {
     const name = paneLabel();
     const text = `   ${C.fog}${name.slice(0, 1)}${C.reset}${truncate(safe(name.slice(1)), width - 10)}`;
-    const line = rightTag(text, "pane", width);
+    const line = rightTag(text, "tab", width);
     // While the list is open the pane line is its first choice, chosen in place.
     const onCursor = worktreePicker?.items[worktreePicker.index]?.visible;
     rows.push(interactive(onCursor ? highlightLine(line, width) : line, followPane, "Follow pane"));
@@ -847,7 +847,7 @@ function worktreeChoiceRows(width) {
   const choices = worktreePicker.items.map((item, index) => ({ item, index })).filter(({ item }) => !item.visible);
   if (!choices.length && !worktreePicker.items.length) return [`   ${C.dim}No other worktrees open${C.reset}`];
   return choices.map(({ item, index }) => {
-    const line = rightTag(`   ${C.fog}↱${C.reset} ${truncate(safe(item.branch || item.label), width - 12)}`, "branch", width);
+    const line = `   ${C.fog}↱${C.reset} ${truncate(safe(item.branch || item.label), width - 5)}`;
     return interactive(index === worktreePicker.index ? highlightLine(line, width) : line, () => chooseWorktree(item), `Worktree ${index}`);
   });
 }
@@ -1148,7 +1148,10 @@ function targetedContext(context) {
     clearRailTarget(file);
     if (uiReady) statusMessage = `${safe(target.label)} is gone · following the focused pane`;
   }
-  railTarget = applied.stale ? null : target;
+  const nextTarget = applied.stale ? null : target;
+  // A list built for the previous pin no longer matches what is on screen.
+  if (worktreePicker && nextTarget?.checkoutPath !== railTarget?.checkoutPath) worktreePicker = null;
+  railTarget = nextTarget;
   refreshPaneCheckout(context.cwd);
   return applied.context;
 }
@@ -1164,6 +1167,7 @@ function refreshPaneCheckout(cwd, force = false) {
   return paneCheckoutRequest;
 }
 function followPane() {
+  worktreePicker = null;
   if (!hostContext?.tabId) return;
   clearRailTarget(railTargetPath({ workspaceId: hostContext.workspaceId, tabId: hostContext.tabId }));
   showTransientStatus("Following the pane");

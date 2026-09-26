@@ -165,7 +165,7 @@ config; review it and accept cmux's project trust prompt, or run
 A rail normally shows the repository of its tab's focused pane. In Herdr it can instead show any Git worktree that Herdr has open as a workspace for the same repository, such as a lane an agent is working in.
 
 - The branch line ends in `▾`. Click it or press `w` to list the other worktrees by branch directly beneath it. `j`/`k` move, Enter chooses, and Escape or a click elsewhere closes the list.
-- While another worktree is chosen, the header shows both: the chosen branch, highlighted and tagged `current`, and beneath it the pane's branch, tagged `pane`. Click the `pane` line, or choose it from the open list, to follow the pane again.
+- While another worktree is chosen, the header shows both: the chosen branch, highlighted and tagged `pinned`, and beneath it the pane's branch, tagged `tab`. Click the `tab` line, or choose it from the open list, to follow the pane again.
 - The choice belongs to the rail's tab and is cleared when the tab or workspace closes. If the chosen checkout is removed, the rail says so and follows the focused pane again.
 
 Agents and scripts make the same choice from inside the tab:

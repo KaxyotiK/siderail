@@ -90,29 +90,33 @@ for (const mode of ["shared", "in-process"]) test(`the rail shows a chosen Herdr
   // The branch line stays as it is; the other worktrees follow it as rows
   // with their arrows aligned, pushing the rest of the view down.
   const closedLines = frame().split("\n");
-  await waitFor(() => /↱ tier-relay\s+branch/.test(frame()), () => `worktree list did not open${debug()}`);
+  await waitFor(() => /↱ main ▾\s*\n\s*↱ tier-relay\s*\n/.test(frame()), () => `worktree list did not open${debug()}`);
   const openLines = frame().split("\n");
   assert.equal(openLines[1], closedLines[1]);
   assert.equal(openLines[2].indexOf("↱"), openLines[1].indexOf("↱"));
   assert.deepEqual(openLines.slice(3, -3), closedLines.slice(2, -4));
   child.stdin.write("\r");
-  const pinned = () => /↱ tier-relay ▾\s+current/.test(frame()) && /↱ main\s+pane/.test(frame());
+  const pinned = () => /↱ tier-relay ▾\s+pinned/.test(frame()) && /↱ main\s+tab/.test(frame());
   await waitFor(pinned, () => `rail did not switch to the chosen worktree${debug()}`);
   const targetFile = railTargetPath({ workspaceId: "w1", tabId: "w1:t1", environment });
   assert.equal(readRailTarget(targetFile).workspaceId, "w2");
 
-  // Reopened while pinned, the pane's line is the first choice, in place;
-  // choosing it follows the pane again.
+  // Reopened while pinned, a click on the pane's line follows the pane again
+  // and closes the list.
   child.stdin.write("w");
   await waitFor(() => pinned() && frame().includes("Enter choose"), () => `worktree list did not reopen${debug()}`);
-  child.stdin.write("\r");
-  const following = () => frame().includes("↱ main ▾") && !/current|pane/.test(frame().split("\n").slice(0, 4).join("\n"));
+  child.stdin.write("\u001b[<0;6;3M");
+  const following = () => frame().includes("↱ main ▾") && !/pinned|tab|tier-relay/.test(frame().split("\n").slice(0, 4).join("\n"))
+    && !frame().includes("Enter choose");
   await waitFor(following, () => `rail did not return to its content pane${debug()}`);
   assert.equal(readRailTarget(targetFile), null);
 
   // An agent pins and releases through the same file with `siderail target`.
   writeRailTarget(targetFile, { workspaceId: "w2", label: "tier-relay", checkoutPath: fs.realpathSync.native(relay) });
   await waitFor(pinned, () => `rail did not follow an external pin${debug()}`);
+  // A release while the list is open closes the list with it.
+  child.stdin.write("w");
+  await waitFor(() => frame().includes("Enter choose"), () => `worktree list did not open while pinned${debug()}`);
   clearRailTarget(targetFile);
   await waitFor(following, () => `rail did not follow an external release${debug()}`);
 
