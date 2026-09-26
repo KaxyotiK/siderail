@@ -449,6 +449,9 @@ export async function resolveRepositoryIdentity({
   try { rootValue = await gitValue(runGit, runOptions, ["rev-parse", "--show-toplevel"]); }
   catch (error) {
     if (error instanceof GitStateIdentityError && error.code === "AMBIGUOUS_REPOSITORY") throw error;
+    // A timed-out, cancelled, or unstartable Git says nothing about the
+    // directory; only Git's own exit means it is not a repository.
+    if (error?.kind && error.kind !== "exit") throw error;
     return Object.freeze({
       kind: "filesystem",
       canonicalCwd,

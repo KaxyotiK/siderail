@@ -6,6 +6,7 @@ import test from "node:test";
 import { main } from "../scripts/cli.mjs";
 import { ProcessError } from "../src/process.mjs";
 import { dockControl, readPackageInfo } from "../src/host-setup.mjs";
+import { railTargetPath, readRailTarget } from "../src/rail-target.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -268,4 +269,67 @@ test("default uninstall recognizes this install's control at a quoted path and l
   await main(["uninstall"], foreign.options);
   assert.match(foreign.text(), /Dock control belongs to \/Users\/o'neil\/lib\/node_modules\/siderail, left in place/);
   assert.equal(JSON.parse(fs.readFileSync(foreign.dockPath, "utf8")).controls.length, 1);
+});
+
+function targetHarness(t) {
+  const run = harness(t);
+  const checkouts = path.join(path.dirname(run.options.environment.HOME), "checkouts");
+  const checkout = (name) => { fs.mkdirSync(path.join(checkouts, name), { recursive: true }); return fs.realpathSync.native(path.join(checkouts, name)); };
+  const snapshot = {
+    tabs: [{ tab_id: "w1:t1", workspace_id: "w1" }, { tab_id: "w1:t2", workspace_id: "w1" }],
+    panes: [{ pane_id: "w1:p1", tab_id: "w1:t1", workspace_id: "w1" }],
+    workspaces: [
+      { workspace_id: "w1", label: "repo", number: 1, worktree: { repo_key: "/repo/.git", checkout_path: checkout("main") } },
+      { workspace_id: "w4", label: "tier-relay", number: 4, worktree: { repo_key: "/repo/.git", checkout_path: checkout("tier-relay"), is_linked_worktree: true } },
+    ],
+  };
+  run.options.environment.HERDR_PANE_ID = "w1:p1";
+  run.options.run = async (command, args) => {
+    if (command !== "git") throw new Error(`unexpected ${command}`);
+    return { stdout: `${path.basename(args[1]) === "main" ? "main" : "feature/relay"}\n` };
+  };
+  run.options.readSnapshot = async () => snapshot;
+  const targetFile = (tabId = "w1:t1") => railTargetPath({ workspaceId: "w1", tabId, environment: run.options.environment });
+  return { ...run, checkout, targetFile };
+}
+
+test("target pins the caller's tab to an open worktree and --follow releases it", async (t) => {
+  const run = targetHarness(t);
+  assert.equal(await main(["target", "tier-relay"], run.options), 0);
+  assert.deepEqual(readRailTarget(run.targetFile()), { workspaceId: "w4", label: "tier-relay", checkoutPath: run.checkout("tier-relay"), branch: "feature/relay" });
+  assert.match(run.text(), /SideRail in w1:t1 now shows tier-relay/);
+
+  await main(["target", "--list"], run.options);
+  assert.match(run.text(), /\* tier-relay\tfeature\/relay\tw4\t/);
+  await main(["target", "--follow"], run.options);
+  assert.equal(readRailTarget(run.targetFile()), null);
+
+  await main(["target", "feature/relay"], run.options);
+  assert.equal(readRailTarget(run.targetFile()).label, "tier-relay");
+  await main(["target", "--follow"], run.options);
+
+  await main(["target", "repo", "--tab", "w1:t2"], run.options);
+  assert.equal(readRailTarget(run.targetFile("w1:t2")).label, "repo");
+  assert.equal(readRailTarget(run.targetFile()), null);
+});
+
+test("target lists worktrees as JSON for agents", async (t) => {
+  const run = targetHarness(t);
+  await main(["target", "--list", "--json"], run.options);
+  const listed = JSON.parse(run.text());
+  assert.equal(listed.tabId, "w1:t1");
+  assert.equal(listed.target, null);
+  assert.deepEqual(listed.worktrees.map((worktree) => [worktree.label, worktree.branch]), [["repo", "main"], ["tier-relay", "feature/relay"]]);
+});
+
+test("target rejects unknown worktrees, tabs, and ambiguous arguments", async (t) => {
+  const run = targetHarness(t);
+  await assert.rejects(main(["target", "nope"], run.options), /no open worktree "nope" .*choices: repo, tier-relay/);
+  await assert.rejects(main(["target", "repo", "--tab", "w9:t1"], run.options), /no Herdr tab "w9:t1"/);
+  await assert.rejects(main(["target"], run.options), /exactly one of/);
+  await assert.rejects(main(["target", "repo", "--follow"], run.options), /exactly one of/);
+  await assert.rejects(main(["target", "repo", "--json"], run.options), /--json applies only to --list/);
+  delete run.options.environment.HERDR_PANE_ID;
+  await assert.rejects(main(["target", "repo"], run.options), /pass --tab <tab_id>/);
+  assert.equal(readRailTarget(run.targetFile()), null);
 });

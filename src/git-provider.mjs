@@ -46,7 +46,10 @@ async function resolveRepository(cwd) {
     const repoRoot = (await gitText(cwd, ["rev-parse", "--show-toplevel"])).trim();
     return await fs.realpath(repoRoot);
   } catch (error) {
-    if (error instanceof ProcessError && error.kind === "missing-executable") throw error;
+    // Only Git's own verdict means "not a repository". A timeout, a
+    // cancellation, or a failed spawn says nothing about the directory, so it
+    // must surface as an error rather than turn a busy repository into plain files.
+    if (error instanceof ProcessError && error.kind !== "exit") throw error;
     return "";
   }
 }

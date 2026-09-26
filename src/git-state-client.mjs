@@ -472,6 +472,9 @@ export function createGitStateClient({
     await ensureConnection();
     if (record.closed || record.subscribedEpoch === connectionEpoch) return;
     const epoch = connectionEpoch;
+    // Recorded before the request so a close while it is pending still
+    // unsubscribes; the coordinator would otherwise keep the subscription.
+    record.requestedEpoch = epoch;
     if (record.kind === "repository") {
       await request({
         type: "repository_subscribe",
@@ -630,6 +633,7 @@ export function createGitStateClient({
       latest: null,
       closed: false,
       subscribedEpoch: 0,
+      requestedEpoch: 0,
       refreshWaiters: new Set(),
       localGeneration: 0,
       serverEpoch: 0,
@@ -672,7 +676,7 @@ export function createGitStateClient({
         rejectInitial(record, error);
         for (const waiter of record.refreshWaiters) waiter.reject(error);
         record.refreshWaiters.clear();
-        if (socket && !socket.destroyed && record.subscribedEpoch === connectionEpoch) {
+        if (socket && !socket.destroyed && (record.subscribedEpoch === connectionEpoch || record.requestedEpoch === connectionEpoch)) {
           try {
             await request({
               type: record.kind === "repository" ? "repository_unsubscribe" : "host_unsubscribe",

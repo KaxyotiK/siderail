@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { cleanupRailTargets } from "./rail-target.mjs";
 
 const LOCK_RETRY_MS = 50;
 const LOCK_OWNER_GRACE_MS = 500;
@@ -156,6 +157,7 @@ export async function removeLegacyPaneState(options) {
 }
 
 export async function cleanupTabPaneState({ workspaceId, tabId, environment = process.env }) {
+  cleanupRailTargets({ workspaceId, tabId, environment });
   const directory = await ensurePaneStateDirectory(environment);
   const prefix = `${safeToken(workspaceId)}-${safeToken(tabId)}-`;
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -165,6 +167,7 @@ export async function cleanupTabPaneState({ workspaceId, tabId, environment = pr
 }
 
 export async function cleanupWorkspacePaneState({ workspaceId, environment = process.env }) {
+  cleanupRailTargets({ workspaceId, environment });
   const directory = await ensurePaneStateDirectory(environment);
   const prefix = `${safeToken(workspaceId)}-`;
   const entries = await fs.readdir(directory, { withFileTypes: true });
