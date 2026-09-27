@@ -3,7 +3,11 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
-## Unreleased
+## 0.2.0 - 2026-09-27
+
+### Compatibility
+
+- The Herdr host now requires and is validated on Herdr 0.9.x; the plugin declares a minimum of Herdr 0.9.0. Herdr 0.8.x is no longer validated.
 
 ### Features
 

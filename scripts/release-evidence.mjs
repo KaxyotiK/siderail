@@ -136,8 +136,8 @@ function verifyCellMetadata(cell, record) {
     if (!/^v?(?:22|24)\./.test(record.node || "")) {
       throw new Error(`${cell} must record Node 22.x or 24.x`);
     }
-    if (!/\b0\.8\.\d+\b/.test(record.herdr || "")) {
-      throw new Error(`${cell} must record Herdr 0.8.x`);
+    if (!/\b0\.9\.\d+\b/.test(record.herdr || "")) {
+      throw new Error(`${cell} must record Herdr 0.9.x`);
     }
   }
   if (cell === "screenshots") {

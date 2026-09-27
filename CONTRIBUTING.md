@@ -1,6 +1,6 @@
 # Contributing to SideRail
 
-Use Node.js 22 or newer. For host integration, use Herdr 0.8.x or a supported
+Use Node.js 22 or newer. For host integration, use Herdr 0.9.x or a supported
 cmux build as described in the [cmux guide](docs/CMUX.md). Create a focused
 branch, set up a development checkout as described in
 [Installation and upgrades](docs/INSTALLATION.md#develop-from-a-checkout), and

@@ -20,13 +20,13 @@ function metadataFor(cell) {
   if (cell === "local-node-22") return { node: "v22.18.0" };
   if (cell === "local-node-24") return { node: "v24.6.0" };
   if (cell === "live-macos") {
-    return { platform: "macOS 26.0", node: "v22.18.0", herdr: "herdr 0.8.2" };
+    return { platform: "macOS 26.0", node: "v22.18.0", herdr: "herdr 0.9.1" };
   }
   if (cell === "live-linux") {
-    return { platform: "Linux Ubuntu 24.04", node: "v24.6.0", herdr: "herdr 0.8.2" };
+    return { platform: "Linux Ubuntu 24.04", node: "v24.6.0", herdr: "herdr 0.9.1" };
   }
   if (cell === "npm-install") {
-    return { platform: "macOS 26.0", node: "v24.6.0", herdr: "herdr 0.8.2" };
+    return { platform: "macOS 26.0", node: "v24.6.0", herdr: "herdr 0.9.1" };
   }
   if (cell === "screenshots") return { visualSourceSha: SHA, captureSourceSha: SHA };
   return {};

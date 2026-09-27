@@ -144,7 +144,7 @@ npm run release:evidence -- record-file --file "$evidence_file" --sha "$candidat
 
 ## Isolated live Herdr smoke
 
-Run the checked-in wrapper once on macOS and once on Linux with Herdr 0.8.x and
+Run the checked-in wrapper once on macOS and once on Linux with Herdr 0.9.x and
 Node 22 or 24. Each worker must use a clean checkout at
 the exact candidate SHA. The wrapper creates private temporary Herdr
 configuration, state, cache, and named sessions. It never links or unlinks the
@@ -188,7 +188,7 @@ chmod 600 "$handoff_root"/*
 The Linux worker can run on the coordinator's Mac in Docker instead of on a
 separate Linux host, which needs no hosted CI. `scripts/run-linux-worker.sh`
 builds `scripts/linux-worker/Dockerfile` (Debian 12, the chosen Node major, and
-Herdr 0.8.2 verified against a pinned SHA-256), clones the candidate from this
+Herdr 0.9.1 verified against a pinned SHA-256), clones the candidate from this
 repository's Git directory mounted read-only, runs the same live smoke, and
 writes the handoff directly to its final path. It refuses to report success
 unless every handoff file exists and names the candidate. Docker Desktop runs
@@ -231,7 +231,7 @@ test -z "$(git status --porcelain)"
 
 ## npm install lifecycle
 
-Run this block in the coordinator shell on macOS or Linux with Herdr 0.8.x and
+Run this block in the coordinator shell on macOS or Linux with Herdr 0.9.x and
 Node 22 or 24. `scripts/verify-npm-install.sh` packs the candidate from
 `git archive`, installs it globally into a private npm prefix, and runs
 `siderail setup` against a private Herdr session and a private cmux `HOME`. It
