@@ -330,19 +330,21 @@ Do not move an existing tag.
 ## Publish to npm
 
 Publishing requires the pushed `v$release` tag and its own explicit
-authorization. Publish the exact tarball that the npm install lifecycle
-verified, after checking its digest against the sealed log:
+authorization, and runs from the operator's own npm login. From a checkout of
+`main` that contains the sealed evidence bundle, on the machine that holds the
+evidence root, rehearse and then publish:
 
 ```bash
 set -euo pipefail
-tarball="$evidence_root/package/siderail-$release.tgz"
-test -f "$tarball"
-digest=$(shasum -a 256 "$tarball" | cut -d' ' -f1)
-grep -q "siderail-$release.tgz: .* sha256 $digest\$" "release-evidence/$release/$candidate_sha/files/npm-install.log"
-test "$(git rev-parse "v$release^{commit}")" = "$candidate_sha"
-npm publish "$tarball" --access public
-npm view "siderail@$release" version
+npm run release:publish -- --dry-run
+npm run release:publish
 ```
+
+`scripts/publish-npm.sh` publishes the exact tarball that the npm install
+lifecycle verified. It checks that the local `v$release` tag is the pushed one,
+verifies the sealed bundle for the tagged candidate, checks the tarball's
+digest against the sealed npm-install log, and refuses a version npm already
+has. Pass a version to publish one other than `package.json`'s.
 
 npm does not allow a published version to be reused. A defect found after
 publishing ships as a new patch version through a new candidate.

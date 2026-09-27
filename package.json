@@ -62,6 +62,7 @@
     "artifact:verify": "node scripts/verify-artifact.mjs",
     "screenshots:verify": "node scripts/verify-screenshots.mjs",
     "release:evidence": "node scripts/release-evidence.mjs",
+    "release:publish": "/bin/bash scripts/publish-npm.sh",
     "fixture:verify": "node --test test/integration.test.mjs",
     "live:herdr:smoke": "node scripts/live-herdr-smoke.mjs",
     "live:release:smoke": "/bin/bash scripts/run-isolated-live-smoke.sh",
