@@ -1,0 +1,5 @@
+
+> siderail@0.2.0 screenshots:verify
+> node scripts/verify-screenshots.mjs --sha 7887a1c59195b94a220c138557ab8be3e57baf69
+
+{"type":"screenshot_verification","candidateSha":"7887a1c59195b94a220c138557ab8be3e57baf69","visualSourceSha":"fa1c3462fafabd7fcaf64a830f2e09e04d99b0c3","captureSourceSha":"fa1c3462fafabd7fcaf64a830f2e09e04d99b0c3","widths":[36,52,100]}
