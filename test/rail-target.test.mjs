@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { clearInterval, setInterval } from "node:timers";
 import { cleanupTabPaneState, cleanupWorkspacePaneState } from "../src/herdr-pane-state.mjs";
 import {
   applyRailTarget,
@@ -94,7 +95,10 @@ test("a rail sees its target file written and removed", async (t) => {
   const seen = [];
   let notify;
   const watcher = watchRailTarget(file, () => { seen.push(readRailTarget(file)?.label ?? null); notify?.(); }, { pollMs: 50 });
-  t.after(() => watcher.close());
+  // The watcher never holds the process open by itself (a rail's input does),
+  // so the test keeps the event loop alive while it waits.
+  const keepAlive = setInterval(() => {}, 1_000);
+  t.after(() => { watcher.close(); clearInterval(keepAlive); });
   const next = () => new Promise((resolve) => { notify = resolve; });
 
   let change = next();

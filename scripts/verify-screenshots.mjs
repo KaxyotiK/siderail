@@ -65,7 +65,7 @@ export function verifyScreenshotMetadata({ candidate = "HEAD", resolveCommits = 
   const captureSource = readme.match(/^- Capture source: `([0-9a-f]{40,64})`$/m)?.[1];
   if (!visualSource) throw new Error("screenshot README must name a full visual-source SHA");
   if (!captureSource) throw new Error("screenshot README must name a full capture-source SHA");
-  if (!/^- Herdr: `0\.8\.\d+`$/m.test(readme)) throw new Error("screenshot README must name exact Herdr 0.8.x");
+  if (!/^- Herdr: `0\.9\.\d+`$/m.test(readme)) throw new Error("screenshot README must name exact Herdr 0.9.x");
   const candidateSha = resolveCommits ? fullCommit(candidate, "candidate") : null;
   const visualSourceSha = resolveCommits ? fullCommit(visualSource, "visual source") : visualSource;
   const captureSourceSha = resolveCommits ? fullCommit(captureSource, "capture source") : captureSource;

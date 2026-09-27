@@ -30,7 +30,7 @@ test("public installation and release evidence instructions enforce the candidat
   const install = readme.slice(readme.indexOf("## Install and launch"), readme.indexOf("## Configuration"));
   assert.ok(install.indexOf("npm ci --ignore-scripts") < install.indexOf("herdr plugin link ."));
   assert.ok(install.indexOf("npm run check") < install.indexOf("herdr plugin link ."));
-  assert.match(readme, /Herdr 0\.8\.x/);
+  assert.match(readme, /Herdr 0\.9\.x/);
   assert.match(readme, /macOS or Linux/);
   assert.doesNotMatch(releasing, /record-ci|gh workflow|gh run/);
   assert.match(releasing, /record-file/);
@@ -125,7 +125,7 @@ test("the Docker Linux worker pins a checksummed Herdr and is part of the releas
   const dockerfile = await fs.readFile("scripts/linux-worker/Dockerfile", "utf8");
   const worker = await fs.readFile("scripts/run-linux-worker.sh", "utf8");
   assert.match(releasing, /scripts\/run-linux-worker\.sh "\$candidate_sha" "\$evidence_root\/live-linux-handoff"/);
-  assert.match(dockerfile, /ARG HERDR_VERSION=0\.8\.\d+/);
+  assert.match(dockerfile, /ARG HERDR_VERSION=0\.9\.\d+/);
   assert.equal((dockerfile.match(/sum=[0-9a-f]{64}/g) || []).length, 2);
   assert.match(dockerfile, /sha256sum -c -/);
   assert.match(worker, /--volume "\$git_directory:\/source\.git:ro"/);

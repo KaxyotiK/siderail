@@ -7,8 +7,8 @@ boundary and footer; the content is not cropped or hand-edited.
 
 - Visual source: `fa1c3462fafabd7fcaf64a830f2e09e04d99b0c3`
 - Capture source: `fa1c3462fafabd7fcaf64a830f2e09e04d99b0c3`
-- Herdr: `0.8.2`
-- Captured: `2026-09-23`, macOS 26.6.2
+- Herdr: `0.9.1`
+- Captured: `2026-09-27`, macOS 26.6.2
 
 | Narrow (36) | Standard (52) | Wide (100) |
 | --- | --- | --- |

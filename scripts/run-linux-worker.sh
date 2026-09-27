@@ -22,7 +22,7 @@ test ! -e "$handoff" || { echo "handoff directory already exists: $handoff" >&2;
 repository_root=$(cd "$(dirname "$0")/.." && pwd -P)
 git_directory=$(cd "$repository_root" && cd "$(git rev-parse --git-common-dir)" && pwd -P)
 candidate=$(git -C "$repository_root" rev-parse --verify "$candidate^{commit}")
-image="siderail-linux-worker:herdr-0.8.2-node$node_major"
+image="siderail-linux-worker:herdr-0.9.1-node$node_major"
 
 docker build --quiet --tag "$image" --build-arg "NODE_MAJOR=$node_major" \
   "$repository_root/scripts/linux-worker" >/dev/null
