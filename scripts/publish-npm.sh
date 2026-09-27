@@ -50,6 +50,15 @@ echo "Publishing siderail $release from $tag ($candidate_sha)"
 echo "  tarball: $tarball"
 echo "  sha256:  $digest"
 npm publish "$tarball" --access public $dry_run
-if [ -z "$dry_run" ]; then
-  npm view "siderail@$release" version
-fi
+test -z "$dry_run" || exit 0
+
+# The registry can take a few minutes to show a version it has accepted.
+for attempt in $(seq 1 18); do
+  if [ -n "$(npm view "siderail@$release" version 2>/dev/null || true)" ]; then
+    echo "siderail@$release is on npm"
+    exit 0
+  fi
+  sleep 10
+done
+echo "npm accepted the publish, but siderail@$release is not visible yet; check later with: npm view siderail@$release version" >&2
+exit 1
