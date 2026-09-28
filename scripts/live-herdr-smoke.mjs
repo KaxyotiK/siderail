@@ -285,25 +285,42 @@ async function main() {
   assertPaneExists(sourceA.paneId);
   assertPaneExists(unrelatedPaneId);
 
+  // A top/bottom layout has no full-height content pane. Opening stages the
+  // content panes, adds the rail at the outer right, and rebuilds the same
+  // terminals in their original stack.
+  const stackedTerminals = new Map(tabPanes(sourceA.tabId).map((pane) => [pane.pane_id, pane.terminal_id]));
+  const assertStackedBesideRail = async (label) => {
+    const rail = await railFor(sourceA.tabId);
+    const { layout } = herdrJson(["pane", "layout", "--pane", rail.pane_id]).result;
+    const rect = (paneId) => layout.panes.find((pane) => pane.pane_id === paneId)?.rect;
+    const railRect = rect(rail.pane_id);
+    assert.equal(tabPanes(sourceA.tabId).filter((pane) => pane.label === railLabel).length, 1, `${label}: one rail`);
+    assert.ok(railRect && railRect.y === layout.area.y && railRect.height === layout.area.height
+      && railRect.x + railRect.width === layout.area.x + layout.area.width, `${label}: rail is full height at the outer right`);
+    for (const [paneId, terminalId] of stackedTerminals) {
+      assert.equal(tabPanes(sourceA.tabId).find((pane) => pane.pane_id === paneId)?.terminal_id, terminalId, `${label}: ${paneId} kept its terminal`);
+    }
+    assert.ok(rect(sourceA.paneId).y < rect(unrelatedPaneId).y && rect(sourceA.paneId).x === rect(unrelatedPaneId).x,
+      `${label}: content panes are still stacked`);
+    assert.equal(tabs().some((tab) => tab.label === "SideRail Layout Staging"), false, `${label}: staging tabs closed`);
+    return rail;
+  };
   run(process.execPath, ["scripts/auto-open-herdr-tabs.mjs"], {
     timeout: 45_000,
   });
-  assert.equal(tabPanes(sourceA.tabId).some((pane) => pane.label === railLabel), false, "automatic ensure changed an unsafe layout");
-  assertPaneExists(sourceA.paneId);
-  assertPaneExists(unrelatedPaneId);
+  const stackedRail = await assertStackedBesideRail("automatic ensure");
 
   focusTab(sourceA.tabId);
   await invokeAction("open-siderail");
-  assert.equal(tabPanes(sourceA.tabId).some((pane) => pane.label === railLabel), false, "manual open changed an unsafe layout");
-  assertPaneExists(sourceA.paneId);
-  assertPaneExists(unrelatedPaneId);
+  await eventually("manual open replaced the stacked rail", () => !tabPanes(sourceA.tabId).some((pane) => pane.pane_id === stackedRail.pane_id));
+  await assertStackedBesideRail("manual open");
   herdr(["pane", "close", unrelatedPaneId]);
   assertPaneExists(unrelatedPaneId, false);
   focusTab(sourceA.tabId);
   await invokeAction("open-siderail");
   const rebuiltRailA = await railFor(sourceA.tabId);
   assertPaneExists(sourceA.paneId);
-  observations.push("manual Toggle and automatic/manual unsafe-layout skips without pane reconstruction");
+  observations.push("manual Toggle and automatic/manual opening beside a top/bottom layout with the same terminals");
 
   focusTab(sourceA.tabId);
   const previewA1 = await openFileFromRail(rebuiltRailA.pane_id, "untracked.txt");
