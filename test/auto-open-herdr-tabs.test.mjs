@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { clearInterval, setInterval } from "node:timers";
 import { promisify } from "node:util";
 import test from "node:test";
 import { autoOpenEnabled, autoOpenHerdrTabs, collectTabTargets, openAutoOpenTarget, runBoundedSweep, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
@@ -177,7 +178,11 @@ test("auto-open stops at its deadline when staging has not started", async (t) =
     run: async (command, _args, options) => {
       if (command === "git") return { stdout: "/repo\n" };
       signal = options.signal;
+      // The deadline timer is unref'd; a real child process keeps Node alive
+      // until it fires, so this stand-in must too.
+      const keepAlive = setInterval(() => {}, 1_000);
       await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+      clearInterval(keepAlive);
       return { stdout: "" };
     },
   });
