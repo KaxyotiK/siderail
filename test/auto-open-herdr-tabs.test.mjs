@@ -143,7 +143,7 @@ test("bounded sweep reports both active and queued jobs as deadline-cancelled", 
   assert.deepEqual(summary.opened, []);
 });
 
-test("auto-open target gives its process group the remaining deadline and recovery grace", async (t) => {
+test("auto-open target gives a started layout move time to finish", async (t) => {
   const { environment } = hermeticEnvironment(t);
   let clock = 10_000;
   let shellOptions;
@@ -163,7 +163,7 @@ test("auto-open target gives its process group the remaining deadline and recove
     },
   });
   assert.equal(opened, true);
-  assert.equal(shellOptions.timeoutMs, 20_000);
+  assert.equal(shellOptions.timeoutMs, 120_000);
   assert.equal(shellOptions.killGraceMs, 5_000);
   assert.equal(shellOptions.waitForTermination, true);
 });

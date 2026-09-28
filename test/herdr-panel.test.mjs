@@ -38,7 +38,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
   const run = async (_command, args) => {
     calls.push(args);
     if (args[0] === "pane" && args[1] === "list") {
-      return { stdout: JSON.stringify({ result: { panes: [...panes, ...(openedPane ? [openedPane] : [])] } }) };
+      return { stdout: JSON.stringify({ result: { panes: [...panes.map((pane) => ({ ...pane, tab_id: paneTabs.get(pane.pane_id) })), ...(openedPane ? [openedPane] : [])] } }) };
     }
     if (args[0] === "tab" && args[1] === "list") {
       const tabs = [...new Set([...paneTabs.values(), openedPane?.tab_id].filter(Boolean))]
@@ -46,7 +46,16 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
       return { stdout: JSON.stringify({ result: { tabs } }) };
     }
     if (args[0] === "pane" && args[1] === "layout") {
-      return { stdout: JSON.stringify({ result: { layout } }) };
+      const relocatedRail = calls.findLast((call) => call[0] === "pane" && call[1] === "move" && call.includes("--tab")
+        && panes.some((pane) => pane.pane_id === call[2] && ["SIDERAIL", "HERDR GITRAIL"].includes(pane.label)))?.[2];
+      const railId = openedPane?.pane_id || relocatedRail;
+      const displayed = railId && calls.some((call) => call[0] === "pane" && call[1] === "move")
+        ? { ...layout, area: layout.area || { x: 0, y: 0, width: 120, height: 40 }, panes: [
+          ...(layout.panes || []).filter((pane) => pane.pane_id !== railId),
+          { pane_id: railId, rect: { x: (layout.area?.width || 120) - 30, y: 0, width: 30, height: layout.area?.height || 40 } },
+        ] }
+        : layout;
+      return { stdout: JSON.stringify({ result: { layout: displayed } }) };
     }
     if (args[0] === "pane" && args[1] === "get") {
       const existing = panes.find((item) => item.pane_id === args[2]);
@@ -75,12 +84,14 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
     }
     if (args[0] === "pane" && args[1] === "move") {
       const paneId = args[2];
-      paneTabs.set(paneId, args.includes("--new-tab") ? "w1:t9" : args[args.indexOf("--tab") + 1]);
+      const newTabId = args.includes("--new-tab") ? `w1:t${paneTabs.size + 9}` : args[args.indexOf("--tab") + 1];
+      paneTabs.set(paneId, newTabId);
       if (openedPane?.pane_id === paneId) openedPane.tab_id = paneTabs.get(paneId);
       await afterMutation?.(args);
       return { stdout: JSON.stringify({ result: { move_result: {
         changed: true,
-        created_tab: args.includes("--new-tab") ? { tab_id: "w1:t9" } : undefined,
+        pane: { pane_id: paneId, tab_id: newTabId, terminal_id: `term-${paneId}` },
+        created_tab: args.includes("--new-tab") ? { tab_id: newTabId } : undefined,
       } } }) };
     }
     if (args[0] === "plugin" && args[1] === "pane" && args[2] === "close") {
@@ -94,6 +105,24 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
   };
   return { calls, paneTabs, run, openedPane: () => openedPane };
 }
+
+function mockLayoutRequest(root, { afterRoot = root, exportRoots = null } = {}) {
+  const calls = [];
+  const request = async (_socket, method, params) => {
+    calls.push({ method, params });
+    if (method === "layout.export") {
+      const exportIndex = calls.filter((call) => call.method === "layout.export").length - 1;
+      const exportedRoot = exportRoots?.[exportIndex] || (exportIndex > 0 ? afterRoot : root);
+      return { type: "layout_export", layout: { workspace_id: "w1", tab_id: "w1:t1", root: exportedRoot } };
+    }
+    if (method === "pane.focus") return { type: "pane_focus" };
+    throw new Error(`unexpected layout method ${method}`);
+  };
+  return { calls, request };
+}
+
+const paneNode = (pane_id) => ({ type: "pane", pane_id });
+const splitNode = (direction, first, second, ratio = 0.5) => ({ type: "split", direction, ratio, first, second });
 
 async function temporaryRoot(t, prefix) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -309,7 +338,7 @@ test("legacy migration open failure retains the verified legacy rail", async (t)
   assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p3"), false);
 });
 
-test("automatic ensure adopts a middle rail without rearranging user panes", async (t) => {
+test("automatic ensure relocates a middle rail to the outer right", async (t) => {
   const root = await temporaryRoot(t, "siderail-repair-");
   const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
@@ -323,17 +352,22 @@ test("automatic ensure adopts a middle rail without rearranging user panes", asy
     { pane_id: "w1:p3", rect: { x: 80, y: 0, width: 50, height: 20 } },
   ] };
   const mocked = mockRun({ panes, layout, openedPaneId: "unused" });
+  const layoutApi = mockLayoutRequest(
+    splitNode("right", splitNode("right", paneNode("w1:p1"), paneNode("w1:p2")), paneNode("w1:p3")),
+    { afterRoot: splitNode("right", splitNode("right", paneNode("w1:p1"), paneNode("w1:p3")), paneNode("w1:p2")) },
+  );
   const resized = [];
   await openHerdrPanel({
     entrypoint: "git-tui",
     openMode: "ensure",
     environment: env,
     run: mocked.run,
+    request: layoutApi.request,
     resize: async (options) => resized.push(options.paneId),
     writeOutput: () => {},
   });
-  assert.equal(mocked.calls.some((args) => args[0] === "pane" && ["swap", "move"].includes(args[1])), false);
-  assert.deepEqual(resized, []);
+  assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, 4);
+  assert.deepEqual(resized, ["w1:p2"]);
 });
 
 test("rightmost placement is independent of pane listing order", () => {
@@ -346,7 +380,7 @@ test("rightmost placement is independent of pane listing order", () => {
   assert.equal(rightmostPaneId(layout, panes), "right");
 });
 
-test("automatic ensure skips an unsafe vertical layout without staging or opening", async (t) => {
+test("automatic ensure opens beside a top/bottom content layout", async (t) => {
   const root = await temporaryRoot(t, "siderail-vertical-ensure-");
   const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
@@ -362,13 +396,16 @@ test("automatic ensure skips an unsafe vertical layout without staging or openin
     ],
   };
   const mocked = mockRun({ panes, layout });
-  const result = await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env, run: mocked.run, resize: async () => {}, writeOutput: () => {} });
-  assert.deepEqual(result, { paneId: "", adopted: false, openMode: "ensure", skipped: true });
-  assert.equal(mocked.calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
-  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
+  const layoutApi = mockLayoutRequest(splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")),
+    { afterRoot: splitNode("right", splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")), paneNode("w1:p9")) });
+  const result = await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env, run: mocked.run, request: layoutApi.request, resize: async () => {}, writeOutput: () => {} });
+  assert.deepEqual(result, { paneId: "w1:p9", adopted: false, openMode: "ensure" });
+  assert.deepEqual(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").map((args) => [args[2], args.includes("--new-tab") ? "stage" : "restore"]), [["w1:p2", "stage"], ["w1:p2", "restore"]]);
+  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), true);
+  assert.equal(layoutApi.calls.some((call) => call.method === "layout.apply"), false);
 });
 
-test("manual open also skips an unsafe vertical layout without rearranging user panes", async (t) => {
+test("manual open places a rail beside top/bottom content panes", async (t) => {
   const root = await temporaryRoot(t, "siderail-vertical-manual-");
   const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
@@ -384,20 +421,24 @@ test("manual open also skips an unsafe vertical layout without rearranging user 
     ],
   };
   const mocked = mockRun({ panes, layout });
+  const layoutApi = mockLayoutRequest(splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")),
+    { afterRoot: splitNode("right", splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")), paneNode("w1:p9")) });
   const result = await openHerdrPanel({
     entrypoint: "git-tui",
     openMode: "replace",
     environment: env,
     run: mocked.run,
+    request: layoutApi.request,
     resize: async () => {},
     writeOutput: () => {},
   });
-  assert.deepEqual(result, { paneId: "", adopted: false, openMode: "replace", skipped: true });
-  assert.equal(mocked.calls.some((args) => args[0] === "pane" && ["move", "swap"].includes(args[1])), false);
-  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), false);
+  assert.deepEqual(result, { paneId: "w1:p9", adopted: false, openMode: "replace" });
+  assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, 2);
+  assert.equal(mocked.calls.some((args) => args[0] === "plugin" && args[1] === "pane" && args[2] === "open"), true);
+  assert.equal(layoutApi.calls.some((call) => call.method === "layout.apply"), false);
 });
 
-test("manual open retains an existing verified rail when replacement is unsafe", async (t) => {
+test("manual replace of an existing rail preserves stacked content", async (t) => {
   const root = await temporaryRoot(t, "siderail-existing-vertical-manual-");
   const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
@@ -415,17 +456,93 @@ test("manual open retains an existing verified rail when replacement is unsafe",
     ],
   };
   const mocked = mockRun({ panes, layout });
+  const layoutApi = mockLayoutRequest(splitNode("right", splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")), paneNode("w1:p3"), 0.7),
+    { afterRoot: splitNode("right", splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")), paneNode("w1:p9")) });
   const result = await openHerdrPanel({
     entrypoint: "git-tui",
     openMode: "replace",
     environment: env,
     run: mocked.run,
+    request: layoutApi.request,
     resize: async () => {},
     writeOutput: () => {},
   });
-  assert.deepEqual(result, { paneId: "w1:p3", adopted: true, openMode: "replace", skipped: true });
-  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane close")), false);
-  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane open")), false);
+  assert.deepEqual(result, { paneId: "w1:p9", adopted: false, openMode: "replace" });
+  assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p3"), true);
+  assert.equal(mocked.calls.some((args) => args.join(" ").startsWith("plugin pane open")), true);
+  assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, 3);
+  assert.equal(layoutApi.calls.some((call) => call.method === "layout.apply"), false);
+});
+
+test("nested rightmost column keeps its structure and terminals beside the new rail", async (t) => {
+  const root = await temporaryRoot(t, "siderail-nested-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p3", SIDERAIL_WORKSPACE_CWD: "/repo" });
+  const panes = ["w1:p1", "w1:p2", "w1:p3"].map((pane_id) => ({ workspace_id: "w1", tab_id: "w1:t1", pane_id, cwd: "/repo" }));
+  const layout = { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p3", panes: [
+    { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 60, height: 40 } },
+    { pane_id: "w1:p2", rect: { x: 60, y: 0, width: 60, height: 20 } },
+    { pane_id: "w1:p3", rect: { x: 60, y: 20, width: 60, height: 20 } },
+  ] };
+  const contentRoot = splitNode("right", paneNode("w1:p1"), splitNode("down", paneNode("w1:p2"), paneNode("w1:p3")));
+  const layoutApi = mockLayoutRequest(contentRoot,
+    { afterRoot: splitNode("right", contentRoot, paneNode("w1:p9")) });
+  const mocked = mockRun({ panes, layout });
+  const result = await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env,
+    run: mocked.run, request: layoutApi.request, resize: async () => {}, writeOutput: () => {} });
+  assert.equal(result.paneId, "w1:p9");
+  assert.deepEqual(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move")
+    .map((args) => [args[2], args.includes("--new-tab") ? "stage" : args[args.indexOf("--split") + 1]]),
+  [["w1:p2", "stage"], ["w1:p3", "stage"], ["w1:p2", "right"], ["w1:p3", "down"]]);
+  assert.equal(layoutApi.calls.some((call) => call.method === "layout.apply"), false);
+});
+
+test("failed stacked open closes the newly created rail and restores content panes", async (t) => {
+  const root = await temporaryRoot(t, "siderail-stage-rollback-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
+  const panes = ["w1:p1", "w1:p2"].map((pane_id) => ({ workspace_id: "w1", tab_id: "w1:t1", pane_id, cwd: "/repo" }));
+  const layout = { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", panes: [
+    { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
+    { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
+  ] };
+  const mocked = mockRun({ panes, layout, afterMutation: async (args) => {
+    if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") throw new Error("injected open failure");
+  } });
+  const layoutApi = mockLayoutRequest(splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")));
+  await assert.rejects(openHerdrPanel({ entrypoint: "git-tui", environment: env,
+    run: mocked.run, request: layoutApi.request, resize: async () => {}, writeOutput: () => {} }), /injected open failure/);
+  assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p9"), true);
+  assert.deepEqual(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move")
+    .map((args) => [args[2], args.includes("--new-tab") ? "stage" : "restore"]),
+  [["w1:p2", "stage"], ["w1:p2", "restore"]]);
+  assert.equal(mocked.paneTabs.get("w1:p2"), "w1:t1");
+});
+
+test("failed replacement close restores the original stacked tab", async (t) => {
+  const root = await temporaryRoot(t, "siderail-stage-close-rollback-");
+  const env = environment(root, { HERDR_PANE_ID: "w1:p1", SIDERAIL_WORKSPACE_CWD: "/repo" });
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p3", cwd: "/repo", label: "HERDR GITRAIL" },
+  ];
+  const layout = { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", panes: [
+    { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 80, height: 20 } },
+    { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 80, height: 20 } },
+    { pane_id: "w1:p3", rect: { x: 80, y: 0, width: 40, height: 40 } },
+  ] };
+  const originalRoot = splitNode("right", splitNode("down", paneNode("w1:p1"), paneNode("w1:p2")), paneNode("w1:p3"));
+  const contentRoot = splitNode("down", paneNode("w1:p1"), paneNode("w1:p2"));
+  const layoutApi = mockLayoutRequest(originalRoot, { exportRoots: [originalRoot, splitNode("right", contentRoot, paneNode("w1:p9")), originalRoot] });
+  const mocked = mockRun({ panes, layout });
+  const run = async (command, args, options) => {
+    if (args.join(" ") === "plugin pane close w1:p3") throw new Error("injected close failure");
+    return mocked.run(command, args, options);
+  };
+  await assert.rejects(openHerdrPanel({ entrypoint: "git-tui", environment: env,
+    run, request: layoutApi.request, resize: async () => {}, writeOutput: () => {} }), /injected close failure/);
+  assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p9"), true);
+  assert.equal(mocked.paneTabs.get("w1:p2"), "w1:t1");
+  assert.equal(mocked.paneTabs.get("w1:p3"), "w1:t1");
 });
 
 test("manual replace retargets an existing rail while ensure adopts it", async (t) => {

@@ -42,10 +42,7 @@ SideRail adopts an existing rail instead of opening a duplicate. If an earlier
 process was interrupted during pane creation, the next attempt automatically
 recovers its orphaned lock.
 
-SideRail opens only when Herdr can create a direct outer-right split beside a
-full-height pane. On top/bottom or otherwise nested layouts where that is not
-safe, both automatic and manual opening report a skip and leave every pane
-untouched. Rearrange the tab manually if you want to make room for the rail.
+SideRail opens beside the complete tab layout, including top/bottom and nested splits. When no content pane spans the tab height, it briefly moves content panes into temporary **SideRail Layout Staging** tabs, creates the outer-right rail, then returns the same terminals to their original split structure. The staging tabs close when their panes return. If Herdr refuses a move, SideRail attempts to restore the original layout and reports the failure; it does not replace content terminals with newly created ones.
 
 ## SideRail opened at the wrong width
 

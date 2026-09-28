@@ -113,7 +113,9 @@ export async function openAutoOpenTarget(target, {
       SIDERAIL_WORKSPACE_CWD: target.cwd,
       SIDERAIL_NODE_PATH: process.execPath,
     },
-    timeoutMs: remainingMs,
+    // Discovery is deadline-bound, but a started layout move must have time
+    // to return staged content panes before its process group is terminated.
+    timeoutMs: Math.max(remainingMs, 120_000),
     killGraceMs: 5_000,
     waitForTermination: true,
     maxOutputBytes: 256 * 1_024,
