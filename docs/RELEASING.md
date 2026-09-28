@@ -7,7 +7,9 @@ creates a new candidate and invalidates all evidence.
 
 Committed evidence is not part of the distributable archive. Its terminal logs
 are byte-preserved evidence and are exempt from source-code whitespace checks;
-the manifest and bundle verifier authenticate every log instead.
+the manifest and bundle verifier authenticate every log instead. The one change
+sealing makes is to replace the operator's home directory with `~`, because the
+bundle is published; the bundle's digests describe the logs as sealed.
 
 Run every coordinator command block below in the same Bash shell. The two live
 worker blocks run separately on their named platforms and never mutate the

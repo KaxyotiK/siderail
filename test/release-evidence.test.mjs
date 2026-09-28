@@ -119,6 +119,25 @@ test("release evidence binds nine hashed local logs to one candidate", (context)
   assert.throws(() => verifyEvidenceBundle({ directory: bundle, candidateSha: SHA }), /missing or has changed/);
 });
 
+test("sealing replaces the operator's home directory in bundled logs", (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-evidence-home-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "evidence.json");
+  initializeEvidence({ file, candidateSha: SHA });
+  recordAll({ directory, file });
+  const home = "/Users/operator-name";
+  fs.writeFileSync(path.join(directory, "npm-install.log"), `kept ${home}/.local/state/siderail/package.tgz\n`);
+  recordAll({ directory, file, evidenceFile: path.join(directory, "npm-install.log") });
+
+  const bundle = path.join(directory, "bundle");
+  sealEvidenceBundle({ file, candidateSha: SHA, directory: bundle, homeDirectory: home });
+  assert.equal(
+    fs.readFileSync(path.join(bundle, "files", "npm-install.log"), "utf8"),
+    "kept ~/.local/state/siderail/package.tgz\n",
+  );
+  assert.equal(verifyEvidenceBundle({ directory: bundle, candidateSha: SHA }).candidateSha, SHA);
+});
+
 test("release evidence rejects failed, stale, mismatched, and malformed local records", (context) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "siderail-evidence-negative-"));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));

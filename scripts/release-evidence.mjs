@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -192,6 +193,7 @@ export function sealEvidenceBundle({
   file,
   candidateSha,
   directory,
+  homeDirectory = os.homedir(),
   now = new Date().toISOString(),
 }) {
   const manifest = verifyEvidence({ file, candidateSha });
@@ -207,8 +209,11 @@ export function sealEvidenceBundle({
     bundled.sourceManifestSha256 = digestFile(file);
     for (const cell of REQUIRED_RELEASE_CELLS) {
       const relativePath = path.posix.join("files", `${cell}.log`);
-      fs.copyFileSync(manifest.cells[cell].evidence.path, path.join(temporary, relativePath));
-      bundled.cells[cell].evidence.path = relativePath;
+      const sealedFile = path.join(temporary, relativePath);
+      // The bundle is published, so the operator's home directory becomes `~`.
+      const log = fs.readFileSync(manifest.cells[cell].evidence.path, "utf8");
+      fs.writeFileSync(sealedFile, homeDirectory.length > 1 ? log.replaceAll(homeDirectory, "~") : log);
+      bundled.cells[cell].evidence = { ...bundled.cells[cell].evidence, path: relativePath, sha256: digestFile(sealedFile) };
     }
     writeManifest(path.join(temporary, "evidence.json"), bundled);
     fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
