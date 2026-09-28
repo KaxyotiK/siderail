@@ -15,7 +15,8 @@ siderail setup
 
 - **Herdr:** runs `herdr plugin link` on the installed package, registering it
   as plugin `siderail`. It refuses to replace a GitHub-managed `siderail`
-  plugin; uninstall that first.
+  plugin; uninstall that first. It then binds `ctrl+shift+g` to the
+  `siderail.toggle-siderail` action in Herdr's `config.toml` (see below).
 - **cmux:** adds or updates a control with id `siderail` in
   `~/.config/cmux/dock.json`, keeping every other control and key in that file.
   It never overwrites a `siderail` control that does not launch SideRail, and it
@@ -28,17 +29,51 @@ installed version, the install path, and whether each host points at it.
 ### Herdr
 
 Open SideRail in the current tab with
-`herdr plugin action invoke siderail.open-siderail`. To bind the current-tab
-toggle, add this to `~/.config/herdr/config.toml`, then run
-`herdr config check` and restart or reload Herdr's configuration:
+`herdr plugin action invoke siderail.open-siderail`, or press `ctrl+shift+g` to
+toggle it. Herdr plugins cannot declare key bindings, so `siderail setup herdr`
+appends this entry to Herdr's config file (`$HERDR_CONFIG_PATH`, else
+`$XDG_CONFIG_HOME/herdr/config.toml`, else `~/.config/herdr/config.toml`) and
+asks the running server to reload its configuration:
 
 ```toml
+# Added by `siderail setup`; `siderail uninstall` removes it.
 [[keys.command]]
-key = "ctrl+g"
+key = "ctrl+shift+g"
 type = "plugin_action"
 command = "siderail.toggle-siderail"
 description = "toggle SideRail sidebar"
 ```
+
+Setup writes the new contents to a temporary file, has `herdr config check`
+validate that file, and replaces the config only if the check passes and the
+config has not changed in the meantime; an edit made while the check runs is
+kept, and setup asks you to run it again. A symbolic link keeps pointing at the
+file it named, and the file keeps its permissions.
+
+Setup leaves the file exactly as it was, and says why, when:
+
+- the file already binds `siderail.toggle-siderail` as a `plugin_action`;
+- it mentions `siderail.toggle-siderail` anywhere else, such as a shell command
+  or an inline array, so you can check that binding yourself;
+- `keys.command` is an inline array, which setup does not edit; add the entry
+  to that array yourself;
+- `herdr config check` reports problems before setup starts, or rejects the new
+  entry, for example because `ctrl+shift+g` is already in use; setup prints
+  Herdr's diagnostic, and you can bind another key yourself;
+- the file is a symbolic link to a missing file, or setup cannot classify its
+  contents.
+
+The reload is best effort; when it fails, setup tells you to run
+`herdr server reload-config` or restart Herdr. The check covers the file setup
+edited, which is the one a running server uses only if it was started with the
+same `HERDR_CONFIG_PATH` or `XDG_CONFIG_HOME`; `reload-config` does not tell the
+server which file to read.
+
+To change the key later, edit `key` in the entry. `siderail uninstall` removes
+only an entry that is still exactly what setup wrote, with nothing added below
+it before the next table; it leaves an edited entry, or a copy inside a string,
+in place and says so. If an uninstall unlinked the plugin but could not remove
+the entry, run `siderail uninstall herdr` again to finish.
 
 The key mapping is a Herdr setting; the action itself is declared by the
 SideRail plugin. It only closes a pane after verifying that the pane belongs to

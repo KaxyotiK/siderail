@@ -48,7 +48,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 unset HERDR_ENV HERDR_WORKSPACE_ID HERDR_TAB_ID HERDR_PANE_ID HERDR_SOCKET_PATH HERDR_CLIENT_SOCKET_PATH
-unset HERDR_PLUGIN_ID HERDR_PLUGIN_CONTEXT_JSON
+unset HERDR_PLUGIN_ID HERDR_PLUGIN_CONTEXT_JSON HERDR_CONFIG_PATH
 while IFS= read -r variable; do unset "$variable"; done < <(compgen -e | grep '^SIDERAIL_' || true)
 export HOME="$root/home"
 export XDG_CONFIG_HOME="$root/c" XDG_CACHE_HOME="$root/k" XDG_STATE_HOME="$root/s" XDG_RUNTIME_DIR="$root/r"
@@ -93,8 +93,11 @@ server_pid=$!
 for _ in $(seq 1 100); do "$herdr_bin" status server >/dev/null 2>&1 && break; sleep 0.1; done
 "$herdr_bin" status server >/dev/null || fail "private Herdr server did not start"
 
-step "siderail setup registers both hosts and keeps other Dock controls"
-mkdir -p "$HOME/.config/cmux"
+step "siderail setup registers both hosts, the toggle key, and keeps other Dock controls"
+mkdir -p "$HOME/.config/cmux" "$XDG_CONFIG_HOME/herdr"
+herdr_config="$XDG_CONFIG_HOME/herdr/config.toml"
+printf '[ui]\nagent_panel_sort = "priority"\n' > "$herdr_config"
+cp "$herdr_config" "$root/herdr-config-before.toml"
 printf '{\n  "controls": [\n    { "id": "tests", "title": "Tests", "command": "npm test" }\n  ]\n}\n' > "$HOME/.config/cmux/dock.json"
 "$siderail" setup herdr cmux
 "$herdr_bin" plugin list --json | json 'const p=j.result.plugins.find((p)=>p.plugin_id==="siderail");process.exit(p&&p.plugin_root===process.argv[1]&&p.source.kind==="local"?0:1)' "$package_root" \
@@ -102,6 +105,8 @@ printf '{\n  "controls": [\n    { "id": "tests", "title": "Tests", "command": "n
 json 'const [first,second]=j.controls;process.exit(j.controls.length===2&&first.id==="tests"&&second.command===process.argv[1]?0:1)' \
   "/bin/bash '$package_root/scripts/cmux-node-launcher.sh' '$package_root/scripts/cmux-siderail.mjs'" \
   < "$HOME/.config/cmux/dock.json" || fail "Dock control was not merged as expected"
+grep -q '^command = "siderail.toggle-siderail"$' "$herdr_config" && "$herdr_bin" config check >/dev/null \
+  || fail "setup did not add a valid toggle key"
 "$siderail" setup > "$root/second-setup.txt"
 grep -q "already linked" "$root/second-setup.txt" && grep -q "already points" "$root/second-setup.txt" \
   || fail "a repeated setup changed a registration"
@@ -177,6 +182,7 @@ step "siderail uninstall removes only this install's registrations"
 test "$("$herdr_bin" plugin list)" = "No plugins installed." || fail "the Herdr plugin is still linked"
 json 'process.exit(j.controls.length===1&&j.controls[0].id==="tests"?0:1)' < "$HOME/.config/cmux/dock.json" \
   || fail "uninstall changed another Dock control"
+cmp -s "$herdr_config" "$root/herdr-config-before.toml" || fail "uninstall did not restore Herdr's config"
 for _ in $(seq 1 50); do pgrep -f "$package_root/" >/dev/null || break; sleep 0.2; done
 if pgrep -fl "$package_root/"; then fail "processes from the install survived uninstall"; fi
 echo "no process from the install remains"

@@ -3,6 +3,12 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
+## Unreleased
+
+### Features
+
+- `siderail setup herdr` binds `ctrl+shift+g` to the `siderail.toggle-siderail` action in Herdr's `config.toml`. It validates a temporary copy with `herdr config check` before replacing the file, keeps symbolic links and permissions, and leaves the file alone when the action is already referenced, `keys.command` is an inline array, or Herdr rejects the change. `siderail uninstall` removes the entry only while it is exactly what setup wrote.
+
 ## 0.2.0 - 2026-09-27
 
 ### Compatibility

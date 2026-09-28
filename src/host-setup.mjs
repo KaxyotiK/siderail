@@ -16,7 +16,7 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
-function herdrExecutable(environment) {
+export function herdrExecutable(environment) {
   return environment.HERDR_BIN_PATH || "herdr";
 }
 
