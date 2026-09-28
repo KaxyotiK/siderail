@@ -60,6 +60,7 @@ let loading = false;
 let loadGeneration = 0;
 let hitTargets = [];
 let searchActive = false;
+let pendingSearch = false;
 let searchQuery = "";
 let currentMatch = -1;
 let currentMatchColumn = 0;
@@ -109,6 +110,8 @@ function setContent(lines, gutterColumns) {
   pendingLayoutAnchor = undefined;
   layoutCache = undefined;
   searchIndex.reset(lines);
+  currentMatch = -1;
+  currentMatchColumn = 0;
 }
 function visualRows() {
   const width = bodyWidth();
@@ -212,6 +215,7 @@ function moveMatch(direction) {
 }
 async function loadMode(mode) {
   const generation = ++loadGeneration;
+  pendingSearch = false;
   activeMode = mode;
   documentMode = mode;
   activeEmbeddedAction = undefined;
@@ -233,6 +237,9 @@ async function loadMode(mode) {
     scrollOffset = 0;
     horizontalOffset = 0;
     statusMessage = mode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel}`;
+    // Input can arrive while the provider is loading. Apply a submitted query
+    // to the new content instead of leaving its empty/stale result behind.
+    if (pendingSearch && searchQuery && !searchActive) moveMatch(1);
   } catch (error) {
     if (generation !== loadGeneration) return;
     setContent([`${C.red}${safe(error.message)}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`], 0);
@@ -240,7 +247,7 @@ async function loadMode(mode) {
       ? "Preview is larger than the configured safety limit"
       : error.kind === "too-many-lines" ? "Preview exceeds the terminal line safety limit" : "Preview failed";
   } finally {
-    if (generation === loadGeneration) { loading = false; render(); }
+    if (generation === loadGeneration) { pendingSearch = false; loading = false; render(); }
   }
 }
 function suspend() {
@@ -312,6 +319,7 @@ function embeddedArguments(viewer, width, sourcePath = "") {
 }
 async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
   const generation = ++loadGeneration;
+  pendingSearch = false;
   const mode = `viewer-${key}`;
   const previousRows = visualRows();
   const previousMaximum = Math.max(1, previousRows.length - 1);
@@ -344,6 +352,7 @@ async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
     horizontalOffset = 0;
     scrollOffset = resized ? Math.round(previousRatio * Math.max(0, visualRows().length - 1)) : 0;
     statusMessage = `${safe(viewer.label || path.basename(viewer.client))} · ${descriptorLabel()} · ${revisionLabel || "exact revision"}`;
+    if (pendingSearch && !resized && searchQuery && !searchActive) moveMatch(1);
   } catch (error) {
     if (generation !== loadGeneration) return;
     setContent([
@@ -355,7 +364,7 @@ async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
     horizontalOffset = 0;
     statusMessage = error.kind === "oversized" ? "Rendered output exceeded the safety limit" : "Markdown rendering failed";
   } finally {
-    if (generation === loadGeneration) { loading = false; render(); }
+    if (generation === loadGeneration) { pendingSearch = false; loading = false; render(); }
   }
 }
 async function launchViewer(viewer, key) {
@@ -524,7 +533,11 @@ function handleInput(key) {
     return;
   }
   if (searchActive) {
-    if (key === "\u001b" || key === "\r" || key === "\n") { searchActive = false; if (searchQuery) moveMatch(1); }
+    if (key === "\u001b" || key === "\r" || key === "\n") {
+      searchActive = false;
+      pendingSearch = loading && Boolean(searchQuery);
+      if (searchQuery) moveMatch(1);
+    }
     else {
       const previousQuery = searchQuery;
       if (key === "\u007f" || key === "\b") searchQuery = [...searchQuery].slice(0, -1).join("");

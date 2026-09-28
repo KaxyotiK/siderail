@@ -737,6 +737,62 @@ test("preview processes coalesced search input, advances matches, and exposes ho
   assert.match(plain, /9 VS Code/);
 });
 
+test("preview applies a search submitted before its content finishes loading", async (t) => {
+  const { environment, root } = hermeticEnvironment(t);
+  const filename = path.join(root, "delayed.txt");
+  await fs.writeFile(filename, "first needle\nsecond needle\n");
+  // Hold the actual file open until the parent observes the submitted search.
+  // This orders input before content without relying on a machine-speed delay.
+  const preload = `
+    import fs from "node:fs/promises";
+    const open = fs.open;
+    const released = new Promise(resolve => process.once("message", resolve));
+    fs.open = async (...args) => {
+      await released;
+      return open(...args);
+    };
+  `;
+  const child = spawn(process.execPath, [
+    "--import", `data:text/javascript,${encodeURIComponent(preload)}`,
+    path.resolve("scripts/file-preview.mjs"), "--width", "52", "--height", "20",
+  ], {
+    cwd: root,
+    env: {
+      ...environment,
+      SIDERAIL_PREVIEW_PATH: "delayed.txt",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
+    },
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => stdout.includes("Loading raw"), "preview did not begin loading");
+  child.stdin.write("/needle\r");
+  await waitFor(() => latestPlainFrame(stdout).includes("No matches"), "search was not processed before the file loaded");
+  child.send("release file read");
+  await waitFor(() => latestPlainFrame(stdout).includes("Match 1 of 2"), "pending search was not applied to loaded content");
+  child.stdin.write("n");
+  await waitFor(() => latestPlainFrame(stdout).includes("Match 2 of 2"), "pending search did not retain navigation");
+  await fs.writeFile(filename, "replacement needle\n");
+  child.stdin.write("r");
+  await waitFor(() => {
+    const frame = latestPlainFrame(stdout);
+    return frame.includes("replacement needle") && !frame.includes("Loading raw");
+  }, "reload did not display replacement content");
+  assert.doesNotMatch(latestPlainFrame(stdout), /Match \d+ of|No matches/);
+  child.stdin.write("1");
+  await waitFor(() => latestPlainFrame(stdout).includes("No Git change exists"), "Diff did not load");
+  assert.doesNotMatch(latestPlainFrame(stdout), /Match \d+ of|No matches/);
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+});
+
 test("embedded Markdown rendering stays inside the pageable preview viewport", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-rendered-markdown-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -799,6 +855,72 @@ done
   const plain = stdout.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
   assert.match(plain, /rendered row (?:[7-9]|1\d)/);
   assert.doesNotMatch(plain, /Rendered heading/);
+});
+
+test("embedded resize after a completed search preserves the viewport and view label", async (t) => {
+  const { environment, root } = hermeticEnvironment(t);
+  const renderer = path.join(root, "renderer");
+  await fs.writeFile(renderer, `#!/bin/sh
+printf 'width %s\\n' "$1"
+i=1
+while [ "$i" -le 60 ]; do
+  printf 'rendered row %02d\\n' "$i"
+  i=$((i + 1))
+done
+`);
+  await fs.chmod(renderer, 0o700);
+  await fs.writeFile(path.join(root, "note.md"), "# Source\n");
+  await writeUserConfig(environment, {
+    version: 1,
+    viewers: { ".md": { label: "Rendered", client: renderer, args: ["{width}"], mode: "embedded", key: "3", autoOpen: true } },
+  });
+  // Deliver the same resize event a terminal emits, with controlled columns.
+  const preload = `
+    process.stdout.columns = 52;
+    process.on("message", columns => {
+      process.stdout.columns = columns;
+      process.stdout.emit("resize");
+    });
+  `;
+  const child = spawn(process.execPath, [
+    "--import", `data:text/javascript,${encodeURIComponent(preload)}`,
+    path.resolve("scripts/file-preview.mjs"), "--height", "18",
+  ], {
+    cwd: root,
+    env: {
+      ...environment,
+      SIDERAIL_PREVIEW_PATH: "note.md",
+      SIDERAIL_PREVIEW_REPO: root,
+      SIDERAIL_PREVIEW_DESCRIPTOR: Buffer.from(JSON.stringify({ kind: "filesystem" })).toString("base64url"),
+    },
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
+  });
+  t.after(() => { if (!child.killed) child.kill("SIGKILL"); });
+  let stdout = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  await waitFor(() => latestPlainFrame(stdout).includes("Rendered ·"), "embedded view did not load");
+  child.stdin.write("/rendered\r");
+  await waitFor(() => latestPlainFrame(stdout).includes("Match 1 of 60"), "search did not select a match");
+  child.stdin.write("\u001b[6~");
+  const firstRow = () => Number(latestPlainFrame(stdout).match(/rendered row (\d+)/)?.[1]);
+  await waitFor(() => firstRow() > 1, "page down did not leave the first match");
+  const before = firstRow();
+  stdout = "";
+  child.send(64);
+  await waitFor(() => latestPlainFrame(stdout).includes("Rendered ·"), "resize did not finish rendering with the view label");
+  assert.equal(firstRow(), before, "resize jumped away from the preserved viewport");
+  assert.doesNotMatch(latestPlainFrame(stdout), /Match \d+ of|No matches/);
+  child.stdin.write("g");
+  await waitFor(() => latestPlainFrame(stdout).includes("width 63"), "renderer did not receive the resized width");
+  child.stdin.write("2");
+  await waitFor(() => latestPlainFrame(stdout).includes("# Source"), "Raw did not load");
+  assert.doesNotMatch(latestPlainFrame(stdout), /Match \d+ of|No matches/);
+  child.stdin.write("q");
+  await new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
 });
 
 test("a hostile repository config cannot auto-launch a preview executable", async (t) => {
