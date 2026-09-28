@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { autoOpenEnabled, autoOpenHerdrTabs, collectTabTargets, openAutoOpenTarget, runBoundedSweep, tabTargetFromContext } from "../scripts/auto-open-herdr-tabs.mjs";
+import { ensurePaneStateDirectory, paneStagingPath, paneStatePath } from "../src/herdr-pane-state.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -143,7 +144,7 @@ test("bounded sweep reports both active and queued jobs as deadline-cancelled", 
   assert.deepEqual(summary.opened, []);
 });
 
-test("auto-open target gives its process group the remaining deadline and recovery grace", async (t) => {
+test("auto-open target gives a started layout move time to finish", async (t) => {
   const { environment } = hermeticEnvironment(t);
   let clock = 10_000;
   let shellOptions;
@@ -163,9 +164,45 @@ test("auto-open target gives its process group the remaining deadline and recove
     },
   });
   assert.equal(opened, true);
-  assert.equal(shellOptions.timeoutMs, 20_000);
+  assert.equal(shellOptions.timeoutMs, 120_000);
   assert.equal(shellOptions.killGraceMs, 5_000);
   assert.equal(shellOptions.waitForTermination, true);
+});
+
+test("auto-open stops at its deadline when staging has not started", async (t) => {
+  const { environment } = hermeticEnvironment(t);
+  let signal;
+  const result = await openAutoOpenTarget({ cwd: "/repo", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1" }, {
+    herdr: "herdr-test", pluginRoot: "/plugin", environment, timeoutMs: 20,
+    run: async (command, _args, options) => {
+      if (command === "git") return { stdout: "/repo\n" };
+      signal = options.signal;
+      await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+      return { stdout: "" };
+    },
+  });
+  assert.equal(result, true);
+  assert.equal(signal.aborted, true);
+});
+
+test("auto-open extends only a target with a durable staging record", async (t) => {
+  const { environment } = hermeticEnvironment(t);
+  await ensurePaneStateDirectory(environment);
+  const recordPath = paneStagingPath(paneStatePath({ workspaceId: "w1", tabId: "w1:t1",
+    entrypoint: "git-tui", environment }));
+  let signal;
+  const result = await openAutoOpenTarget({ cwd: "/repo", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1" }, {
+    herdr: "herdr-test", pluginRoot: "/plugin", environment, timeoutMs: 20,
+    run: async (command, _args, options) => {
+      if (command === "git") return { stdout: "/repo\n" };
+      signal = options.signal;
+      await fs.writeFile(recordPath, "{}\n");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { stdout: "" };
+    },
+  });
+  assert.equal(result, true);
+  assert.equal(signal.aborted, false);
 });
 
 test("the global auto-open deadline starts before Herdr discovery", async (t) => {

@@ -4,16 +4,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   acquirePaneStateLock,
+  clearPaneStaging,
   ensurePaneStateDirectory,
   legacyPaneStatePath,
   paneStatePath,
+  readPaneStaging,
   readPaneState,
   removeLegacyPaneState,
+  writePaneStaging,
   writePaneState,
 } from "../src/herdr-pane-state.mjs";
 import { runCommand } from "../src/process.mjs";
 import { closeVerifiedPluginPane } from "../src/herdr-plugin-pane.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
+import { requestHerdr } from "../src/herdr-socket.mjs";
 import { assertSupportedNode } from "../src/node-version.mjs";
 import { resizeConfiguredSidebar } from "./resize-herdr-sidebar.mjs";
 
@@ -216,6 +220,19 @@ async function workspacePaneIds(run, herdr, workspaceId) {
   return new Set(responseItems(payload, "panes").map((pane) => pane.pane_id));
 }
 
+async function openedRailAfterFailedCommand({ run, herdr, workspaceId, tabId, priorPaneIds, entrypoint }) {
+  const { payload } = await commandJson(run, herdr, ["pane", "list", "--workspace", workspaceId]);
+  const candidates = responseItems(payload, "panes").filter((pane) => (
+    pane.tab_id === tabId && !priorPaneIds.has(pane.pane_id)
+    && hasLabel(pane, entrypointIdentity(entrypoint).current)
+  ));
+  if (candidates.length === 0) return "";
+  if (candidates.length !== 1 || !await verifiedOwnedRail(run, herdr, candidates[0], null, entrypoint)) {
+    throw new Error("an unverified SideRail pane appeared during the failed open; its identity must be checked before closing it");
+  }
+  return candidates[0].pane_id;
+}
+
 function paneAtOuterRight(layout, paneId) {
   const pane = (layout?.panes || []).find((item) => item.pane_id === paneId);
   const area = layout?.area;
@@ -223,6 +240,252 @@ function paneAtOuterRight(layout, paneId) {
     && pane.rect.height === area.height
     && pane.rect.y === area.y
     && pane.rect.x + pane.rect.width === area.x + area.width);
+}
+
+function herdrSocketPath(environment) {
+  if (environment.HERDR_SOCKET_PATH) return environment.HERDR_SOCKET_PATH;
+  const configRoot = environment.XDG_CONFIG_HOME || path.join(environment.HOME || process.env.HOME, ".config");
+  return environment.HERDR_SESSION
+    ? path.join(configRoot, "herdr", "sessions", environment.HERDR_SESSION, "herdr.sock")
+    : path.join(configRoot, "herdr", "herdr.sock");
+}
+
+function layoutPaneIds(node) {
+  if (node.type === "pane") return [node.pane_id];
+  if (node.type === "split") return [...layoutPaneIds(node.first), ...layoutPaneIds(node.second)];
+  throw new Error("Herdr returned an unknown layout node");
+}
+
+function withoutPane(node, paneId) {
+  if (node.type === "pane") return node.pane_id === paneId ? null : node;
+  if (node.type !== "split") throw new Error("Herdr returned an unknown layout node");
+  const first = withoutPane(node.first, paneId);
+  const second = withoutPane(node.second, paneId);
+  return first && second ? { ...node, first, second } : first || second;
+}
+
+async function exportLayout(request, socketPath, tabId) {
+  const result = await request(socketPath, "layout.export", { tab_id: tabId }, { timeoutMs: 5_000 });
+  const layout = result?.layout;
+  if (result?.type !== "layout_export" || layout?.tab_id !== tabId || !layout.root) {
+    throw new Error("Herdr did not export the target tab layout");
+  }
+  return layout;
+}
+
+function firstPaneId(node) {
+  return node.type === "pane" ? node.pane_id : firstPaneId(node.first);
+}
+
+function sameLayoutTree(actual, expected) {
+  if (!actual || !expected || actual.type !== expected.type) return false;
+  if (expected.type === "pane") return actual.pane_id === expected.pane_id;
+  return actual.direction === expected.direction
+    && sameLayoutTree(actual.first, expected.first)
+    && sameLayoutTree(actual.second, expected.second);
+}
+
+async function movePane(run, herdr, paneId, args, expectedTabId, terminalIds) {
+  const { payload } = await commandJson(run, herdr, ["pane", "move", paneId, ...args, "--no-focus"], {
+    timeoutMs: 8_000, maxOutputBytes: 2 * 1_024 * 1_024,
+  });
+  const moved = payload?.result?.move_result?.pane;
+  if (!moved || moved.pane_id !== paneId || !moved.tab_id
+    || (expectedTabId && moved.tab_id !== expectedTabId)
+    || (terminalIds.get(paneId) && moved.terminal_id !== terminalIds.get(paneId))) {
+    throw new Error(`Herdr did not preserve pane ${sanitizeTerminalText(paneId)} during layout staging`);
+  }
+  return moved;
+}
+
+async function stagePanes({ run, herdr, workspaceId, tabId, root, anchorId, terminalIds }) {
+  const staged = new Map();
+  for (const paneId of layoutPaneIds(root)) {
+    if (paneId === anchorId) continue;
+    const moved = await movePane(run, herdr, paneId,
+      ["--new-tab", "--workspace", workspaceId, "--label", "SideRail Layout Staging"],
+      "", terminalIds).catch(async (error) => {
+      // A move may have succeeded before its response was lost. Keep every pane
+      // discoverable for rollback instead of assuming it remained in the tab.
+      const { payload } = await commandJson(run, herdr, ["pane", "get", paneId]);
+      const pane = payload?.result?.pane;
+      if (pane?.tab_id && pane.tab_id !== tabId && pane.terminal_id === terminalIds.get(paneId)) return pane;
+      throw error;
+    });
+    staged.set(paneId, moved.tab_id);
+  }
+  return staged;
+}
+
+async function rebuildContent({ run, herdr, tabId, root, terminalIds }) {
+  if (root.type === "pane") return;
+  const targetPaneId = firstPaneId(root.first);
+  const paneId = firstPaneId(root.second);
+  await movePane(run, herdr, paneId,
+    ["--tab", tabId, "--target-pane", targetPaneId, "--split", root.direction, "--ratio", String(root.ratio)],
+    tabId, terminalIds);
+  await rebuildContent({ run, herdr, tabId, root: root.first, terminalIds });
+  await rebuildContent({ run, herdr, tabId, root: root.second, terminalIds });
+}
+
+async function verifyPreservedPanes(run, herdr, tabId, root, terminalIds) {
+  const { payload } = await commandJson(run, herdr, ["pane", "list"]);
+  const panes = responseItems(payload, "panes");
+  for (const paneId of layoutPaneIds(root)) {
+    const pane = panes.find((candidate) => candidate.pane_id === paneId);
+    if (pane?.tab_id !== tabId || pane.terminal_id !== terminalIds.get(paneId)) {
+      throw new Error(`Herdr did not preserve content pane ${sanitizeTerminalText(paneId)}`);
+    }
+  }
+}
+
+async function beginPaneStaging({ statePath, workspaceId, tabId, entrypoint, exported, anchorId, terminalIds, replacementRails = [], zoomed = false }) {
+  const paneIds = layoutPaneIds(exported.root);
+  if (paneIds.length !== new Set(paneIds).size || !paneIds.includes(anchorId)
+    || paneIds.some((paneId) => !terminalIds.get(paneId))) {
+    throw new Error("cannot stage a layout without verified pane and terminal identities");
+  }
+  await writePaneStaging(statePath, {
+    version: 1, workspaceId, tabId, entrypoint, root: exported.root, anchorId,
+    focusedPaneId: exported.focused_pane_id || "", zoomed,
+    panes: paneIds.map((paneId) => ({ paneId, terminalId: terminalIds.get(paneId) })),
+    stagedPaneIds: paneIds.filter((paneId) => paneId !== anchorId),
+    replacementRailIds: replacementRails.map((pane) => pane.pane_id),
+  });
+}
+
+function validatePaneStaging(record, { workspaceId, tabId, entrypoint }) {
+  if (record?.version !== 1 || record.workspaceId !== workspaceId || record.tabId !== tabId
+    || record.entrypoint !== entrypoint || !record.root || !Array.isArray(record.panes)
+    || !Array.isArray(record.stagedPaneIds) || !Array.isArray(record.replacementRailIds)
+    || typeof record.zoomed !== "boolean" || typeof record.focusedPaneId !== "string") {
+    throw new Error("SideRail staging record does not match this tab");
+  }
+  const ids = layoutPaneIds(record.root);
+  const terminals = new Map(record.panes.map((pane) => [pane?.paneId, pane?.terminalId]));
+  if (!ids.length || ids.length !== new Set(ids).size || terminals.size !== ids.length
+    || ids.some((id) => typeof terminals.get(id) !== "string" || !terminals.get(id))
+    || !ids.includes(record.anchorId)
+    || record.stagedPaneIds.length !== ids.length - 1
+    || record.stagedPaneIds.some((id) => id === record.anchorId || !ids.includes(id))
+    || new Set(record.stagedPaneIds).size !== record.stagedPaneIds.length
+    || record.replacementRailIds.some((id) => !ids.includes(id))) {
+    throw new Error("SideRail staging record has invalid pane identities");
+  }
+  return terminals;
+}
+
+async function restoreStagedLayout({ run, herdr, request, socketPath, workspaceId, tabId, root, anchorId, terminalIds, openedPaneId = "", statePath = "" }) {
+  if (openedPaneId) await closeVerifiedPluginPane({ run, herdr, paneId: openedPaneId });
+  const { payload } = await commandJson(run, herdr, ["pane", "list", "--workspace", workspaceId]);
+  const current = new Map(responseItems(payload, "panes").map((pane) => [pane.pane_id, pane]));
+  for (const paneId of layoutPaneIds(root)) {
+    if (paneId === anchorId) continue;
+    const pane = current.get(paneId);
+    if (!pane || pane.terminal_id !== terminalIds.get(paneId)) {
+      throw new Error(`cannot restore original pane ${sanitizeTerminalText(paneId)} because its terminal changed`);
+    }
+    if (pane.tab_id === tabId) {
+      await movePane(run, herdr, paneId,
+        ["--new-tab", "--workspace", workspaceId, "--label", "SideRail Layout Staging"],
+        "", terminalIds);
+    }
+  }
+  await rebuildContent({ run, herdr, tabId, root, terminalIds });
+  await verifyPreservedPanes(run, herdr, tabId, root, terminalIds);
+  const exported = await exportLayout(request, socketPath, tabId);
+  if (!sameLayoutTree(exported.root, root)) {
+    throw new Error("Herdr did not restore the original content layout");
+  }
+  if (statePath) await clearPaneStaging(statePath);
+}
+
+async function recoverPaneStaging({ run, herdr, request, socketPath, statePath, workspaceId, tabId, entrypoint }) {
+  const record = await readPaneStaging(statePath);
+  if (!record) return false;
+  const terminalIds = validatePaneStaging(record, { workspaceId, tabId, entrypoint });
+  const originalIds = new Set(layoutPaneIds(record.root));
+  const replacementIds = new Set(record.replacementRailIds);
+  const { payload } = await commandJson(run, herdr, ["pane", "list", "--workspace", workspaceId]);
+  const panes = responseItems(payload, "panes");
+  const byId = new Map(panes.map((pane) => [pane.pane_id, pane]));
+  const missing = [];
+  for (const paneId of originalIds) {
+    const pane = byId.get(paneId);
+    if (!pane) {
+      missing.push(paneId);
+    } else if (pane.terminal_id !== terminalIds.get(paneId)) {
+      throw new Error(`staged pane ${sanitizeTerminalText(paneId)} has a different terminal; recovery stopped`);
+    }
+  }
+  if (missing.some((paneId) => !replacementIds.has(paneId))) {
+    throw new Error(`staged content pane ${sanitizeTerminalText(missing[0])} is missing; recovery stopped`);
+  }
+  const { payload: tabPayload } = await commandJson(run, herdr, ["tab", "list", "--workspace", workspaceId]);
+  const stagingTabs = new Set(responseItems(tabPayload, "tabs")
+    .filter((tab) => tab.label === "SideRail Layout Staging").map((tab) => tab.tab_id));
+  for (const paneId of originalIds) {
+    const pane = byId.get(paneId);
+    if (pane && pane.tab_id !== tabId && !stagingTabs.has(pane.tab_id)) {
+      throw new Error(`staged pane ${sanitizeTerminalText(paneId)} moved to another tab; recovery stopped`);
+    }
+  }
+  if (byId.get(record.anchorId)?.tab_id !== tabId) {
+    throw new Error("SideRail staging anchor is no longer in its original tab");
+  }
+  const extras = panes.filter((pane) => pane.tab_id === tabId && !originalIds.has(pane.pane_id));
+  if (extras.length > 1 || (extras.length === 1
+    && (!hasLabel(extras[0], entrypointIdentity(entrypoint).current)
+      || !await verifiedOwnedRail(run, herdr, extras[0], null, entrypoint)))) {
+    throw new Error("an unverified pane appeared in the staged tab; recovery stopped");
+  }
+  const focusLocation = await globalFocusLocation(run, herdr);
+  try {
+    const currentLayout = await paneLayout(run, herdr, record.anchorId);
+    if (currentLayout.zoomed) {
+      await run(herdr, ["pane", "zoom", "--pane", currentLayout.focused_pane_id, "--off"], {
+        timeoutMs: 5_000, maxOutputBytes: 256 * 1_024,
+      });
+    }
+    if (missing.length > 0) {
+      // A replacement rail was closed before the process died. Finish that
+      // verified replacement instead of trying to recreate the old terminal.
+      let contentRoot = record.root;
+      for (const paneId of replacementIds) contentRoot = withoutPane(contentRoot, paneId);
+      if (extras.length !== 1 || !contentRoot) throw new Error("replacement rail is missing during staging recovery");
+      await verifyPreservedPanes(run, herdr, tabId, contentRoot, terminalIds);
+      const exported = await exportLayout(request, socketPath, tabId);
+      if (exported.root?.type !== "split" || exported.root.direction !== "right"
+        || exported.root.second?.pane_id !== extras[0].pane_id
+        || !sameLayoutTree(exported.root.first, contentRoot)) {
+        throw new Error("replacement layout changed during staging recovery");
+      }
+      for (const paneId of replacementIds) {
+        const old = byId.get(paneId);
+        if (old) await closeOwnedPane(run, herdr, paneId);
+      }
+      await clearPaneStaging(statePath);
+    } else {
+      const alreadyRestored = extras.length === 0
+        && [...originalIds].every((paneId) => byId.get(paneId)?.tab_id === tabId)
+        && sameLayoutTree((await exportLayout(request, socketPath, tabId)).root, record.root);
+      if (alreadyRestored) await clearPaneStaging(statePath);
+      else await restoreStagedLayout({ run, herdr, request, socketPath, statePath,
+        workspaceId, tabId, root: record.root, anchorId: record.anchorId, terminalIds,
+        openedPaneId: extras[0]?.pane_id || "" });
+    }
+    const focusPaneId = byId.has(record.focusedPaneId) && !missing.includes(record.focusedPaneId)
+      ? record.focusedPaneId : record.anchorId;
+    await request(socketPath, "pane.focus", { pane_id: focusPaneId }, { timeoutMs: 5_000 });
+    if (record.zoomed) {
+      await run(herdr, ["pane", "zoom", "--pane", focusPaneId, "--on"], {
+        timeoutMs: 5_000, maxOutputBytes: 256 * 1_024,
+      });
+    }
+    return true;
+  } finally {
+    await restoreGlobalFocus(run, herdr, focusLocation);
+  }
 }
 
 async function paneLayout(run, herdr, paneId) {
@@ -243,22 +506,54 @@ async function placeExistingRail({
   rail,
   contentPanes,
   layout,
+  request,
+  socketPath,
+  tabId,
+  workspaceId,
+  tabPanes,
+  statePath,
+  entrypoint,
+  zoomed,
 }) {
   if (paneAtOuterRight(layout, rail.pane_id)) return { paneId: rail.pane_id, placementChanged: false };
-  const rightmostId = rightmostPaneId(layout, contentPanes);
-  const rightmost = (layout.panes || []).find((pane) => pane.pane_id === rightmostId);
-  const railLayout = (layout.panes || []).find((pane) => pane.pane_id === rail.pane_id);
-  const area = layout.area;
-  const bothFullHeight = area && rightmost?.rect && railLayout?.rect
-    && rightmost.rect.y === area.y && rightmost.rect.height === area.height
-    && railLayout.rect.y === area.y && railLayout.rect.height === area.height;
-  if (bothFullHeight) {
-    await run(herdr, [
-      "pane", "swap", "--source-pane", rail.pane_id, "--target-pane", rightmostId,
-    ], { timeoutMs: 5_000, maxOutputBytes: 512 * 1_024 });
-    return { paneId: rail.pane_id, placementChanged: true };
+  const exported = await exportLayout(request, socketPath, tabId);
+  const contentRoot = withoutPane(exported.root, rail.pane_id);
+  if (!contentRoot || !contentPanes.length) return { paneId: rail.pane_id, placementChanged: false };
+  const terminalIds = new Map(tabPanes.map((pane) => [pane.pane_id, pane.terminal_id]));
+  const anchorId = firstPaneId(contentRoot);
+  const focusLocation = await globalFocusLocation(run, herdr);
+  try {
+    await beginPaneStaging({ statePath, workspaceId, tabId, entrypoint, exported,
+      anchorId, terminalIds, zoomed });
+    await stagePanes({ run, herdr, workspaceId, tabId, root: exported.root, anchorId, terminalIds });
+    await movePane(run, herdr, rail.pane_id,
+      ["--tab", tabId, "--target-pane", anchorId, "--split", "right"], tabId, terminalIds);
+    await rebuildContent({ run, herdr, tabId, root: contentRoot, terminalIds });
+    await verifyPreservedPanes(run, herdr, tabId, contentRoot, terminalIds);
+    const rebuilt = await exportLayout(request, socketPath, tabId);
+    if (rebuilt.root?.type !== "split" || rebuilt.root.direction !== "right"
+      || rebuilt.root.second?.pane_id !== rail.pane_id
+      || !sameLayoutTree(rebuilt.root.first, contentRoot)) {
+      throw new Error("Herdr did not preserve the content layout beside SideRail");
+    }
+    const finalLayout = await paneLayout(run, herdr, rail.pane_id);
+    if (!paneAtOuterRight(finalLayout, rail.pane_id)) throw new Error("Herdr did not create a full-height SideRail");
+    await clearPaneStaging(statePath);
+  } catch (error) {
+    try {
+      await restoreStagedLayout({ run, herdr, request, socketPath, workspaceId, tabId,
+        root: exported.root, anchorId, terminalIds, statePath });
+    } catch (restoreError) {
+      throw new Error(`${error.message}; original layout could not be restored: ${restoreError.message}`, { cause: restoreError });
+    }
+    throw error;
+  } finally {
+    if (exported.focused_pane_id) {
+      try { await request(socketPath, "pane.focus", { pane_id: exported.focused_pane_id }, { timeoutMs: 5_000 }); } catch {}
+    }
+    try { await restoreGlobalFocus(run, herdr, focusLocation); } catch {}
   }
-  return { paneId: rail.pane_id, placementChanged: false, skipped: true };
+  return { paneId: rail.pane_id, placementChanged: true };
 }
 
 export async function openHerdrPanel({
@@ -267,11 +562,13 @@ export async function openHerdrPanel({
   environment = process.env,
   run = runCommand,
   resize = resizeConfiguredSidebar,
+  request = requestHerdr,
   writeOutput = (value) => process.stdout.write(value),
 } = {}) {
   if (!entrypoint) throw new Error("missing entrypoint");
   const herdr = environment.HERDR_BIN_PATH || "herdr";
   const pluginId = environment.HERDR_PLUGIN_ID || "siderail";
+  const socketPath = herdrSocketPath(environment);
   const invocation = await resolveInvocation(environment, herdr, run);
   const { workspaceId } = invocation;
   await ensurePaneStateDirectory(environment);
@@ -279,6 +576,7 @@ export async function openHerdrPanel({
   const release = await acquirePaneStateLock(statePath);
   let restoreZoomPaneId = "";
   let restoreFocusLocation = null;
+  let restoreFocusedPaneId = "";
   try {
     const { payload: panePayload } = await commandJson(
       run,
@@ -286,7 +584,7 @@ export async function openHerdrPanel({
       ["pane", "list", "--workspace", workspaceId],
       { timeoutMs: 5_000, maxOutputBytes: 8 * 1_024 * 1_024 },
     );
-    const workspacePanes = responseItems(panePayload, "panes");
+    let workspacePanes = responseItems(panePayload, "panes");
     if (!invocation.tabId && invocation.requestedPaneId) {
       invocation.tabId = workspacePanes.find((pane) => pane.pane_id === invocation.requestedPaneId)?.tab_id || "";
     }
@@ -298,6 +596,11 @@ export async function openHerdrPanel({
     if (!invocation.tabId) throw new Error("unable to resolve Herdr tab");
     const actualStatePath = paneStatePath({ workspaceId, tabId: invocation.tabId, entrypoint, environment });
     if (actualStatePath !== statePath) throw new Error("Herdr tab changed while acquiring its pane lock");
+    if (await recoverPaneStaging({ run, herdr, request, socketPath, statePath,
+      workspaceId, tabId: invocation.tabId, entrypoint })) {
+      const { payload } = await commandJson(run, herdr, ["pane", "list", "--workspace", workspaceId]);
+      workspacePanes = responseItems(payload, "panes");
+    }
 
     const identity = entrypointIdentity(entrypoint);
     let tabPanes = workspacePanes.filter((pane) => pane.tab_id === invocation.tabId);
@@ -337,24 +640,13 @@ export async function openHerdrPanel({
       let beforeReplace = await paneLayout(run, herdr, zoomProbe.pane_id);
       if (beforeReplace.zoomed) {
         restoreFocusLocation = await globalFocusLocation(run, herdr);
+        restoreFocusedPaneId = beforeReplace.focused_pane_id || zoomProbe.pane_id;
         await run(herdr, ["pane", "zoom", "--pane", zoomProbe.pane_id, "--off"], {
           timeoutMs: 5_000,
           maxOutputBytes: 256 * 1_024,
         });
-        restoreZoomPaneId = zoomProbe.pane_id;
+        restoreZoomPaneId = restoreFocusedPaneId;
         beforeReplace = await paneLayout(run, herdr, zoomProbe.pane_id);
-      }
-      const replacementContentPanes = tabPanes.filter((pane) => (
-        pane.label !== PREVIEW_LABEL && !ownedPaneIds.has(pane.pane_id)
-      ));
-      const replacementTargetId = rightmostPaneId(beforeReplace, replacementContentPanes);
-      const replacementTarget = (beforeReplace.panes || []).find((pane) => pane.pane_id === replacementTargetId);
-      const replacementSafe = beforeReplace.area && replacementTarget?.rect
-        && replacementTarget.rect.y === beforeReplace.area.y
-        && replacementTarget.rect.height === beforeReplace.area.height;
-      if (!replacementSafe) {
-        console.error(`SideRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
-        return { paneId: keptRail.pane_id, adopted: true, openMode, skipped: true };
       }
       replacementRails = [
         ...[...currentRails, ...legacyRails].filter((pane) => pane.pane_id !== keptRail.pane_id),
@@ -378,17 +670,22 @@ export async function openHerdrPanel({
       try {
         let placementChanged = false;
         if (contentPanes.length > 0 && openMode !== "ensure") {
-          const layout = await paneLayout(run, herdr, keptRail.pane_id);
-          if (!layout.zoomed) {
-            const placement = await placeExistingRail({
-              run,
-              herdr,
-              rail: keptRail,
-              contentPanes,
-              layout,
+          let layout = await paneLayout(run, herdr, keptRail.pane_id);
+          if (layout.zoomed) {
+            restoreFocusLocation ||= await globalFocusLocation(run, herdr);
+            restoreFocusedPaneId = layout.focused_pane_id || "";
+            await run(herdr, ["pane", "zoom", "--pane", layout.focused_pane_id, "--off"], {
+              timeoutMs: 5_000, maxOutputBytes: 256 * 1_024,
             });
-            placementChanged = placement.placementChanged;
+            restoreZoomPaneId = layout.focused_pane_id;
+            layout = await paneLayout(run, herdr, keptRail.pane_id);
           }
+          const placement = await placeExistingRail({
+            run, herdr, rail: keptRail, contentPanes, layout, request, socketPath,
+            tabId: invocation.tabId, workspaceId, tabPanes, statePath, entrypoint,
+            zoomed: Boolean(restoreZoomPaneId),
+          });
+          placementChanged = placement.placementChanged;
         }
         if (placementChanged) {
           await resize({ paneId: keptRail.pane_id, workspaceCwd: adoptedCwd, environment });
@@ -429,11 +726,12 @@ export async function openHerdrPanel({
     let layout = await paneLayout(run, herdr, layoutProbe.pane_id);
     if (layout.zoomed) {
       restoreFocusLocation = await globalFocusLocation(run, herdr);
+      restoreFocusedPaneId = layout.focused_pane_id || layoutProbe.pane_id;
       await run(herdr, ["pane", "zoom", "--pane", layoutProbe.pane_id, "--off"], {
         timeoutMs: 5_000,
         maxOutputBytes: 256 * 1_024,
       });
-      restoreZoomPaneId = layoutProbe.pane_id;
+      restoreZoomPaneId = restoreFocusedPaneId;
       layout = await paneLayout(run, herdr, layoutProbe.pane_id);
     }
     const source = sourcePane(tabPanes, invocation.requestedPaneId, layout, ownedPaneIds, entrypoint) || layoutProbe;
@@ -443,11 +741,44 @@ export async function openHerdrPanel({
     const canSplitAtOuterRight = layout.area && placementLayout?.rect
       && placementLayout.rect.y === layout.area.y
       && placementLayout.rect.height === layout.area.height;
+    const originalLayout = canSplitAtOuterRight ? null : await exportLayout(request, socketPath, invocation.tabId);
+    let anchorId = placementPaneId;
+    let terminalIds;
+    let contentRoot;
+    if (originalLayout) {
+      const originalIds = new Set(layoutPaneIds(originalLayout.root));
+      if (originalIds.size !== tabPanes.length || tabPanes.some((pane) => !originalIds.has(pane.pane_id))) {
+        throw new Error("Herdr layout and tab pane inventory disagree");
+      }
+      contentRoot = replacementRails.reduce((root, pane) => withoutPane(root, pane.pane_id), originalLayout.root);
+      if (!contentRoot) throw new Error("cannot open SideRail without a content pane");
+      anchorId = firstPaneId(contentRoot);
+      terminalIds = new Map(tabPanes.map((pane) => [pane.pane_id, pane.terminal_id]));
+    }
     invocation.workspaceCwd ||= source.foreground_cwd || source.cwd || "";
 
     let paneId;
     let openedStdout;
-    if (canSplitAtOuterRight) {
+    {
+      if (originalLayout) {
+        restoreFocusLocation ||= await globalFocusLocation(run, herdr);
+        restoreFocusedPaneId = originalLayout.focused_pane_id || layout.focused_pane_id || "";
+        try {
+          await beginPaneStaging({ statePath, workspaceId, tabId: invocation.tabId,
+            entrypoint, exported: originalLayout, anchorId, terminalIds,
+            replacementRails, zoomed: Boolean(restoreZoomPaneId) });
+          await stagePanes({ run, herdr, workspaceId, tabId: invocation.tabId,
+            root: originalLayout.root, anchorId, terminalIds });
+        } catch (error) {
+          try {
+            await restoreStagedLayout({ run, herdr, request, socketPath, workspaceId,
+              tabId: invocation.tabId, root: originalLayout.root, anchorId, terminalIds, statePath });
+          } catch (restoreError) {
+            throw new Error(`${error.message}; original layout could not be restored: ${restoreError.message}`, { cause: restoreError });
+          }
+          throw error;
+        }
+      }
       const openArgs = [
         "plugin", "pane", "open",
         "--plugin", pluginId,
@@ -457,33 +788,63 @@ export async function openHerdrPanel({
       if (invocation.workspaceCwd) openArgs.push("--env", `SIDERAIL_REPO_ROOT=${invocation.workspaceCwd}`);
       if (source.pane_id) openArgs.push("--env", `SIDERAIL_SOURCE_PANE_ID=${source.pane_id}`);
       if (invocation.tabId) openArgs.push("--env", `SIDERAIL_SOURCE_TAB_ID=${invocation.tabId}`);
-      openArgs.push("--target-pane", placementPaneId, "--placement", "split", "--direction", "right");
+      openArgs.push("--target-pane", anchorId, "--placement", "split", "--direction", "right");
       const priorPaneIds = await workspacePaneIds(run, herdr, workspaceId);
-      const opened = await run(herdr, openArgs, { timeoutMs: 8_000, maxOutputBytes: 2 * 1_024 * 1_024 });
-      paneId = resultPaneId(opened.stdout);
-      openedStdout = opened.stdout;
-      if (!paneId) throw new Error("Herdr did not return the opened SideRail pane id");
-      await validateOpenedRail({
-        run,
-        herdr,
-        paneId,
-        workspaceId,
-        tabId: invocation.tabId,
-        entrypoint,
-        priorPaneIds,
-      });
       try {
-        for (const pane of replacementRails) await closeOwnedPane(run, herdr, pane.pane_id);
+        const opened = await run(herdr, openArgs, { timeoutMs: 8_000, maxOutputBytes: 2 * 1_024 * 1_024 });
+        paneId = resultPaneId(opened.stdout);
+        openedStdout = opened.stdout;
+        if (!paneId) throw new Error("Herdr did not return the opened SideRail pane id");
+        await validateOpenedRail({
+          run, herdr, paneId, workspaceId, tabId: invocation.tabId, entrypoint, priorPaneIds,
+        });
+        if (originalLayout) {
+          await rebuildContent({ run, herdr, tabId: invocation.tabId, root: contentRoot, terminalIds });
+          await verifyPreservedPanes(run, herdr, invocation.tabId, contentRoot, terminalIds);
+          const rebuilt = await exportLayout(request, socketPath, invocation.tabId);
+          if (rebuilt.root?.type !== "split" || rebuilt.root.direction !== "right"
+            || rebuilt.root.second?.pane_id !== paneId
+            || !sameLayoutTree(rebuilt.root.first, contentRoot)) {
+            throw new Error("Herdr did not preserve the content layout beside SideRail");
+          }
+          const finalLayout = await paneLayout(run, herdr, paneId);
+          if (!paneAtOuterRight(finalLayout, paneId)) throw new Error("Herdr did not create a full-height SideRail");
+        }
       } catch (error) {
-        const replacementClosed = await closeOwnedPane(run, herdr, paneId, { quiet: true });
-        if (!replacementClosed) {
-          throw new Error(`${error.message}; replacement pane ${paneId} also could not be closed`, { cause: error });
+        if (originalLayout) {
+          try {
+            const rollbackPaneId = paneId && !priorPaneIds.has(paneId) ? paneId
+              : await openedRailAfterFailedCommand({ run, herdr, workspaceId,
+                tabId: invocation.tabId, priorPaneIds, entrypoint });
+            await restoreStagedLayout({ run, herdr, request, socketPath, workspaceId,
+              tabId: invocation.tabId, root: originalLayout.root, anchorId, terminalIds,
+              openedPaneId: rollbackPaneId, statePath });
+          } catch (restoreError) {
+            throw new Error(`${error.message}; original layout could not be restored: ${restoreError.message}`, { cause: restoreError });
+          }
         }
         throw error;
       }
-    } else {
-      console.error(`SideRail open skipped tab ${sanitizeTerminalText(invocation.tabId)} because an outer-right split is not safe`);
-      return { paneId: "", adopted: false, openMode, skipped: true };
+      try {
+        for (const pane of replacementRails) await closeOwnedPane(run, herdr, pane.pane_id);
+      } catch (error) {
+        if (originalLayout) {
+          try {
+            await restoreStagedLayout({ run, herdr, request, socketPath, workspaceId,
+              tabId: invocation.tabId, root: originalLayout.root, anchorId, terminalIds,
+              openedPaneId: paneId, statePath });
+          } catch (restoreError) {
+            throw new Error(`${error.message}; original layout could not be restored: ${restoreError.message}`, { cause: restoreError });
+          }
+        } else {
+          const replacementClosed = await closeOwnedPane(run, herdr, paneId, { quiet: true });
+          if (!replacementClosed) {
+            throw new Error(`${error.message}; replacement pane ${paneId} also could not be closed`, { cause: error });
+          }
+        }
+        throw error;
+      }
+      if (originalLayout) await clearPaneStaging(statePath);
     }
     writeOutput(openedStdout);
     let terminalId = "";
@@ -508,6 +869,11 @@ export async function openHerdrPanel({
     }
     return { paneId, adopted: false, openMode };
   } finally {
+    if (restoreFocusedPaneId) {
+      try {
+        await request(socketPath, "pane.focus", { pane_id: restoreFocusedPaneId }, { timeoutMs: 5_000 });
+      } catch {}
+    }
     if (restoreZoomPaneId) {
       try {
         await run(herdr, ["pane", "zoom", "--pane", restoreZoomPaneId, "--on"], {
