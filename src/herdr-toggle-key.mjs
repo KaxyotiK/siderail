@@ -173,7 +173,8 @@ function snapshot(file) {
 
 function sameSnapshot(before, after) {
   if (before.exists !== after.exists) return false;
-  return !before.exists || (before.dev === after.dev && before.ino === after.ino && before.bytes.equals(after.bytes));
+  return !before.exists || (before.dev === after.dev && before.ino === after.ino
+    && before.mode === after.mode && before.bytes.equals(after.bytes));
 }
 
 function createTemporary(directory, name, text, mode) {
@@ -181,7 +182,8 @@ function createTemporary(directory, name, text, mode) {
   const file = path.join(directory, `.${name}.siderail-${crypto.randomBytes(8).toString("hex")}.tmp`);
   const descriptor = fs.openSync(file, "wx", 0o600);
   try {
-    fs.writeSync(descriptor, text);
+    // Unlike writeSync, this writes every byte or throws.
+    fs.writeFileSync(descriptor, text);
     fs.fchmodSync(descriptor, mode);
   } catch (error) {
     fs.closeSync(descriptor);

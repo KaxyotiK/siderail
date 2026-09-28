@@ -180,7 +180,7 @@ function writeToggleKeyResult(result, write) {
     write(`Herdr: ${file} has issues, so no toggle key was added:\n${formatIssues(result)}`);
     write("  Fix them (see \"herdr config check\"), then run \"siderail setup herdr\" again.\n");
   } else if (result.action === "ambiguous") {
-    write(`Herdr: ${file} mentions "${TOGGLE_ACTION}" outside a plugin_action key binding, so no toggle key was added; check that binding yourself\n`);
+    write(`Herdr: ${file} mentions "${TOGGLE_ACTION}" in a form setup cannot verify, so no toggle key was added; check the binding yourself\n`);
   } else if (result.action === "inline-array") {
     write(`Herdr: ${file} defines keys.command as an inline array, which setup does not edit, so no toggle key was added\n`);
     write(`  Add { key = "${DEFAULT_TOGGLE_KEY}", type = "plugin_action", command = "${TOGGLE_ACTION}" } to that array yourself.\n`);

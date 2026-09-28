@@ -160,8 +160,8 @@ test("setup recognizes existing bindings and declines what it cannot extend", as
   const cases = [
     ["own key", "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"plugin_action\"\ncommand = \"siderail.toggle-siderail\"\n", /^Herdr: linked plugin siderail\n  Open it with: [^\n]+\n$/],
     ["inline array", "keys.command = [\n  { key = \"ctrl+h\", type = \"shell\", command = \"htop\" },\n]\n", /inline array, which setup does not edit/],
-    ["inline binding", "[keys]\ncommand = [{ key = \"ctrl+g\", type = \"plugin_action\", command = \"siderail.toggle-siderail\" }]\n", /mentions "siderail\.toggle-siderail" outside a plugin_action key binding/],
-    ["shell command", "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"shell\"\ncommand = \"siderail.toggle-siderail\"\n", /outside a plugin_action key binding/],
+    ["inline binding", "[keys]\ncommand = [{ key = \"ctrl+g\", type = \"plugin_action\", command = \"siderail.toggle-siderail\" }]\n", /mentions "siderail\.toggle-siderail" in a form setup cannot verify/],
+    ["shell command", "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"shell\"\ncommand = \"siderail.toggle-siderail\"\n", /in a form setup cannot verify/],
     ["unterminated string", "[ui]\nlabel = \"open\n", /could not classify the contents/],
   ];
   for (const [label, text, message] of cases) {
@@ -207,6 +207,107 @@ test("an edit made while Herdr checks the candidate survives", async (t) => {
     await main(["setup", "herdr"], run.options);
     assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), edited);
     assert.match(run.text(), /changed while SideRail was editing it/);
+    assert.deepEqual(temporaryFiles(run.herdrConfig), []);
+  }
+});
+
+test("a change of any kind while Herdr checks the candidate leaves the config alone", async (t) => {
+  const original = "[ui]\nagent_panel_sort = \"priority\"\n";
+  const changes = {
+    "a chmod": (file) => fs.chmodSync(file, 0o600),
+    "a replacement with the same bytes": (file) => {
+      fs.rmSync(file);
+      fs.writeFileSync(file, original);
+    },
+    "a deletion": (file) => fs.rmSync(file),
+  };
+  for (const [label, change] of Object.entries(changes)) {
+    for (const command of [["setup", "herdr"], ["uninstall", "herdr"]]) {
+      const herdr = fakeHerdr();
+      const run = harness(t, { herdr });
+      writeConfig(run, command[0] === "setup" ? original : `${original}\n${GENERATED}`);
+      fs.chmodSync(run.herdrConfig, 0o644);
+      const expected = () => (fs.existsSync(run.herdrConfig) ? [fs.readFileSync(run.herdrConfig, "utf8"), fs.statSync(run.herdrConfig).mode & 0o777] : null);
+      let after;
+      herdr.state.onCheck = (configPath) => {
+        if (configPath === run.herdrConfig) return;
+        change(run.herdrConfig);
+        after = expected();
+      };
+      run.options.uninstallHerdr = async () => ({ pluginId: "siderail", closedPaneIds: [] });
+      await main(command, run.options);
+      assert.deepEqual(expected(), after, `${label} during ${command[0]}`);
+      assert.match(run.text(), /changed while SideRail was editing it/, `${label} during ${command[0]}`);
+      if (fs.existsSync(path.dirname(run.herdrConfig))) assert.deepEqual(temporaryFiles(run.herdrConfig), []);
+    }
+  }
+});
+
+test("retargeting a symlinked config while Herdr checks the candidate leaves both files alone", async (t) => {
+  const herdr = fakeHerdr();
+  const run = harness(t, { herdr });
+  const dotfiles = path.join(path.dirname(path.dirname(run.herdrConfig)), "dotfiles");
+  fs.mkdirSync(dotfiles, { recursive: true });
+  fs.writeFileSync(path.join(dotfiles, "a.toml"), "[ui]\nagent_panel_sort = \"priority\"\n");
+  fs.writeFileSync(path.join(dotfiles, "b.toml"), "[ui]\nagent_panel_sort = \"name\"\n");
+  fs.mkdirSync(path.dirname(run.herdrConfig), { recursive: true });
+  fs.symlinkSync(path.join(dotfiles, "a.toml"), run.herdrConfig);
+  herdr.state.onCheck = (configPath) => {
+    if (configPath === run.herdrConfig) return;
+    fs.rmSync(run.herdrConfig);
+    fs.symlinkSync(path.join(dotfiles, "b.toml"), run.herdrConfig);
+  };
+  await main(["setup", "herdr"], run.options);
+  assert.equal(fs.readFileSync(path.join(dotfiles, "a.toml"), "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n");
+  assert.equal(fs.readFileSync(path.join(dotfiles, "b.toml"), "utf8"), "[ui]\nagent_panel_sort = \"name\"\n");
+  assert.match(run.text(), /changed while SideRail was editing it/);
+});
+
+test("a failed write or rename leaves the config and no temporary file behind", async (t) => {
+  const run = harness(t);
+  const dotfiles = path.join(path.dirname(path.dirname(run.herdrConfig)), "dotfiles");
+  const real = path.join(dotfiles, "herdr.toml");
+  fs.mkdirSync(dotfiles, { recursive: true });
+  fs.writeFileSync(real, "[ui]\nagent_panel_sort = \"priority\"\n");
+  fs.mkdirSync(path.dirname(run.herdrConfig), { recursive: true });
+  fs.symlinkSync(real, run.herdrConfig);
+
+  // The commit copy beside the real file is the second temporary file written.
+  const writeFileSync = fs.writeFileSync;
+  let writes = 0;
+  const failWrite = t.mock.method(fs, "writeFileSync", (target, ...rest) => {
+    if (typeof target === "number" && (writes += 1) === 2) throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+    return writeFileSync.call(fs, target, ...rest);
+  });
+  await assert.rejects(main(["setup", "herdr"], run.options), /disk full/);
+  failWrite.mock.restore();
+  assert.equal(fs.readFileSync(real, "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n");
+  assert.deepEqual([...temporaryFiles(real), ...temporaryFiles(run.herdrConfig)], []);
+
+  const failRename = t.mock.method(fs, "renameSync", () => {
+    throw Object.assign(new Error("rename refused"), { code: "EPERM" });
+  });
+  await assert.rejects(main(["setup", "herdr"], run.options), /rename refused/);
+  failRename.mock.restore();
+  assert.equal(fs.readFileSync(real, "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n");
+  assert.deepEqual([...temporaryFiles(real), ...temporaryFiles(run.herdrConfig)], []);
+});
+
+test("uninstall keeps the key when Herdr rejects the removal or its check fails", async (t) => {
+  for (const failure of ["rejected", "thrown"]) {
+    const herdr = fakeHerdr();
+    const run = harness(t, { herdr });
+    const text = `[ui]\nagent_panel_sort = "priority"\n\n${GENERATED}`;
+    writeConfig(run, text);
+    herdr.state.onCheck = (configPath) => {
+      if (configPath === run.herdrConfig) return;
+      if (failure === "thrown") throw new ProcessError("herdr timed out", { kind: "timeout" });
+      fs.appendFileSync(configPath, "keys.command = 5\n");
+    };
+    run.options.uninstallHerdr = async () => ({ pluginId: "siderail", closedPaneIds: [] });
+    await main(["uninstall", "herdr"], run.options);
+    assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), text, failure);
+    assert.match(run.text(), /the toggle key was not removed/, failure);
     assert.deepEqual(temporaryFiles(run.herdrConfig), []);
   }
 });
