@@ -43,9 +43,10 @@ siderail setup
 
 `siderail setup` configures every host it finds: it links the install as
 Herdr's `siderail` plugin, binds `ctrl+shift+g` to toggle the sidebar in Herdr,
-and adds a SideRail control to cmux's global Dock configuration. Run `siderail setup herdr` or `siderail setup cmux` to configure
-one host. Setup is safe to repeat; it changes nothing when the registrations
-already point at this install. `siderail status` shows the installed version and
+and adds a SideRail control to cmux's global Dock configuration. Run
+`siderail setup herdr` or `siderail setup cmux` to configure one host. Setup is
+safe to repeat: it changes nothing that already points at this install, though
+a repeat can add the toggle key if it is missing. `siderail status` shows the installed version and
 each host's registration.
 
 ### Herdr
@@ -70,9 +71,11 @@ command = "siderail.toggle-siderail"
 description = "toggle SideRail sidebar"
 ```
 
-Setup leaves the file alone when you already bind `siderail.toggle-siderail`,
-when `ctrl+shift+g` is taken, or when `herdr config check` reports problems; it
-says which. To use another key, change `key` in that entry.
+Setup leaves the file alone, and says why, when you already bind
+`siderail.toggle-siderail`, when Herdr rejects the entry (for example because
+`ctrl+shift+g` is taken), or when the file needs a manual edit; see
+[Installation](docs/INSTALLATION.md#herdr) for the cases. To use another key,
+change `key` in that entry.
 
 Open the deterministic demo, which assembles a temporary real Git repository
 and runs the production provider against it:

@@ -7,7 +7,7 @@ intentional configuration changes documented here.
 
 ### Features
 
-- `siderail setup herdr` binds `ctrl+shift+g` to the `siderail.toggle-siderail` action in Herdr's `config.toml`, unless that action is already bound, the key is taken, or the config has problems, and `siderail uninstall` removes the binding only while it is unchanged.
+- `siderail setup herdr` binds `ctrl+shift+g` to the `siderail.toggle-siderail` action in Herdr's `config.toml`. It validates a temporary copy with `herdr config check` before replacing the file, keeps symbolic links and permissions, and leaves the file alone when the action is already referenced, `keys.command` is an inline array, or Herdr rejects the change. `siderail uninstall` removes the entry only while it is exactly what setup wrote.
 
 ## 0.2.0 - 2026-09-27
 

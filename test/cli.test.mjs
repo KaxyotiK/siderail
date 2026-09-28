@@ -5,17 +5,22 @@ import path from "node:path";
 import test from "node:test";
 import { main } from "../scripts/cli.mjs";
 import { ProcessError } from "../src/process.mjs";
-import { dockControl, herdrConfigPath, readPackageInfo } from "../src/host-setup.mjs";
+import { dockControl, readPackageInfo } from "../src/host-setup.mjs";
+import { herdrConfigPath } from "../src/herdr-toggle-key.mjs";
 import { railTargetPath, readRailTarget } from "../src/rail-target.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const VERSION = readPackageInfo(ROOT).version;
 
-// Stands in for `herdr config check`: a key bound twice is a conflict.
+// Stands in for `herdr config check`: a key bound twice is a conflict, and an
+// array of tables cannot extend an inline keys.command array.
 function checkConfig(text) {
+  if (/^\s*keys\.command\s*=\s*\[/m.test(text) && text.includes("[[keys.command]]")) {
+    return { exitCode: 1, stdout: "Config: issues found\nduplicate key `command` in table `keys`\n" };
+  }
   const keys = [...text.matchAll(/^\s*[\w.]+\s*=\s*"(ctrl\+[^"]+)"/gm)].map((match) => match[1]);
-  if (/^\s*keys\.command\s*=\s*\d/m.test(text)) return { exitCode: 1, stdout: "Config: issues found\nconfig parse error\n" };
+  if (/=\s*\d+\s*$/m.test(text)) return { exitCode: 1, stdout: "Config: issues found\ninvalid type: integer, expected a string\n" };
   const repeated = keys.find((key, index) => keys.indexOf(key) !== index);
   return repeated
     ? { exitCode: 1, stdout: `Config: issues found\n${repeated}: kept keys.new_tab, disabled keys.command[0].key\n` }
@@ -30,7 +35,13 @@ function fakeHerdr({ plugins = [], missing = false } = {}) {
     if (missing) throw new ProcessError(`${command} is not installed`, { kind: "missing-executable" });
     if (args.join(" ") === "config check") {
       const configPath = options.env.HERDR_CONFIG_PATH;
+      await state.onCheck?.(configPath);
+      if (state.checkError) throw state.checkError;
       return checkConfig(fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "");
+    }
+    if (args.join(" ") === "server reload-config") {
+      state.reloadEnvironments = [...(state.reloadEnvironments || []), options.env];
+      if (state.reloadFails) throw new ProcessError("herdr server is not running", { kind: "exit" });
     }
     if (args.join(" ") === "plugin list --json") {
       return { stdout: JSON.stringify({ result: { plugins: state.plugins } }) };
@@ -110,43 +121,160 @@ test("setup with no host registers every detected host", async (t) => {
   assert.equal(fs.readFileSync(run.herdrConfig, "utf8").match(/siderail\.toggle-siderail/g).length, 1);
 });
 
-test("setup keeps the user's Herdr config when the default key is taken or the config is broken", async (t) => {
+function writeConfig(run, text) {
+  fs.mkdirSync(path.dirname(run.herdrConfig), { recursive: true });
+  fs.writeFileSync(run.herdrConfig, text);
+}
+
+function temporaryFiles(file) {
+  return fs.readdirSync(path.dirname(file)).filter((name) => name.includes(".siderail-"));
+}
+
+const GENERATED = [
+  "# Added by `siderail setup`; `siderail uninstall` removes it.",
+  "[[keys.command]]",
+  "key = \"ctrl+shift+g\"",
+  "type = \"plugin_action\"",
+  "command = \"siderail.toggle-siderail\"",
+  "description = \"toggle SideRail sidebar\"",
+  "",
+].join("\n");
+
+test("setup leaves Herdr's config alone when Herdr rejects the key or the config is broken", async (t) => {
   const taken = harness(t);
   const existing = "[keys]\nnew_tab = \"ctrl+shift+g\"\n";
-  fs.mkdirSync(path.dirname(taken.herdrConfig), { recursive: true });
-  fs.writeFileSync(taken.herdrConfig, existing);
+  writeConfig(taken, existing);
   await main(["setup", "herdr"], taken.options);
   assert.equal(fs.readFileSync(taken.herdrConfig, "utf8"), existing);
-  assert.match(taken.text(), /ctrl\+shift\+g is already in use[\s\S]*kept keys\.new_tab[\s\S]*Bind another key to "siderail\.toggle-siderail"/);
+  assert.match(taken.text(), /Herdr rejected the changed [\s\S]*kept keys\.new_tab[\s\S]*Bind "siderail\.toggle-siderail" to another key/);
+  assert.deepEqual(temporaryFiles(taken.herdrConfig), []);
 
   const broken = harness(t);
-  fs.mkdirSync(path.dirname(broken.herdrConfig), { recursive: true });
-  fs.writeFileSync(broken.herdrConfig, "keys.command = 5\n");
+  writeConfig(broken, "[ui]\nagent_panel_sort = 5\n");
   await main(["setup", "herdr"], broken.options);
-  assert.equal(fs.readFileSync(broken.herdrConfig, "utf8"), "keys.command = 5\n");
+  assert.equal(fs.readFileSync(broken.herdrConfig, "utf8"), "[ui]\nagent_panel_sort = 5\n");
   assert.match(broken.text(), /has issues, so no toggle key was added/);
-
-  const ownKey = harness(t);
-  const chosen = "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"plugin_action\"\ncommand = \"siderail.toggle-siderail\"\n";
-  fs.mkdirSync(path.dirname(ownKey.herdrConfig), { recursive: true });
-  fs.writeFileSync(ownKey.herdrConfig, chosen);
-  await main(["setup", "herdr"], ownKey.options);
-  assert.equal(fs.readFileSync(ownKey.herdrConfig, "utf8"), chosen);
-  await main(["uninstall", "herdr"], ownKey.options);
-  assert.equal(fs.readFileSync(ownKey.herdrConfig, "utf8"), chosen);
-  assert.match(ownKey.text(), /left your own "siderail\.toggle-siderail" key binding/);
 });
 
-test("uninstall removes only the toggle key setup added", async (t) => {
+test("setup recognizes existing bindings and declines what it cannot extend", async (t) => {
+  const cases = [
+    ["own key", "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"plugin_action\"\ncommand = \"siderail.toggle-siderail\"\n", /^Herdr: linked plugin siderail\n  Open it with: [^\n]+\n$/],
+    ["inline array", "keys.command = [\n  { key = \"ctrl+h\", type = \"shell\", command = \"htop\" },\n]\n", /inline array, which setup does not edit/],
+    ["inline binding", "[keys]\ncommand = [{ key = \"ctrl+g\", type = \"plugin_action\", command = \"siderail.toggle-siderail\" }]\n", /mentions "siderail\.toggle-siderail" outside a plugin_action key binding/],
+    ["shell command", "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"shell\"\ncommand = \"siderail.toggle-siderail\"\n", /outside a plugin_action key binding/],
+    ["unterminated string", "[ui]\nlabel = \"open\n", /could not classify the contents/],
+  ];
+  for (const [label, text, message] of cases) {
+    const run = harness(t);
+    writeConfig(run, text);
+    await main(["setup", "herdr"], run.options);
+    assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), text, label);
+    assert.match(run.text(), message, label);
+  }
+});
+
+test("setup never commits an unvalidated candidate", async (t) => {
+  const thrown = harness(t);
+  writeConfig(thrown, "[ui]\nagent_panel_sort = \"priority\"\n");
+  thrown.options.run = async (command, args, options) => {
+    if (args.join(" ") === "config check" && options.env.HERDR_CONFIG_PATH !== thrown.herdrConfig) {
+      throw new ProcessError("herdr timed out", { kind: "timeout" });
+    }
+    return fakeHerdr().run(command, args, options);
+  };
+  await main(["setup", "herdr"], thrown.options);
+  assert.equal(fs.readFileSync(thrown.herdrConfig, "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n");
+  assert.match(thrown.text(), /"herdr config check" did not run[\s\S]*herdr timed out/);
+  assert.deepEqual(temporaryFiles(thrown.herdrConfig), []);
+
+  const absent = harness(t);
+  absent.options.run = thrown.options.run;
+  await main(["setup", "herdr"], absent.options);
+  assert.equal(fs.existsSync(absent.herdrConfig), false);
+});
+
+test("an edit made while Herdr checks the candidate survives", async (t) => {
+  for (const initial of ["[ui]\nagent_panel_sort = \"priority\"\n", null]) {
+    const herdr = fakeHerdr();
+    const run = harness(t, { herdr });
+    if (initial !== null) writeConfig(run, initial);
+    const edited = "[ui]\nagent_panel_sort = \"name\"\n";
+    herdr.state.onCheck = (configPath) => {
+      if (configPath === run.herdrConfig) return;
+      fs.mkdirSync(path.dirname(run.herdrConfig), { recursive: true });
+      fs.writeFileSync(run.herdrConfig, edited);
+    };
+    await main(["setup", "herdr"], run.options);
+    assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), edited);
+    assert.match(run.text(), /changed while SideRail was editing it/);
+    assert.deepEqual(temporaryFiles(run.herdrConfig), []);
+  }
+});
+
+test("setup and uninstall edit a symlinked config in place and keep its mode", async (t) => {
   const run = harness(t);
-  const existing = "[ui]\nagent_panel_sort = \"priority\"\n";
+  const real = path.join(path.dirname(path.dirname(run.herdrConfig)), "dotfiles", "herdr.toml");
+  fs.mkdirSync(path.dirname(real), { recursive: true });
+  fs.writeFileSync(real, "[ui]\nagent_panel_sort = \"priority\"\n", { mode: 0o600 });
   fs.mkdirSync(path.dirname(run.herdrConfig), { recursive: true });
-  fs.writeFileSync(run.herdrConfig, existing);
+  fs.symlinkSync(real, run.herdrConfig);
+
   await main(["setup", "herdr"], run.options);
-  assert.notEqual(fs.readFileSync(run.herdrConfig, "utf8"), existing);
+  assert.ok(fs.lstatSync(run.herdrConfig).isSymbolicLink());
+  assert.ok(fs.readFileSync(real, "utf8").endsWith(GENERATED));
+  assert.equal(fs.statSync(real).mode & 0o777, 0o600);
+  assert.deepEqual([...temporaryFiles(real), ...temporaryFiles(run.herdrConfig)], []);
+
   await main(["uninstall", "herdr"], run.options);
-  assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), existing);
+  assert.ok(fs.lstatSync(run.herdrConfig).isSymbolicLink());
+  assert.equal(fs.readFileSync(real, "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n");
+  assert.equal(fs.statSync(real).mode & 0o777, 0o600);
+
+  const dangling = harness(t);
+  fs.mkdirSync(path.dirname(dangling.herdrConfig), { recursive: true });
+  fs.symlinkSync(path.join(path.dirname(dangling.herdrConfig), "missing.toml"), dangling.herdrConfig);
+  await main(["setup", "herdr"], dangling.options);
+  assert.match(dangling.text(), /symbolic link to a missing file/);
+  assert.equal(fs.existsSync(path.join(path.dirname(dangling.herdrConfig), "missing.toml")), false);
+});
+
+test("uninstall removes the toggle key setup added and keeps anything edited or embedded", async (t) => {
+  const run = harness(t);
+  writeConfig(run, "[ui]\nagent_panel_sort = \"priority\"\n");
+  await main(["setup", "herdr"], run.options);
+  fs.appendFileSync(run.herdrConfig, "\n[[keys.command]]\nkey = \"ctrl+h\"\ntype = \"shell\"\ncommand = \"htop\"\n");
+  await main(["uninstall", "herdr"], run.options);
+  assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n\n[[keys.command]]\nkey = \"ctrl+h\"\ntype = \"shell\"\ncommand = \"htop\"\n");
   assert.match(run.text(), /removed the ctrl\+shift\+g toggle key/);
+
+  const kept = [
+    ["field after a blank line", `[ui]\nagent_panel_sort = "priority"\n\n${GENERATED}\nwidth = "80%"\n`],
+    ["block inside a multiline command", `[[keys.command]]\nkey = "ctrl+shift+x"\ntype = "shell"\ncommand = """\ncat <<'TOML'\n${GENERATED}\nTOML\n"""\n`],
+  ];
+  for (const [label, text] of kept) {
+    const edited = harness(t);
+    writeConfig(edited, text);
+    edited.options.uninstallHerdr = async () => ({ pluginId: "siderail", closedPaneIds: [] });
+    await main(["uninstall", "herdr"], edited.options);
+    assert.equal(fs.readFileSync(edited.herdrConfig, "utf8"), text, label);
+    assert.match(edited.text(), /left your own "siderail\.toggle-siderail" key binding/, label);
+  }
+});
+
+test("uninstall finishes removing the key after the plugin is gone and reports a failed reload", async (t) => {
+  const herdr = fakeHerdr();
+  const run = harness(t, { herdr });
+  writeConfig(run, "[ui]\nagent_panel_sort = \"priority\"\n");
+  herdr.state.reloadFails = true;
+  await main(["setup", "herdr"], run.options);
+  assert.match(run.text(), /toggle key ctrl\+shift\+g added[\s\S]*herdr server reload-config/);
+  assert.equal(herdr.state.reloadEnvironments.at(-1), run.options.environment);
+
+  herdr.state.plugins = [];
+  run.output.length = 0;
+  await main(["uninstall", "herdr"], run.options);
+  assert.match(run.text(), /plugin siderail is not installed\nHerdr: removed the ctrl\+shift\+g toggle key[\s\S]*herdr server reload-config/);
+  assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), "[ui]\nagent_panel_sort = \"priority\"\n");
 });
 
 test("setup skips missing hosts, and fails when none is found", async (t) => {

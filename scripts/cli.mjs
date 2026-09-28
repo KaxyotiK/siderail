@@ -7,10 +7,7 @@ import { runCommand } from "../src/process.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import {
   PLUGIN_ID,
-  DEFAULT_TOGGLE_KEY,
-  TOGGLE_ACTION,
   assertHerdrLinkedHere,
-  bindHerdrToggleKey,
   dockControl,
   dockControlRoot,
   findDockControl,
@@ -18,9 +15,14 @@ import {
   readPackageInfo,
   setupCmux,
   setupHerdr,
-  unbindHerdrToggleKey,
   uninstallCmux,
 } from "../src/host-setup.mjs";
+import {
+  DEFAULT_TOGGLE_KEY,
+  TOGGLE_ACTION,
+  bindHerdrToggleKey,
+  unbindHerdrToggleKey,
+} from "../src/herdr-toggle-key.mjs";
 import { readHerdrSessionSnapshot } from "../src/herdr-context-watch.mjs";
 import {
   clearRailTarget,
@@ -150,17 +152,54 @@ function describeRoot(root, installRoot) {
   return path.resolve(root) === path.resolve(installRoot) ? "this install" : root;
 }
 
+const RELOAD_ADVICE = "  Run \"herdr server reload-config\" or restart Herdr to apply it.\n";
+
+function formatIssues(result) {
+  return (result.issues || []).map((issue) => `    ${sanitizeTerminalText(issue)}\n`).join("");
+}
+
+// A reason the config was left unchanged, shared by setup and uninstall.
+function unchangedReason(result) {
+  const file = result.configPath;
+  if (result.action === "rejected") return `Herdr rejected the changed ${file}, so it was left unchanged:\n${formatIssues(result)}`;
+  if (result.action === "check-failed") return `"herdr config check" did not run, so ${file} was left unchanged:\n${formatIssues(result)}`;
+  if (result.action === "changed") return `${file} changed while SideRail was editing it, so it was left as it is; run the command again\n`;
+  if (result.action === "dangling-link") return `${file} is a symbolic link to a missing file, so it was left unchanged\n`;
+  return "";
+}
+
 function writeToggleKeyResult(result, write) {
-  const issues = (result.issues || []).map((issue) => `    ${sanitizeTerminalText(issue)}\n`).join("");
+  const file = result.configPath;
   if (result.action === "bound") {
-    write(`Herdr: toggle key ${DEFAULT_TOGGLE_KEY} added to ${result.configPath}\n`);
-    if (!result.reloaded) write("  Run \"herdr server reload-config\" or restart Herdr to use it.\n");
-  } else if (result.action === "key-taken") {
-    write(`Herdr: ${DEFAULT_TOGGLE_KEY} is already in use, so no toggle key was added:\n${issues}`);
-    write(`  Bind another key to "${TOGGLE_ACTION}" in ${result.configPath} (see the README)\n`);
-  } else if (result.action === "config-invalid") {
-    write(`Herdr: ${result.configPath} has issues, so no toggle key was added:\n${issues}`);
+    write(`Herdr: toggle key ${DEFAULT_TOGGLE_KEY} added to ${file}\n`);
+    if (!result.reloaded) write(RELOAD_ADVICE);
+    return;
+  }
+  if (result.action === "unchanged") return;
+  if (result.action === "config-invalid") {
+    write(`Herdr: ${file} has issues, so no toggle key was added:\n${formatIssues(result)}`);
     write("  Fix them (see \"herdr config check\"), then run \"siderail setup herdr\" again.\n");
+  } else if (result.action === "ambiguous") {
+    write(`Herdr: ${file} mentions "${TOGGLE_ACTION}" outside a plugin_action key binding, so no toggle key was added; check that binding yourself\n`);
+  } else if (result.action === "inline-array") {
+    write(`Herdr: ${file} defines keys.command as an inline array, which setup does not edit, so no toggle key was added\n`);
+    write(`  Add { key = "${DEFAULT_TOGGLE_KEY}", type = "plugin_action", command = "${TOGGLE_ACTION}" } to that array yourself.\n`);
+  } else if (result.action === "unreadable") {
+    write(`Herdr: setup could not classify the contents of ${file}, so no toggle key was added; see the README to add it yourself\n`);
+  } else {
+    write(`Herdr: no toggle key was added. ${unchangedReason(result)}`);
+    if (result.action === "rejected") write(`  Bind "${TOGGLE_ACTION}" to another key yourself (see the README).\n`);
+  }
+}
+
+function writeToggleKeyRemoval(result, write) {
+  if (result.action === "removed") {
+    write(`Herdr: removed the ${DEFAULT_TOGGLE_KEY} toggle key from ${result.configPath}\n`);
+    if (!result.reloaded) write(RELOAD_ADVICE);
+  } else if (result.action === "kept") {
+    write(`Herdr: left your own "${TOGGLE_ACTION}" key binding in ${result.configPath}\n`);
+  } else if (result.action !== "absent") {
+    write(`Herdr: the toggle key was not removed. ${unchangedReason(result)}`);
   }
 }
 
@@ -217,6 +256,8 @@ async function commandUninstall(hosts, context) {
       }
       if (!state.plugin) {
         write(`Herdr: plugin ${PLUGIN_ID} is not installed\n`);
+        // A previous uninstall may have unlinked the plugin but failed to remove the key.
+        writeToggleKeyRemoval(await unbindHerdrToggleKey(context), write);
         continue;
       }
       if (!explicit && (state.plugin.source !== "local" || path.resolve(state.plugin.root || "") !== path.resolve(root))) {
@@ -231,9 +272,7 @@ async function commandUninstall(hosts, context) {
         pluginId: PLUGIN_ID,
       });
       write(`Herdr: unlinked ${result.pluginId}; closed ${result.closedPaneIds.length} verified SideRail pane(s)\n`);
-      const key = await unbindHerdrToggleKey(context);
-      if (key.action === "removed") write(`Herdr: removed the ${DEFAULT_TOGGLE_KEY} toggle key from ${key.configPath}\n`);
-      else if (key.action === "kept") write(`Herdr: left your own "${TOGGLE_ACTION}" key binding in ${key.configPath}\n`);
+      writeToggleKeyRemoval(await unbindHerdrToggleKey(context), write);
     } else {
       const { control } = findDockControl(context);
       if (!explicit && control && control.command !== dockControl(root).command) {
