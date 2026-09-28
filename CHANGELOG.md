@@ -3,11 +3,12 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
-## Unreleased
+## 0.2.1 - 2026-09-28
 
-### Features
+### Fixes
 
-- `siderail setup herdr` binds `ctrl+shift+g` to the `siderail.toggle-siderail` action in Herdr's `config.toml`. It validates a temporary copy with `herdr config check` before replacing the file, keeps symbolic links and permissions, and leaves the file alone when the action is already referenced, `keys.command` is an inline array, or Herdr rejects the change. `siderail uninstall` removes the entry only while it is exactly what setup wrote.
+- SideRail now opens in Herdr tabs with top/bottom or nested splits, which it used to skip. It moves the content panes aside briefly, opens the rail at the outer right, and rebuilds the same terminals in their original layout, keeping focus and zoom. A run that is interrupted part way leaves a record, and the next run for that tab restores the original layout. Automatic opening never moves a rail you placed; only toggle or a manual open relocates one.
+- `siderail setup herdr` now binds `ctrl+shift+g` to the `siderail.toggle-siderail` action, which setup previously left for you to bind by hand. Setup edits Herdr's `config.toml`: it validates a temporary copy with `herdr config check` before replacing the file, keeps symbolic links and permissions, and leaves the file alone when the action is already referenced, `keys.command` is an inline array, or Herdr rejects the change. `siderail uninstall` removes the entry only while it is exactly what setup wrote.
 
 ## 0.2.0 - 2026-09-27
 
