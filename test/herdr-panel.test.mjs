@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +12,11 @@ import {
   ensurePaneStateDirectory,
   legacyPaneStatePath,
   paneStatePath,
+  paneStagingPath,
+  pruneMissingPaneState,
+  readPaneStaging,
   readPaneState,
+  writePaneStaging,
   writePaneState,
 } from "../src/herdr-pane-state.mjs";
 
@@ -34,6 +39,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
   panes = panes.map((pane) => ({ terminal_id: `term-${pane.pane_id}`, ...pane }));
   const calls = [];
   const paneTabs = new Map(panes.map((pane) => [pane.pane_id, pane.tab_id]));
+  const tabLabels = new Map();
   let openedPane = null;
   const run = async (_command, args) => {
     calls.push(args);
@@ -42,7 +48,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
     }
     if (args[0] === "tab" && args[1] === "list") {
       const tabs = [...new Set([...paneTabs.values(), openedPane?.tab_id].filter(Boolean))]
-        .map((tabId) => ({ workspace_id: "w1", tab_id: tabId }));
+        .map((tabId) => ({ workspace_id: "w1", tab_id: tabId, label: tabLabels.get(tabId) }));
       return { stdout: JSON.stringify({ result: { tabs } }) };
     }
     if (args[0] === "pane" && args[1] === "layout") {
@@ -86,6 +92,7 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
       const paneId = args[2];
       const newTabId = args.includes("--new-tab") ? `w1:t${paneTabs.size + 9}` : args[args.indexOf("--tab") + 1];
       paneTabs.set(paneId, newTabId);
+      if (args.includes("--label")) tabLabels.set(newTabId, args[args.indexOf("--label") + 1]);
       if (openedPane?.pane_id === paneId) openedPane.tab_id = paneTabs.get(paneId);
       await afterMutation?.(args);
       return { stdout: JSON.stringify({ result: { move_result: {
@@ -108,8 +115,8 @@ function mockRun({ panes, layout, openedPaneId = "w1:p9", afterMutation = null }
 
 function mockLayoutRequest(root, { afterRoot = root, exportRoots = null } = {}) {
   const calls = [];
-  const request = async (_socket, method, params) => {
-    calls.push({ method, params });
+  const request = async (socket, method, params) => {
+    calls.push({ socket, method, params });
     if (method === "layout.export") {
       const exportIndex = calls.filter((call) => call.method === "layout.export").length - 1;
       const exportedRoot = exportRoots?.[exportIndex] || (exportIndex > 0 ? afterRoot : root);
@@ -338,7 +345,7 @@ test("legacy migration open failure retains the verified legacy rail", async (t)
   assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p3"), false);
 });
 
-test("automatic ensure relocates a middle rail to the outer right", async (t) => {
+test("automatic ensure leaves a middle rail in place while manual opening relocates it", async (t) => {
   const root = await temporaryRoot(t, "siderail-repair-");
   const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
   const panes = [
@@ -365,6 +372,13 @@ test("automatic ensure relocates a middle rail to the outer right", async (t) =>
     request: layoutApi.request,
     resize: async (options) => resized.push(options.paneId),
     writeOutput: () => {},
+  });
+  assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, 0);
+  assert.deepEqual(resized, []);
+  await openHerdrPanel({
+    entrypoint: "git-tui", environment: { ...env, HERDR_PANE_ID: "w1:p2" },
+    run: mocked.run, request: layoutApi.request,
+    resize: async (options) => resized.push(options.paneId), writeOutput: () => {},
   });
   assert.equal(mocked.calls.filter((args) => args[0] === "pane" && args[1] === "move").length, 4);
   assert.deepEqual(resized, ["w1:p2"]);
@@ -476,7 +490,8 @@ test("manual replace of an existing rail preserves stacked content", async (t) =
 
 test("nested rightmost column keeps its structure and terminals beside the new rail", async (t) => {
   const root = await temporaryRoot(t, "siderail-nested-");
-  const env = environment(root, { HERDR_PANE_ID: "w1:p3", SIDERAIL_WORKSPACE_CWD: "/repo" });
+  const env = environment(root, { HERDR_PANE_ID: "w1:p3", SIDERAIL_WORKSPACE_CWD: "/repo",
+    XDG_CONFIG_HOME: root, HERDR_SESSION: "probe" });
   const panes = ["w1:p1", "w1:p2", "w1:p3"].map((pane_id) => ({ workspace_id: "w1", tab_id: "w1:t1", pane_id, cwd: "/repo" }));
   const layout = { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p3", panes: [
     { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 60, height: 40 } },
@@ -494,6 +509,7 @@ test("nested rightmost column keeps its structure and terminals beside the new r
     .map((args) => [args[2], args.includes("--new-tab") ? "stage" : args[args.indexOf("--split") + 1]]),
   [["w1:p2", "stage"], ["w1:p3", "stage"], ["w1:p2", "right"], ["w1:p3", "down"]]);
   assert.equal(layoutApi.calls.some((call) => call.method === "layout.apply"), false);
+  assert.equal(layoutApi.calls[0].socket, path.join(root, "herdr", "sessions", "probe", "herdr.sock"));
 });
 
 test("failed stacked open closes the newly created rail and restores content panes", async (t) => {
@@ -543,6 +559,136 @@ test("failed replacement close restores the original stacked tab", async (t) => 
   assert.equal(mocked.calls.some((args) => args.join(" ") === "plugin pane close w1:p9"), true);
   assert.equal(mocked.paneTabs.get("w1:p2"), "w1:t1");
   assert.equal(mocked.paneTabs.get("w1:p3"), "w1:t1");
+});
+
+test("a killed opener leaves a durable staging record that the next ensure restores", async (t) => {
+  const root = await temporaryRoot(t, "siderail-killed-staging-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
+  const panes = ["w1:p1", "w1:p2"].map((pane_id) => ({ workspace_id: "w1", tab_id: "w1:t1", pane_id, cwd: "/repo" }));
+  const layout = { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", panes: [
+    { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 120, height: 20 } },
+    { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 120, height: 20 } },
+  ] };
+  const contentRoot = splitNode("down", paneNode("w1:p1"), paneNode("w1:p2"));
+  const layoutApi = mockLayoutRequest(contentRoot, {
+    exportRoots: [contentRoot, contentRoot, contentRoot, splitNode("right", contentRoot, paneNode("w1:p9"))],
+  });
+  const mocked = mockRun({ panes, layout });
+  const worker = `
+    import { openHerdrPanel } from ${JSON.stringify(new globalThis.URL("../scripts/open-herdr-panel.mjs", import.meta.url).href)};
+    const pending = new Map(); let nextId = 0;
+    process.on("message", (message) => {
+      const entry = pending.get(message.id); if (!entry) return; pending.delete(message.id);
+      if (message.error) entry.reject(new Error(message.error)); else entry.resolve(message.result);
+    });
+    const remote = (kind, args) => new Promise((resolve, reject) => {
+      const id = ++nextId; pending.set(id, { resolve, reject }); process.send({ id, kind, args });
+    });
+    await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure",
+      environment: JSON.parse(process.env.SIDERAIL_TEST_ENV),
+      run: (...args) => remote("run", args), request: (...args) => remote("request", args),
+      resize: async () => {}, writeOutput: () => {} });
+  `;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", worker], {
+    cwd: PROJECT_ROOT, env: { ...process.env, SIDERAIL_TEST_ENV: JSON.stringify(env) },
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
+  t.after(() => { if (child.exitCode === null) child.kill("SIGKILL"); });
+  let firstMove;
+  const moved = new Promise((resolve) => { firstMove = resolve; });
+  let intercepted = false;
+  child.on("message", async (message) => {
+    try {
+      const result = message.kind === "run" ? await mocked.run(...message.args)
+        : await layoutApi.request(...message.args);
+      if (!intercepted && message.kind === "run" && message.args[1]?.[0] === "pane"
+        && message.args[1]?.[1] === "move" && message.args[1]?.includes("--new-tab")) {
+        intercepted = true;
+        firstMove();
+        return;
+      }
+      child.send({ id: message.id, result });
+    } catch (error) {
+      child.send({ id: message.id, error: error.message });
+    }
+  });
+  let timeout;
+  try {
+    await Promise.race([moved, new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("worker never staged a pane")), 10_000);
+    })]);
+  } finally {
+    clearTimeout(timeout);
+  }
+  child.kill("SIGKILL");
+  await new Promise((resolve) => child.once("close", resolve));
+  const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
+  assert.deepEqual((await readPaneStaging(statePath)).panes, [
+    { paneId: "w1:p1", terminalId: "term-w1:p1" },
+    { paneId: "w1:p2", terminalId: "term-w1:p2" },
+  ]);
+  await pruneMissingPaneState(new Set(["w1:p1", "w1:p2"]), env);
+  assert.equal((await readPaneStaging(statePath)).tabId, "w1:t1");
+  assert.equal(mocked.paneTabs.get("w1:p2") === "w1:t1", false);
+  const result = await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env,
+    run: mocked.run, request: layoutApi.request, resize: async () => {}, writeOutput: () => {} });
+  assert.equal(result.paneId, "w1:p9");
+  assert.equal(mocked.paneTabs.get("w1:p2"), "w1:t1");
+  await assert.rejects(fs.stat(paneStagingPath(statePath)), { code: "ENOENT" });
+});
+
+test("staging recovery keeps its record when a terminal identity changed", async (t) => {
+  const root = await temporaryRoot(t, "siderail-stage-identity-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
+  await ensurePaneStateDirectory(env);
+  const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
+  const originalRoot = splitNode("down", paneNode("w1:p1"), paneNode("w1:p2"));
+  await writePaneStaging(statePath, {
+    version: 1, workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", root: originalRoot,
+    anchorId: "w1:p1", focusedPaneId: "w1:p1", zoomed: false,
+    panes: [{ paneId: "w1:p1", terminalId: "term-w1:p1" }, { paneId: "w1:p2", terminalId: "old-terminal" }],
+    stagedPaneIds: ["w1:p2"], replacementRailIds: [],
+  });
+  const mocked = mockRun({ panes: [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t2", pane_id: "w1:p2", cwd: "/repo" },
+  ], layout: { area: { x: 0, y: 0, width: 120, height: 40 }, panes: [] } });
+  await assert.rejects(openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env,
+    run: mocked.run, resize: async () => {}, writeOutput: () => {} }), /different terminal/);
+  assert.equal(mocked.calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
+  assert.ok(await readPaneStaging(statePath));
+});
+
+test("staging recovery completes a replacement whose old rail already closed", async (t) => {
+  const root = await temporaryRoot(t, "siderail-stage-forward-");
+  const env = environment(root, { SIDERAIL_WORKSPACE_CWD: "/repo" });
+  await ensurePaneStateDirectory(env);
+  const statePath = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
+  const contentRoot = splitNode("down", paneNode("w1:p1"), paneNode("w1:p2"));
+  const originalRoot = splitNode("right", contentRoot, paneNode("w1:p3"));
+  await writePaneStaging(statePath, {
+    version: 1, workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", root: originalRoot,
+    anchorId: "w1:p1", focusedPaneId: "w1:p1", zoomed: false,
+    panes: ["w1:p1", "w1:p2", "w1:p3"].map((paneId) => ({ paneId, terminalId: `term-${paneId}` })),
+    stagedPaneIds: ["w1:p2", "w1:p3"], replacementRailIds: ["w1:p3"],
+  });
+  const panes = [
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p2", cwd: "/repo" },
+    { workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p9", cwd: "/repo", label: "SIDERAIL" },
+  ];
+  const layout = { area: { x: 0, y: 0, width: 120, height: 40 }, focused_pane_id: "w1:p1", panes: [
+    { pane_id: "w1:p1", rect: { x: 0, y: 0, width: 80, height: 20 } },
+    { pane_id: "w1:p2", rect: { x: 0, y: 20, width: 80, height: 20 } },
+    { pane_id: "w1:p9", rect: { x: 80, y: 0, width: 40, height: 40 } },
+  ] };
+  const mocked = mockRun({ panes, layout });
+  const layoutApi = mockLayoutRequest(splitNode("right", contentRoot, paneNode("w1:p9")));
+  const result = await openHerdrPanel({ entrypoint: "git-tui", openMode: "ensure", environment: env,
+    run: mocked.run, request: layoutApi.request, resize: async () => {}, writeOutput: () => {} });
+  assert.deepEqual(result, { paneId: "w1:p9", adopted: true });
+  assert.equal(mocked.calls.some((args) => args[0] === "pane" && args[1] === "move"), false);
+  await assert.rejects(fs.stat(paneStagingPath(statePath)), { code: "ENOENT" });
 });
 
 test("manual replace retargets an existing rail while ensure adopts it", async (t) => {
@@ -787,10 +933,14 @@ test("closed-tab cleanup removes state and orphan locks only for that tab", asyn
   const closed = paneStatePath({ workspaceId: "w1", tabId: "w1:t1", entrypoint: "git-tui", environment: env });
   const other = paneStatePath({ workspaceId: "w1", tabId: "w1:t2", entrypoint: "git-tui", environment: env });
   await writePaneState(closed, "w1:p1", "/repo");
+  await writePaneStaging(closed, { tabId: "w1:t1" });
   await fs.mkdir(`${closed}.lock`);
   await writePaneState(other, "w1:p2", "/repo");
+  await writePaneStaging(other, { tabId: "w1:t2" });
   await cleanupTabPaneState({ workspaceId: "w1", tabId: "w1:t1", environment: env });
   await assert.rejects(fs.stat(closed), { code: "ENOENT" });
+  await assert.rejects(fs.stat(paneStagingPath(closed)), { code: "ENOENT" });
   await assert.rejects(fs.stat(`${closed}.lock`), { code: "ENOENT" });
   assert.deepEqual(await readPaneState(other), { paneId: "w1:p2", cwd: "/repo" });
+  assert.deepEqual(await readPaneStaging(other), { tabId: "w1:t2" });
 });

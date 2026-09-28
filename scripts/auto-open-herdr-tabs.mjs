@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../src/config.mjs";
 import {
   cleanupTabPaneState,
   cleanupWorkspacePaneState,
+  paneStagingPath,
+  paneStatePath,
   pruneMissingPaneState,
 } from "../src/herdr-pane-state.mjs";
 import { runCommand } from "../src/process.mjs";
@@ -101,25 +104,38 @@ export async function openAutoOpenTarget(target, {
     error.kind = "timeout";
     throw error;
   }
-  await run("/bin/bash", [path.join(pluginRoot, "scripts/open-herdr-panel.sh"), "git-tui", "ensure"], {
-    cwd: pluginRoot,
-    env: {
-      HERDR_BIN_PATH: herdr,
-      HERDR_WORKSPACE_ID: target.workspaceId,
-      HERDR_TAB_ID: target.tabId,
-      HERDR_PANE_ID: target.paneId,
-      HERDR_TARGET_PANE_ID: "",
-      HERDR_PLUGIN_CONTEXT_JSON: "",
-      SIDERAIL_WORKSPACE_CWD: target.cwd,
-      SIDERAIL_NODE_PATH: process.execPath,
-    },
-    // Discovery is deadline-bound, but a started layout move must have time
-    // to return staged content panes before its process group is terminated.
-    timeoutMs: Math.max(remainingMs, 120_000),
-    killGraceMs: 5_000,
-    waitForTermination: true,
-    maxOutputBytes: 256 * 1_024,
-  });
+  const stagingPath = paneStagingPath(paneStatePath({
+    workspaceId: target.workspaceId, tabId: target.tabId,
+    entrypoint: "git-tui", environment,
+  }));
+  const controller = new globalThis.AbortController();
+  const deadlineTimer = setTimeout(async () => {
+    try { await fs.access(stagingPath); }
+    catch { controller.abort(); }
+  }, remainingMs);
+  deadlineTimer.unref();
+  try {
+    await run("/bin/bash", [path.join(pluginRoot, "scripts/open-herdr-panel.sh"), "git-tui", "ensure"], {
+      cwd: pluginRoot,
+      env: {
+        HERDR_BIN_PATH: herdr,
+        HERDR_WORKSPACE_ID: target.workspaceId,
+        HERDR_TAB_ID: target.tabId,
+        HERDR_PANE_ID: target.paneId,
+        HERDR_TARGET_PANE_ID: "",
+        HERDR_PLUGIN_CONTEXT_JSON: "",
+        SIDERAIL_WORKSPACE_CWD: target.cwd,
+        SIDERAIL_NODE_PATH: process.execPath,
+      },
+      signal: controller.signal,
+      timeoutMs: Math.max(remainingMs, 120_000),
+      killGraceMs: 5_000,
+      waitForTermination: true,
+      maxOutputBytes: 256 * 1_024,
+    });
+  } finally {
+    clearTimeout(deadlineTimer);
+  }
   return true;
 }
 

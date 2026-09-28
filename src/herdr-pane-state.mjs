@@ -56,6 +56,42 @@ export async function writePaneState(statePath, paneId, cwd = "", terminalId = "
   await fs.rename(temporary, statePath);
 }
 
+export function paneStagingPath(statePath) {
+  return `${statePath}.staging.json`;
+}
+
+export async function readPaneStaging(statePath) {
+  try {
+    return JSON.parse(await fs.readFile(paneStagingPath(statePath), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw new Error(`unable to read SideRail staging record: ${error.message}`, { cause: error });
+  }
+}
+
+export async function writePaneStaging(statePath, record) {
+  const target = paneStagingPath(statePath);
+  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    const file = await fs.open(temporary, "wx", 0o600);
+    try {
+      await file.writeFile(`${JSON.stringify(record)}\n`);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await fs.rename(temporary, target);
+    const directory = await fs.open(path.dirname(target), "r");
+    try { await directory.sync(); } finally { await directory.close(); }
+  } finally {
+    await fs.rm(temporary, { force: true });
+  }
+}
+
+export async function clearPaneStaging(statePath) {
+  await fs.rm(paneStagingPath(statePath), { force: true });
+}
+
 async function ownerAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -180,7 +216,7 @@ export async function pruneMissingPaneState(livePaneIds, environment = process.e
   const directory = await ensurePaneStateDirectory(environment);
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isFile()) continue;
+    if (!entry.isFile() || entry.name.endsWith(".staging.json") || entry.name.endsWith(".tmp")) continue;
     const statePath = path.join(directory, entry.name);
     const state = await readPaneState(statePath);
     if (state && !livePaneIds.has(state.paneId)) await fs.rm(statePath, { force: true });
