@@ -415,7 +415,6 @@ test("reconciliation repairs a silently lost event and a replaced real watch roo
   let scheduler;
   let watcher;
   let dropInvalidations = true;
-  let dropped = 0;
   let builds = 0;
   const engine = createRepositoryEngine({
     context: {
@@ -432,8 +431,7 @@ test("reconciliation repairs a silently lost event and a replaced real watch roo
       watcher = await createRepositoryWatcher({
         ...options,
         onInvalidation(event) {
-          if (dropInvalidations) dropped += 1;
-          else onInvalidation(event);
+          if (!dropInvalidations) onInvalidation(event);
         },
         retryMs: 50,
       });
@@ -450,11 +448,15 @@ test("reconciliation repairs a silently lost event and a replaced real watch roo
 
   const generationBeforeLost = engine.latest().stateGeneration;
   await fs.appendFile(path.join(fixture.primary, "src", "tracked.txt"), "lost event\n");
-  await eventually(() => dropped > 0, "native watcher did not observe the intentionally dropped event");
+  // Native delivery is advisory: macOS can itself lose this first event while
+  // installing its watch stream. Whether the OS or our callback drops it, the
+  // contract is that reconciliation repairs a demonstrably stale snapshot.
   await delay(250);
   assert.equal(engine.latest().stateGeneration, generationBeforeLost);
-  await scheduler.request({ kind: "reconcile", reason: "simulated-loss" });
   let oracle = await getRepositoryState(fixture.primary, { env: fixture.environment });
+  assert.notDeepEqual(comparable(engine.latest().snapshot), comparable(oracle), "fixture must be stale before reconciliation");
+  await scheduler.request({ kind: "reconcile", reason: "simulated-loss" });
+  assert.ok(engine.latest().stateGeneration > generationBeforeLost);
   assert.deepEqual(comparable(engine.latest().snapshot), comparable(oracle));
 
   const oldPrimary = path.join(fixture.root, "old-primary");

@@ -109,6 +109,8 @@ function setContent(lines, gutterColumns) {
   pendingLayoutAnchor = undefined;
   layoutCache = undefined;
   searchIndex.reset(lines);
+  currentMatch = -1;
+  currentMatchColumn = 0;
 }
 function visualRows() {
   const width = bodyWidth();
@@ -233,6 +235,9 @@ async function loadMode(mode) {
     scrollOffset = 0;
     horizontalOffset = 0;
     statusMessage = mode === "diff" ? comparisonLabel() : `${descriptorLabel()} · ${revisionLabel}`;
+    // Input can arrive while the provider is loading. Apply a submitted query
+    // to the new content instead of leaving its empty/stale result behind.
+    if (searchQuery && !searchActive) moveMatch(1);
   } catch (error) {
     if (generation !== loadGeneration) return;
     setContent([`${C.red}${safe(error.message)}${C.reset}`, "", `${C.dim}Press 1 or 2 to retry another view.${C.reset}`], 0);
@@ -344,6 +349,7 @@ async function loadEmbeddedViewer(viewer, key, { resized = false } = {}) {
     horizontalOffset = 0;
     scrollOffset = resized ? Math.round(previousRatio * Math.max(0, visualRows().length - 1)) : 0;
     statusMessage = `${safe(viewer.label || path.basename(viewer.client))} · ${descriptorLabel()} · ${revisionLabel || "exact revision"}`;
+    if (searchQuery && !searchActive) moveMatch(1);
   } catch (error) {
     if (generation !== loadGeneration) return;
     setContent([
