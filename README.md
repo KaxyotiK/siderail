@@ -42,8 +42,8 @@ siderail setup
 ```
 
 `siderail setup` configures every host it finds: it links the install as
-Herdr's `siderail` plugin and adds a SideRail control to cmux's global Dock
-configuration. Run `siderail setup herdr` or `siderail setup cmux` to configure
+Herdr's `siderail` plugin, binds `ctrl+shift+g` to toggle the sidebar in Herdr,
+and adds a SideRail control to cmux's global Dock configuration. Run `siderail setup herdr` or `siderail setup cmux` to configure
 one host. Setup is safe to repeat; it changes nothing when the registrations
 already point at this install. `siderail status` shows the installed version and
 each host's registration.
@@ -57,17 +57,22 @@ herdr plugin action invoke siderail.open-siderail
 ```
 
 After setup, SideRail also opens without taking focus in Git-backed tabs created
-later. SideRail also declares `siderail.toggle-siderail`, which opens or closes
-the verified plugin-owned sidebar in the current tab. Key bindings belong to
-Herdr rather than SideRail configuration. For example:
+later. `ctrl+shift+g` toggles the sidebar in the current tab: it runs the
+plugin's `siderail.toggle-siderail` action, which opens SideRail or closes the
+sidebar it owns. Herdr plugins cannot declare key bindings, so setup adds this
+one to Herdr's `config.toml`:
 
 ```toml
 [[keys.command]]
-key = "ctrl+g"
+key = "ctrl+shift+g"
 type = "plugin_action"
 command = "siderail.toggle-siderail"
 description = "toggle SideRail sidebar"
 ```
+
+Setup leaves the file alone when you already bind `siderail.toggle-siderail`,
+when `ctrl+shift+g` is taken, or when `herdr config check` reports problems; it
+says which. To use another key, change `key` in that entry.
 
 Open the deterministic demo, which assembles a temporary real Git repository
 and runs the production provider against it:
@@ -118,7 +123,8 @@ npm uninstall -g siderail
 
 `siderail uninstall` removes only registrations that point at this install. In
 Herdr it first closes the sidebars it can prove it owns, so Herdr must be
-running. Configuration in `~/.config/siderail/` is left in place.
+running, and it removes the toggle key only if the entry is still exactly the
+one setup added. Configuration in `~/.config/siderail/` is left in place.
 
 ### From a checkout
 

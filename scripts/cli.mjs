@@ -7,7 +7,10 @@ import { runCommand } from "../src/process.mjs";
 import { sanitizeTerminalText } from "../src/terminal-ui.mjs";
 import {
   PLUGIN_ID,
+  DEFAULT_TOGGLE_KEY,
+  TOGGLE_ACTION,
   assertHerdrLinkedHere,
+  bindHerdrToggleKey,
   dockControl,
   dockControlRoot,
   findDockControl,
@@ -15,6 +18,7 @@ import {
   readPackageInfo,
   setupCmux,
   setupHerdr,
+  unbindHerdrToggleKey,
   uninstallCmux,
 } from "../src/host-setup.mjs";
 import { readHerdrSessionSnapshot } from "../src/herdr-context-watch.mjs";
@@ -146,6 +150,20 @@ function describeRoot(root, installRoot) {
   return path.resolve(root) === path.resolve(installRoot) ? "this install" : root;
 }
 
+function writeToggleKeyResult(result, write) {
+  const issues = (result.issues || []).map((issue) => `    ${sanitizeTerminalText(issue)}\n`).join("");
+  if (result.action === "bound") {
+    write(`Herdr: toggle key ${DEFAULT_TOGGLE_KEY} added to ${result.configPath}\n`);
+    if (!result.reloaded) write("  Run \"herdr server reload-config\" or restart Herdr to use it.\n");
+  } else if (result.action === "key-taken") {
+    write(`Herdr: ${DEFAULT_TOGGLE_KEY} is already in use, so no toggle key was added:\n${issues}`);
+    write(`  Bind another key to "${TOGGLE_ACTION}" in ${result.configPath} (see the README)\n`);
+  } else if (result.action === "config-invalid") {
+    write(`Herdr: ${result.configPath} has issues, so no toggle key was added:\n${issues}`);
+    write("  Fix them (see \"herdr config check\"), then run \"siderail setup herdr\" again.\n");
+  }
+}
+
 async function commandSetup(hosts, context) {
   const { root, write, environment, exists } = context;
   const explicit = hosts.length > 0;
@@ -166,8 +184,8 @@ async function commandSetup(hosts, context) {
       else write(`Herdr: linked plugin ${PLUGIN_ID}\n`);
       if (result.action !== "unchanged") {
         write(`  Open it with: herdr plugin action invoke ${PLUGIN_ID}.open-siderail\n`);
-        write(`  Bind a toggle key with command "${PLUGIN_ID}.toggle-siderail" (see the README)\n`);
       }
+      writeToggleKeyResult(await bindHerdrToggleKey(context), write);
     } else {
       if (!explicit && !cmuxPresent(environment, exists)) {
         write("cmux: not found, skipped\n");
@@ -213,6 +231,9 @@ async function commandUninstall(hosts, context) {
         pluginId: PLUGIN_ID,
       });
       write(`Herdr: unlinked ${result.pluginId}; closed ${result.closedPaneIds.length} verified SideRail pane(s)\n`);
+      const key = await unbindHerdrToggleKey(context);
+      if (key.action === "removed") write(`Herdr: removed the ${DEFAULT_TOGGLE_KEY} toggle key from ${key.configPath}\n`);
+      else if (key.action === "kept") write(`Herdr: left your own "${TOGGLE_ACTION}" key binding in ${key.configPath}\n`);
     } else {
       const { control } = findDockControl(context);
       if (!explicit && control && control.command !== dockControl(root).command) {

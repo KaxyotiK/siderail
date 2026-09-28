@@ -66,6 +66,102 @@ export async function assertHerdrLinkedHere({ root, environment = process.env, r
   return true;
 }
 
+export const TOGGLE_ACTION = `${PLUGIN_ID}.toggle-siderail`;
+export const DEFAULT_TOGGLE_KEY = "ctrl+shift+g";
+const TOGGLE_BINDING_MARKER = "# Added by `siderail setup`; `siderail uninstall` removes it.";
+const TOGGLE_BINDING = [
+  TOGGLE_BINDING_MARKER,
+  "[[keys.command]]",
+  `key = "${DEFAULT_TOGGLE_KEY}"`,
+  "type = \"plugin_action\"",
+  `command = "${TOGGLE_ACTION}"`,
+  "description = \"toggle SideRail sidebar\"",
+  "",
+].join("\n");
+
+// Herdr reads HERDR_CONFIG_PATH, then $XDG_CONFIG_HOME/herdr/config.toml, then ~/.config.
+export function herdrConfigPath(environment = process.env) {
+  if (environment.HERDR_CONFIG_PATH) return environment.HERDR_CONFIG_PATH;
+  const base = environment.XDG_CONFIG_HOME
+    || (environment.HOME ? path.join(environment.HOME, ".config") : "");
+  if (!base) throw new Error("HOME is not set; cannot locate Herdr's config.toml");
+  return path.join(base, "herdr", "config.toml");
+}
+
+function readTextIfPresent(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function writeTextAtomically(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  let mode = 0o644;
+  try { mode = fs.statSync(file).mode & 0o777; } catch {}
+  const temporary = `${file}.siderail-${process.pid}.tmp`;
+  fs.writeFileSync(temporary, text, { mode });
+  fs.renameSync(temporary, file);
+}
+
+function bindsToggle(text) {
+  const action = TOGGLE_ACTION.replaceAll(".", "\\.");
+  return new RegExp(`^\\s*command\\s*=\\s*["']${action}["']`, "m").test(text || "");
+}
+
+async function checkHerdrConfig({ environment, run, configPath }) {
+  const result = await run(herdrExecutable(environment), ["config", "check"], {
+    env: { ...environment, HERDR_CONFIG_PATH: configPath },
+    timeoutMs: 8_000,
+    maxOutputBytes: 1_024 * 1_024,
+    allowExitCodes: [0, 1],
+  });
+  const lines = `${result.stdout || ""}\n${result.stderr || ""}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return { ok: result.exitCode === 0, issues: lines.filter((line) => !/^config: /i.test(line)) };
+}
+
+async function reloadHerdrConfig({ environment, run }) {
+  try {
+    await run(herdrExecutable(environment), ["server", "reload-config"], { timeoutMs: 8_000, maxOutputBytes: 1_024 * 1_024 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Herdr plugins cannot declare key bindings, so setup adds a default one to
+// Herdr's config.toml. It never replaces a binding the user chose, and it
+// keeps a config Herdr would reject exactly as it was.
+export async function bindHerdrToggleKey({ environment = process.env, run = runCommand, configPath = herdrConfigPath(environment) } = {}) {
+  const original = readTextIfPresent(configPath);
+  if (bindsToggle(original)) return { action: "unchanged", configPath };
+  if (original !== null) {
+    const before = await checkHerdrConfig({ environment, run, configPath });
+    if (!before.ok) return { action: "config-invalid", configPath, issues: before.issues };
+  }
+  const separator = !original ? "" : original.endsWith("\n\n") ? "" : original.endsWith("\n") ? "\n" : "\n\n";
+  writeTextAtomically(configPath, `${original || ""}${separator}${TOGGLE_BINDING}`);
+  const after = await checkHerdrConfig({ environment, run, configPath });
+  if (!after.ok) {
+    if (original === null) fs.rmSync(configPath, { force: true });
+    else writeTextAtomically(configPath, original);
+    return { action: "key-taken", configPath, issues: after.issues };
+  }
+  return { action: "bound", configPath, reloaded: await reloadHerdrConfig({ environment, run }) };
+}
+
+// Removes only the binding setup wrote, byte for byte; an edited one is the user's.
+export async function unbindHerdrToggleKey({ environment = process.env, run = runCommand, configPath = herdrConfigPath(environment) } = {}) {
+  const text = readTextIfPresent(configPath);
+  const index = text === null ? -1 : text.indexOf(TOGGLE_BINDING);
+  if (index < 0) return { action: bindsToggle(text) ? "kept" : "absent", configPath };
+  const before = text.slice(0, index).replace(/\n\n$/, "\n");
+  writeTextAtomically(configPath, `${before}${text.slice(index + TOGGLE_BINDING.length)}`);
+  return { action: "removed", configPath, reloaded: await reloadHerdrConfig({ environment, run }) };
+}
+
 export function dockConfigPath(environment = process.env) {
   if (!environment.HOME) throw new Error("HOME is not set; cannot locate ~/.config/cmux/dock.json");
   return path.join(environment.HOME, ".config", "cmux", "dock.json");

@@ -15,7 +15,8 @@ siderail setup
 
 - **Herdr:** runs `herdr plugin link` on the installed package, registering it
   as plugin `siderail`. It refuses to replace a GitHub-managed `siderail`
-  plugin; uninstall that first.
+  plugin; uninstall that first. It then binds `ctrl+shift+g` to the
+  `siderail.toggle-siderail` action in Herdr's `config.toml` (see below).
 - **cmux:** adds or updates a control with id `siderail` in
   `~/.config/cmux/dock.json`, keeping every other control and key in that file.
   It never overwrites a `siderail` control that does not launch SideRail, and it
@@ -28,17 +29,27 @@ installed version, the install path, and whether each host points at it.
 ### Herdr
 
 Open SideRail in the current tab with
-`herdr plugin action invoke siderail.open-siderail`. To bind the current-tab
-toggle, add this to `~/.config/herdr/config.toml`, then run
-`herdr config check` and restart or reload Herdr's configuration:
+`herdr plugin action invoke siderail.open-siderail`, or press `ctrl+shift+g` to
+toggle it. Herdr plugins cannot declare key bindings, so `siderail setup herdr`
+appends this entry to Herdr's config file (`$HERDR_CONFIG_PATH`, else
+`$XDG_CONFIG_HOME/herdr/config.toml`, else `~/.config/herdr/config.toml`), checks
+the result with `herdr config check`, and reloads the running server:
 
 ```toml
+# Added by `siderail setup`; `siderail uninstall` removes it.
 [[keys.command]]
-key = "ctrl+g"
+key = "ctrl+shift+g"
 type = "plugin_action"
 command = "siderail.toggle-siderail"
 description = "toggle SideRail sidebar"
 ```
+
+Setup changes nothing when the file already binds `siderail.toggle-siderail`.
+When `ctrl+shift+g` is already in use, or the file has problems before setup
+touches it, setup keeps the file exactly as it was and prints Herdr's
+diagnostic; bind another key to `siderail.toggle-siderail` yourself. To change
+the key later, edit `key` in the entry; `siderail uninstall` then leaves your
+edited binding in place and removes only an unchanged one.
 
 The key mapping is a Herdr setting; the action itself is declared by the
 SideRail plugin. It only closes a pane after verifying that the pane belongs to

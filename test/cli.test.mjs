@@ -5,19 +5,33 @@ import path from "node:path";
 import test from "node:test";
 import { main } from "../scripts/cli.mjs";
 import { ProcessError } from "../src/process.mjs";
-import { dockControl, readPackageInfo } from "../src/host-setup.mjs";
+import { dockControl, herdrConfigPath, readPackageInfo } from "../src/host-setup.mjs";
 import { railTargetPath, readRailTarget } from "../src/rail-target.mjs";
 import { hermeticEnvironment } from "./helpers/environment.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const VERSION = readPackageInfo(ROOT).version;
 
+// Stands in for `herdr config check`: a key bound twice is a conflict.
+function checkConfig(text) {
+  const keys = [...text.matchAll(/^\s*[\w.]+\s*=\s*"(ctrl\+[^"]+)"/gm)].map((match) => match[1]);
+  if (/^\s*keys\.command\s*=\s*\d/m.test(text)) return { exitCode: 1, stdout: "Config: issues found\nconfig parse error\n" };
+  const repeated = keys.find((key, index) => keys.indexOf(key) !== index);
+  return repeated
+    ? { exitCode: 1, stdout: `Config: issues found\n${repeated}: kept keys.new_tab, disabled keys.command[0].key\n` }
+    : { exitCode: 0, stdout: "Config: ok\n" };
+}
+
 function fakeHerdr({ plugins = [], missing = false } = {}) {
   const calls = [];
   const state = { plugins: [...plugins] };
-  const run = async (command, args) => {
+  const run = async (command, args, options = {}) => {
     calls.push(args.join(" "));
     if (missing) throw new ProcessError(`${command} is not installed`, { kind: "missing-executable" });
+    if (args.join(" ") === "config check") {
+      const configPath = options.env.HERDR_CONFIG_PATH;
+      return checkConfig(fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "");
+    }
     if (args.join(" ") === "plugin list --json") {
       return { stdout: JSON.stringify({ result: { plugins: state.plugins } }) };
     }
@@ -48,7 +62,8 @@ function harness(t, { herdr = fakeHerdr(), cmux = false, root = ROOT } = {}) {
     },
   };
   const dockPath = path.join(home, ".config", "cmux", "dock.json");
-  return { options, output, uninstalled, dockPath, text: () => output.join("") };
+  const herdrConfig = herdrConfigPath(environment);
+  return { options, output, uninstalled, dockPath, herdrConfig, text: () => output.join("") };
 }
 
 test("help and version need no host", async (t) => {
@@ -81,7 +96,9 @@ test("setup with no host registers every detected host", async (t) => {
   assert.ok(herdr.calls.includes(`plugin link ${ROOT}`));
   assert.deepEqual(JSON.parse(fs.readFileSync(run.dockPath, "utf8")).controls, [dockControl(ROOT)]);
   assert.match(run.text(), /Herdr: linked plugin siderail/);
-  assert.match(run.text(), /siderail\.toggle-siderail/);
+  assert.match(run.text(), /Herdr: toggle key ctrl\+shift\+g added to/);
+  assert.match(fs.readFileSync(run.herdrConfig, "utf8"), /key = "ctrl\+shift\+g"\ntype = "plugin_action"\ncommand = "siderail\.toggle-siderail"/);
+  assert.ok(herdr.calls.includes("server reload-config"));
   assert.match(run.text(), /cmux: added the SideRail Dock control/);
 
   const again = harness(t, { herdr, cmux: true });
@@ -89,7 +106,47 @@ test("setup with no host registers every detected host", async (t) => {
   await main(["setup", "herdr", "cmux", "herdr"], again.options);
   assert.match(again.text(), /already linked to this install/);
   assert.match(again.text(), /already points at this install/);
-  assert.doesNotMatch(again.text(), /Bind a toggle key|reload/);
+  assert.doesNotMatch(again.text(), /toggle key|reload/);
+  assert.equal(fs.readFileSync(run.herdrConfig, "utf8").match(/siderail\.toggle-siderail/g).length, 1);
+});
+
+test("setup keeps the user's Herdr config when the default key is taken or the config is broken", async (t) => {
+  const taken = harness(t);
+  const existing = "[keys]\nnew_tab = \"ctrl+shift+g\"\n";
+  fs.mkdirSync(path.dirname(taken.herdrConfig), { recursive: true });
+  fs.writeFileSync(taken.herdrConfig, existing);
+  await main(["setup", "herdr"], taken.options);
+  assert.equal(fs.readFileSync(taken.herdrConfig, "utf8"), existing);
+  assert.match(taken.text(), /ctrl\+shift\+g is already in use[\s\S]*kept keys\.new_tab[\s\S]*Bind another key to "siderail\.toggle-siderail"/);
+
+  const broken = harness(t);
+  fs.mkdirSync(path.dirname(broken.herdrConfig), { recursive: true });
+  fs.writeFileSync(broken.herdrConfig, "keys.command = 5\n");
+  await main(["setup", "herdr"], broken.options);
+  assert.equal(fs.readFileSync(broken.herdrConfig, "utf8"), "keys.command = 5\n");
+  assert.match(broken.text(), /has issues, so no toggle key was added/);
+
+  const ownKey = harness(t);
+  const chosen = "[[keys.command]]\nkey = \"ctrl+g\"\ntype = \"plugin_action\"\ncommand = \"siderail.toggle-siderail\"\n";
+  fs.mkdirSync(path.dirname(ownKey.herdrConfig), { recursive: true });
+  fs.writeFileSync(ownKey.herdrConfig, chosen);
+  await main(["setup", "herdr"], ownKey.options);
+  assert.equal(fs.readFileSync(ownKey.herdrConfig, "utf8"), chosen);
+  await main(["uninstall", "herdr"], ownKey.options);
+  assert.equal(fs.readFileSync(ownKey.herdrConfig, "utf8"), chosen);
+  assert.match(ownKey.text(), /left your own "siderail\.toggle-siderail" key binding/);
+});
+
+test("uninstall removes only the toggle key setup added", async (t) => {
+  const run = harness(t);
+  const existing = "[ui]\nagent_panel_sort = \"priority\"\n";
+  fs.mkdirSync(path.dirname(run.herdrConfig), { recursive: true });
+  fs.writeFileSync(run.herdrConfig, existing);
+  await main(["setup", "herdr"], run.options);
+  assert.notEqual(fs.readFileSync(run.herdrConfig, "utf8"), existing);
+  await main(["uninstall", "herdr"], run.options);
+  assert.equal(fs.readFileSync(run.herdrConfig, "utf8"), existing);
+  assert.match(run.text(), /removed the ctrl\+shift\+g toggle key/);
 });
 
 test("setup skips missing hosts, and fails when none is found", async (t) => {
