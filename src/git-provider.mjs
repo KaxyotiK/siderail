@@ -68,14 +68,30 @@ async function resolveRepository(cwd) {
  * storage rather than the project, and the worktree basename is the better one.
  */
 async function resolveRepositoryName(repoRoot) {
+  let resolved;
   try {
     const commonDirectory = (await gitText(repoRoot, ["rev-parse", "--git-common-dir"])).trim();
-    const resolved = await fs.realpath(path.resolve(repoRoot, commonDirectory));
-    const name = path.basename(resolved);
-    if (name === ".git") return path.basename(path.dirname(resolved));
-    const bare = (await gitText(repoRoot, ["config", "--default", "false", "--get", "core.bare"])).trim();
-    if (bare === "true") return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
-  } catch {}
+    resolved = await fs.realpath(path.resolve(repoRoot, commonDirectory));
+  } catch {
+    return path.basename(repoRoot);
+  }
+  const name = path.basename(resolved);
+  if (name === ".git") return path.basename(path.dirname(resolved));
+  let bare;
+  try {
+    // Ask the common repository, not the linked checkout: with
+    // extensions.worktreeConfig, core.bare lives in the bare repository's own
+    // config.worktree. --type=bool accepts every spelling Git treats as true.
+    bare = (await gitText(repoRoot, [
+      "--git-dir", resolved, "config", "--type=bool", "--default", "false", "--get", "core.bare",
+    ])).trim();
+  } catch (error) {
+    // A timeout or cancellation says nothing about the repository; only a Git
+    // exit may fall back to the checkout's name.
+    if (error instanceof ProcessError && error.kind !== "exit") throw error;
+    return path.basename(repoRoot);
+  }
+  if (bare === "true") return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
   return path.basename(repoRoot);
 }
 
