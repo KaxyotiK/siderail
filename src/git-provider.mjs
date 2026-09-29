@@ -54,12 +54,44 @@ async function resolveRepository(cwd) {
   }
 }
 
+/**
+ * A checkout keeps its common dir at `<repository>/.git`, so the repository is
+ * that directory's parent. A bare repository has no `.git` level: the common
+ * dir is the repository itself, and its own name is the one to show. Worktree
+ * managers that back linked worktrees with a bare repository name each worktree
+ * directory after its branch, so falling through to the worktree basename made
+ * the header print the branch as the repository too.
+ *
+ * Only a bare common dir may name the repository. A submodule's common dir is
+ * `<superproject>/.git/modules/<submodule name>` and a `--separate-git-dir`
+ * checkout points anywhere at all; in both the directory name describes the Git
+ * storage rather than the project, and the worktree basename is the better one.
+ */
 async function resolveRepositoryName(repoRoot) {
+  let resolved;
   try {
     const commonDirectory = (await gitText(repoRoot, ["rev-parse", "--git-common-dir"])).trim();
-    const resolved = await fs.realpath(path.resolve(repoRoot, commonDirectory));
-    if (path.basename(resolved) === ".git") return path.basename(path.dirname(resolved));
-  } catch {}
+    resolved = await fs.realpath(path.resolve(repoRoot, commonDirectory));
+  } catch {
+    return path.basename(repoRoot);
+  }
+  const name = path.basename(resolved);
+  if (name === ".git") return path.basename(path.dirname(resolved));
+  let bare;
+  try {
+    // Ask the common repository, not the linked checkout: with
+    // extensions.worktreeConfig, core.bare lives in the bare repository's own
+    // config.worktree. --type=bool accepts every spelling Git treats as true.
+    bare = (await gitText(repoRoot, [
+      "--git-dir", resolved, "config", "--type=bool", "--default", "false", "--get", "core.bare",
+    ])).trim();
+  } catch (error) {
+    // A timeout or cancellation says nothing about the repository; only a Git
+    // exit may fall back to the checkout's name.
+    if (error instanceof ProcessError && error.kind !== "exit") throw error;
+    return path.basename(repoRoot);
+  }
+  if (bare === "true") return name.endsWith(".git") ? name.slice(0, -".git".length) : name;
   return path.basename(repoRoot);
 }
 

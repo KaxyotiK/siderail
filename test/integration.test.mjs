@@ -111,6 +111,113 @@ test("linked worktrees report the common repository name separately from the bra
   assert.equal(state.branch, "plan-template-autonomy");
 });
 
+// The layout worktree managers produce: a bare repository named after the
+// project, with each worktree directory named "<branch>@<repository>".
+async function bareBackedWorktree(t, { bareName = "herdr-gitrail", configure = async () => {} } = {}) {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-bare-worktree-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const seed = path.join(container, "seed");
+  await fs.mkdir(seed);
+  await runGit(seed, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(seed, "README.md"), "base\n");
+  await runGit(seed, ["add", "README.md"]);
+  await runGit(seed, ["commit", "-m", "base"], { env: identity });
+  const bare = path.join(container, "repos", bareName);
+  await fs.mkdir(path.dirname(bare), { recursive: true });
+  await runGit(container, ["clone", "--bare", seed, bare]);
+  const linkedWorktree = path.join(container, "trees", "sidebar-diagnosis@herdr-gitrail");
+  await fs.mkdir(path.dirname(linkedWorktree), { recursive: true });
+  await runGit(bare, ["worktree", "add", "-b", "sidebar-diagnosis", linkedWorktree]);
+  await configure(bare);
+  return { container, linkedWorktree };
+}
+
+test("worktrees backed by a bare repository report the repository, not the branch-named directory", async (t) => {
+  const { linkedWorktree } = await bareBackedWorktree(t);
+  const state = await repositoryState(t, linkedWorktree);
+  assert.equal(state.repository, "herdr-gitrail");
+  assert.equal(state.branch, "sidebar-diagnosis");
+});
+
+test("a bare repository is recognized however its config spells core.bare", async (t) => {
+  const layouts = {
+    "a .git-suffixed folder": { bareName: "herdr-gitrail.git" },
+    "core.bare = yes": { configure: (bare) => runGit(bare, ["config", "core.bare", "yes"]) },
+    // Git requires core.bare in the bare repository's config.worktree once
+    // worktree-specific configuration is enabled.
+    "extensions.worktreeConfig": {
+      configure: async (bare) => {
+        await runGit(bare, ["config", "extensions.worktreeConfig", "true"]);
+        await runGit(bare, ["config", "--unset", "core.bare"]);
+        await runGit(bare, ["config", "--worktree", "core.bare", "true"]);
+      },
+    },
+  };
+  for (const [label, layout] of Object.entries(layouts)) {
+    const { linkedWorktree } = await bareBackedWorktree(t, layout);
+    assert.equal((await repositoryState(t, linkedWorktree)).repository, "herdr-gitrail", label);
+  }
+});
+
+test("a failed core.bare probe that is not a Git exit fails the state instead of renaming the repository", async (t) => {
+  const { container, linkedWorktree } = await bareBackedWorktree(t);
+  // Only the core.bare probe misbehaves: it floods its output past the limit.
+  const wrapper = path.join(container, "git-wrapper.sh");
+  const realGit = (await runCommand("/bin/sh", ["-c", "command -v git"])).stdout.trim();
+  await fs.writeFile(wrapper, [
+    "#!/bin/sh",
+    "case \" $* \" in *\" core.bare \"*) exec head -c 20000000 /dev/zero ;; esac",
+    `exec ${JSON.stringify(realGit)} "$@"`,
+    "",
+  ].join("\n"), { mode: 0o700 });
+  await assert.rejects(
+    repositoryState(t, linkedWorktree, { gitExecutable: wrapper }),
+    (error) => error.kind === "oversized",
+  );
+});
+
+test("a separate Git directory names the repository from the checkout, not the storage", async (t) => {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-separate-git-dir-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const checkout = path.join(container, "myproject");
+  const storage = path.join(container, "elsewhere-gitdir");
+  await fs.mkdir(checkout);
+  await runGit(container, ["init", "--initial-branch=main", `--separate-git-dir=${storage}`, checkout]);
+  await fs.writeFile(path.join(checkout, "README.md"), "base\n");
+  await runGit(checkout, ["add", "README.md"]);
+  await runGit(checkout, ["commit", "-m", "base"], { env: identity });
+
+  // The common dir is not bare and is not a .git level, so its name describes
+  // Git storage rather than the project.
+  const state = await repositoryState(t, checkout);
+  assert.equal(state.repository, "myproject");
+});
+
+test("a submodule names the repository from its own checkout, not the superproject module directory", async (t) => {
+  const container = await fs.mkdtemp(path.join(os.tmpdir(), "gitrail-submodule-name-"));
+  t.after(() => fs.rm(container, { recursive: true, force: true }));
+  const identity = { GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const upstream = path.join(container, "upstream");
+  await fs.mkdir(upstream);
+  await runGit(upstream, ["init", "--initial-branch=main"]);
+  await fs.writeFile(path.join(upstream, "README.md"), "base\n");
+  await runGit(upstream, ["add", "README.md"]);
+  await runGit(upstream, ["commit", "-m", "base"], { env: identity });
+  const superproject = path.join(container, "superproject");
+  await runGit(container, ["clone", upstream, superproject]);
+  // The module name is deliberately not the checkout directory name, so a
+  // repository named from <superproject>/.git/modules/<name> would be visible.
+  await runGit(superproject, [
+    "-c", "protocol.file.allow=always",
+    "submodule", "add", "--name", "vendored-module", upstream, "vendor/library",
+  ], { env: identity });
+
+  const state = await repositoryState(t, path.join(superproject, "vendor", "library"));
+  assert.equal(state.repository, "library");
+});
+
 test("provider resolves branch Git config after explicit bases and validates it as a commit", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "siderail-branch-base-provider-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
