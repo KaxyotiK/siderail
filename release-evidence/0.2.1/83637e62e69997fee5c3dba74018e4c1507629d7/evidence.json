@@ -1,0 +1,123 @@
+{
+  "version": 6,
+  "release": "0.2.1",
+  "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+  "createdAt": "2026-09-28T23:54:56.606Z",
+  "cells": {
+    "local-node-22": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "npm ci; check; snapshot; artifact",
+      "recordedAt": "2026-09-28T23:58:02.177Z",
+      "node": "v22.23.2",
+      "evidence": {
+        "kind": "file",
+        "path": "files/local-node-22.log",
+        "sha256": "66da48a96a1f2ce12c90d8d43bd7802c9ea299fa09676798342a16c79510ef62"
+      }
+    },
+    "local-node-24": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "npm ci; check; snapshot; artifact",
+      "recordedAt": "2026-09-29T00:00:29.750Z",
+      "node": "v24.19.0",
+      "evidence": {
+        "kind": "file",
+        "path": "files/local-node-24.log",
+        "sha256": "c5811ad81b06dc63ae1daf5cdbb00f5bf28255efc6853494fee05dd1b3a46a77"
+      }
+    },
+    "poisoned-environment": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "npm run check with hostile HERDR_*",
+      "recordedAt": "2026-09-29T00:02:44.096Z",
+      "evidence": {
+        "kind": "file",
+        "path": "files/poisoned-environment.log",
+        "sha256": "ea715dcc14ae94bbdee49e8151b85d96d040e656085a006b1be9bd2031220904"
+      }
+    },
+    "archive": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "git archive; verify members; npm ci; artifact; check",
+      "recordedAt": "2026-09-29T00:05:14.571Z",
+      "evidence": {
+        "kind": "file",
+        "path": "files/archive.log",
+        "sha256": "673166554cce1522fb87476b1b33595c1d2bbfa01dbea3b83bdeca073c46bacf"
+      }
+    },
+    "dependency-audit": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "zero runtime dependencies; npm ci; npm audit",
+      "recordedAt": "2026-09-29T00:05:16.400Z",
+      "evidence": {
+        "kind": "file",
+        "path": "files/dependency-audit.log",
+        "sha256": "ec57775cdcb5855cb140d1e8a0e11468bf94debb1a38555c87996509f78627a6"
+      }
+    },
+    "live-macos": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "isolated watch/poll live smoke and uninstall proof",
+      "recordedAt": "2026-09-29T00:06:21.759Z",
+      "platform": "macOS 26.6.2",
+      "node": "v24.19.0",
+      "herdr": "herdr 0.9.1",
+      "evidence": {
+        "kind": "file",
+        "path": "files/live-macos.log",
+        "sha256": "6092215a2784e54281dea18f17863f12f02156d8e42a3328432d535d95572925"
+      }
+    },
+    "live-linux": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "isolated watch/poll live smoke and uninstall proof",
+      "recordedAt": "2026-09-29T00:06:21.899Z",
+      "platform": "Linux Debian GNU/Linux 12 (bookworm)",
+      "node": "v24.19.0",
+      "herdr": "herdr 0.9.1",
+      "evidence": {
+        "kind": "file",
+        "path": "files/live-linux.log",
+        "sha256": "203aeb662d88619dae947e18832a2fab98e9019383510d08d5595c56c47a7615"
+      }
+    },
+    "npm-install": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "pack; global install; setup; in-place upgrade; uninstall",
+      "recordedAt": "2026-09-29T00:06:32.637Z",
+      "platform": "macOS 26.6.2",
+      "node": "v24.19.0",
+      "herdr": "herdr 0.9.1",
+      "evidence": {
+        "kind": "file",
+        "path": "files/npm-install.log",
+        "sha256": "f47061a14238629a92f40c2c60a71aa853ee8ca572ab08bffab416c928dc6bfd"
+      }
+    },
+    "screenshots": {
+      "status": "pass",
+      "candidateSha": "83637e62e69997fee5c3dba74018e4c1507629d7",
+      "command": "verify capture bytes and candidate/source output",
+      "recordedAt": "2026-09-29T00:06:36.365Z",
+      "visualSourceSha": "fa1c3462fafabd7fcaf64a830f2e09e04d99b0c3",
+      "captureSourceSha": "fa1c3462fafabd7fcaf64a830f2e09e04d99b0c3",
+      "evidence": {
+        "kind": "file",
+        "path": "files/screenshots.log",
+        "sha256": "84e5c03006702b0ce64195107b268a45a833a864456af90b293f161f3c57345a"
+      }
+    }
+  },
+  "bundleVersion": 1,
+  "sealedAt": "2026-09-29T00:07:29.722Z",
+  "sourceManifestSha256": "c70c04716df0e28e630521968fb86f58a5f2b2e471695cd23d2a0ed9eb68c500"
+}
