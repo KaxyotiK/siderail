@@ -33,6 +33,20 @@ pane_exists() { panes | json 'process.exit(j.result.panes.some((p)=>p.pane_id===
 rail_cwd() {
   "$herdr_bin" pane process-info --pane "$1" | json 'const f=j.result.process_info.foreground_processes.find((p)=>p.argv.includes("scripts/siderail.mjs")&&/node$/.test(p.argv[0]));process.stdout.write(f?f.cwd:"")'
 }
+installed_pids() {
+  local pid command
+  while IFS= read -r pid; do
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    command=$(ps -ww -p "$pid" -o command= 2>/dev/null) || continue
+    [[ $command == *"$package_root/"* ]] && printf '%s\n' "$pid"
+  done < <(pgrep -f "$package_root/" || true)
+}
+signal_installed_pids() {
+  local signal=$1 pid
+  while IFS= read -r pid; do
+    [[ $pid =~ ^[0-9]+$ ]] && kill -"$signal" "$pid" 2>/dev/null
+  done < <(installed_pids)
+}
 
 cleanup() {
   set +e
@@ -40,7 +54,12 @@ cleanup() {
     "$herdr_bin" session stop "$HERDR_SESSION" --json >/dev/null 2>&1
     wait "$server_pid" >/dev/null 2>&1
   fi
-  pkill -f "$package_root/" >/dev/null 2>&1
+  signal_installed_pids TERM
+  for _ in $(seq 1 50); do
+    [[ -z $(installed_pids) ]] && break
+    sleep 0.1
+  done
+  signal_installed_pids KILL
   rm -rf -- "$root"
 }
 trap cleanup EXIT
@@ -183,7 +202,7 @@ test "$("$herdr_bin" plugin list)" = "No plugins installed." || fail "the Herdr 
 json 'process.exit(j.controls.length===1&&j.controls[0].id==="tests"?0:1)' < "$HOME/.config/cmux/dock.json" \
   || fail "uninstall changed another Dock control"
 cmp -s "$herdr_config" "$root/herdr-config-before.toml" || fail "uninstall did not restore Herdr's config"
-for _ in $(seq 1 50); do pgrep -f "$package_root/" >/dev/null || break; sleep 0.2; done
+for _ in $(seq 1 50); do [[ -z $(installed_pids) ]] && break; sleep 0.2; done
 if pgrep -fl "$package_root/"; then fail "processes from the install survived uninstall"; fi
 echo "no process from the install remains"
 npm uninstall -g --prefix "$prefix" siderail >/dev/null
