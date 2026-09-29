@@ -3,6 +3,12 @@
 SideRail follows Semantic Versioning. Until 1.0, minor releases may include
 intentional configuration changes documented here.
 
+## Unreleased
+
+### Fixes
+
+- A linked worktree of a bare repository now shows the repository's name in the header instead of the worktree folder's name, which worktree managers usually set to the branch. Submodules and `--separate-git-dir` checkouts still show their checkout's name.
+
 ## 0.2.1 - 2026-09-28
 
 ### Fixes
